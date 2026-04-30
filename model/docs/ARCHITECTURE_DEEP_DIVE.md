@@ -52,11 +52,13 @@ The regressions workbook (13 sheets) is the root dependency — it contains 50 y
 
 ### Extracted Data
 
-`scripts/extract_regressions.py` produces 17 CSVs in `data/regressions/`:
+The 17 CSVs derived from `25 Regressions.xlsx` ship pre-extracted at `data/regressions/ootp26/` (added in v0.1.1 so CI can run the full pytest suite). `model/src/regressions.py` reads them directly via `load_regression_inputs(regressions_dir)`. For a new OOTP version, drop fresh sim CSVs into `data/regressions/ootp<version>/` and run `regressions.py` against that path — see [`../../docs/MULTI_LEAGUE.md`](../../docs/MULTI_LEAGUE.md) for the workflow.
+
 - `hitters_ratings.csv`, `pitchers_ratings.csv` — player ratings
 - `batting_sim_1.csv` … `_5.csv` — batting sim data (~8,750 rows × 33 cols each)
 - `pitching_sim_1.csv` … `_5.csv` — pitching sim data (~7,833 rows × 58 cols each)
 - `fielding_sim_1.csv` … `_5.csv` — fielding sim data (~11,850 rows × 41 cols each)
+- `calibration/` — answer-key JSONs and per-team DP rates (optional, used by integration tests)
 
 See `docs/REGRESSIONS_ANALYSIS.md` for the complete WLS math and coefficient mapping.
 

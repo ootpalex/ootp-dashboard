@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-04-30
+
+Same-day patch: ship test fixtures so CI runs the full pytest suite without skip markers.
+
+### Added
+
+- Bundled SSB league CSVs (`leagues/default/{csv,metadata,league.json}`) and the OOTP 26 regression calibration data (`data/regressions/ootp26/`) so a fresh clone has working fixtures for the test suite. Repo size grew from ~5 MB to ~25 MB (one-time).
+
+### Changed
+
+- Reverted all `pytest.mark.skipif` markers added during v0.1.0 patching. The full suite now runs end-to-end on a fresh clone — `cd model && python3 -m pytest` reports `338 passed, 24 skipped` (the 24 skips are pre-existing data-dependent guards, none introduced by this release).
+- `model/tests/conftest.py` retains `HAS_PLAYER_DATA` / `HAS_BALLPARKS` defensive flags as cheap insurance against accidental fixture deletion in future PRs.
+
+### Fixed
+
+- GitHub Actions pytest job no longer fails on missing fixtures; the CI badge in `README.md` reflects each push reliably.
+
 ## [0.1.0] — 2026-04-30
 
 Initial public release. Reverse-engineered from the original Excel workbook into a Python pipeline plus a React SPA.
@@ -25,5 +42,6 @@ Initial public release. Reverse-engineered from the original Excel workbook into
 - `docs/OOTP_EXPORT_GUIDE.md` filled in with screen-by-screen OOTP export instructions, OSA / AAA / AA blending workflow, and the bundled OOTP saved-views file at `docs/ootp_views/`.
 - Original Excel workbook README preserved verbatim at `docs/ORIGINAL_EXCEL_README.md`.
 
-[Unreleased]: https://github.com/ootpalex/ootp-dashboard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ootpalex/ootp-dashboard/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ootpalex/ootp-dashboard/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ootpalex/ootp-dashboard/releases/tag/v0.1.0

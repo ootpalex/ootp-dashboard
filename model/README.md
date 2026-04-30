@@ -13,6 +13,12 @@ A reverse-engineered Python implementation of the OOTP 26 player rating spreadsh
 pip install -r requirements.txt
 ```
 
+For contributors running the test suite, also install the dev dependencies (currently just pytest, layered on top of `requirements.txt`):
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ## Quick Start
 
 ### 1. Player Exports (Required)
