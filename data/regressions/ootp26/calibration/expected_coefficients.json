@@ -1,0 +1,236 @@
+{
+  "hitting": {
+    "eye": {
+      "h_const": 0.0017701750757387691,
+      "h_slope": 0.0018699770558723264,
+      "l_const": -0.0033631942139841944,
+      "l_slope": 0.0020517389336703515
+    },
+    "power": {
+      "h_const": -0.0003829540421328803,
+      "h_slope": 0.0013038568517479568,
+      "l_const": -0.005860434733517423,
+      "l_slope": 0.0007812595744648037
+    },
+    "k": {
+      "h_const": -0.008441742792481196,
+      "h_slope": -0.005063469346528512,
+      "l_const": -0.005814103094068408,
+      "l_slope": -0.007938740334460419
+    },
+    "babip": {
+      "h_const": 0.00022993019282137694,
+      "h_slope": 0.002097471734467991,
+      "l_const": 0.0027315645780548467,
+      "l_slope": 0.002866534329211713
+    },
+    "gap": {
+      "h_const": 0.008328547436316799,
+      "h_slope": 0.0032213371227252795,
+      "l_const": 0.011803143864072779,
+      "l_slope": 0.0065128316133427604
+    },
+    "speed": {
+      "h_const": 0.009946428683776223,
+      "h_slope": 0.0013996778077110226,
+      "l_const": -0.001968715407016983,
+      "l_slope": 0.0022493690504543917
+    },
+    "sba": {
+      "c0": 0.009116895606791357,
+      "c1": 0.013804785218935973
+    },
+    "sb_pct": {
+      "c0": -0.13320702812059265,
+      "c1": 0.008501465263446395
+    },
+    "ubr": {
+      "c0": 3.093821597831973e-05,
+      "c1": 0.00015200301980831775
+    }
+  },
+  "pitching": {
+    "sp_con": {
+      "h_const": -0.0035476899891620627,
+      "h_slope": -0.001428544738645026,
+      "l_const": -0.00605335262770561,
+      "l_slope": -0.0032754677405578726
+    },
+    "sp_hrr": {
+      "h_const": -0.0022014455437011867,
+      "h_slope": -0.0006534377957375309,
+      "l_const": 0.0012153110650454488,
+      "l_slope": -0.0012346031880952992
+    },
+    "sp_stu": {
+      "h_const": 0.004325680266848777,
+      "h_slope": 0.0035392696304977693,
+      "l_const": 0.018311024519354843,
+      "l_slope": 0.006393418699708328
+    },
+    "sp_babip": {
+      "h_const": 2.488651793013013e-05,
+      "h_slope": -0.0008475079214598371,
+      "l_const": 2.488651793013013e-05,
+      "l_slope": -0.0008475079214598371
+    },
+    "rp_con": {
+      "h_const": "hHRR",
+      "h_slope": "X",
+      "l_const": "lHRR",
+      "l_slope": "X"
+    },
+    "rp_hrr": {
+      "h_const": "hSTU",
+      "h_slope": "X",
+      "l_const": "lSTU",
+      "l_slope": "X"
+    },
+    "rp_stu": {
+      "h_const": "hBABIP",
+      "h_slope": "X",
+      "l_const": "lBABIP",
+      "l_slope": "X"
+    },
+    "rp_babip": {
+      "h_const": null,
+      "h_slope": null,
+      "l_const": null,
+      "l_slope": null
+    },
+    "sp_sb_pct": {
+      "c0": -0.01179124984884817,
+      "c1": -0.00254143972877271
+    },
+    "sba": {
+      "c0": 0.0007224917422994285,
+      "c1": -0.0017724275964245081
+    },
+    "rp_sb_pct": {
+      "c0": null,
+      "c1": null
+    }
+  },
+  "fielding": {
+    "c_frm": {
+      "const": null,
+      "slope": null
+    },
+    "c_sba": {
+      "const": null,
+      "slope": null
+    },
+    "c_rto": {
+      "const": null,
+      "slope": null
+    },
+    "first_pm": {
+      "const": 0.0003878808525983733,
+      "slope1": null,
+      "slope2": null
+    },
+    "first_err": {
+      "const": null,
+      "slope": null
+    },
+    "second_pm": {
+      "const": 0.0003164084844450831,
+      "slope1": null,
+      "slope2": null
+    },
+    "second_err": {
+      "const": null,
+      "slope": null
+    },
+    "second_dp": {
+      "const": null,
+      "slope": null
+    },
+    "third_pm": {
+      "const": 0.001363238840270162,
+      "slope1": null,
+      "slope2": null
+    },
+    "third_err": {
+      "const": null,
+      "slope": null
+    },
+    "ss_pm": {
+      "const": 0.001612025228173002,
+      "slope1": null,
+      "slope2": null
+    },
+    "ss_err": {
+      "const": null,
+      "slope": null
+    },
+    "lf_pm": {
+      "const": null,
+      "slope": null
+    },
+    "lf_err": {
+      "const": null,
+      "slope": null
+    },
+    "lf_arm": {
+      "const": null,
+      "slope": null
+    },
+    "cf_pm": {
+      "const": null,
+      "slope": null
+    },
+    "cf_err": {
+      "const": null,
+      "slope": null
+    },
+    "cf_arm": {
+      "const": null,
+      "slope": null
+    },
+    "rf_pm": {
+      "const": null,
+      "slope": null
+    },
+    "rf_err": {
+      "const": null,
+      "slope": null
+    },
+    "rf_arm": {
+      "const": null,
+      "slope": null
+    },
+    "ss_dp": {
+      "const": null,
+      "slope": null
+    }
+  },
+  "fielding_avgs": {
+    "avg_frm_c": -0.00605335262770561,
+    "avg_arm_c_sba": 0.0012153110650454488,
+    "avg_arm_c_rto": 0.018311024519354843,
+    "avg_rng_1b": 2.488651793013013e-05,
+    "avg_err_1b": null,
+    "avg_rng_2b": "lCON",
+    "avg_err_2b": "lHRR",
+    "avg_tdp_2b": "lSTU",
+    "avg_rng_3b": "lBABIP",
+    "avg_err_3b": null,
+    "avg_rng_ss": null,
+    "avg_err_ss": null,
+    "avg_rng_lf": null,
+    "avg_err_lf": null,
+    "avg_arm_lf": null,
+    "avg_rng_cf": null,
+    "avg_err_cf": null,
+    "avg_arm_cf": null,
+    "avg_rng_rf": null,
+    "avg_err_rf": null,
+    "avg_arm_rf": null,
+    "avg_ht_1b": -0.0008475079214598371,
+    "avg_arm_2b": "X",
+    "avg_arm_3b": "X",
+    "avg_arm_ss": null,
+    "avg_tdp_ss": null
+  }
+}

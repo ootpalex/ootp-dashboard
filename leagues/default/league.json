@@ -1,0 +1,13 @@
+{
+  "slug": "default",
+  "leagueName": "Default League",
+  "ootpVersion": "26",
+  "team": "Atlanta Braves",
+  "statsplusUrl": "https://atl-01.statsplus.net/ssb/",
+  "parkFactorMode": "team",
+  "homeFraction": 0.5,
+  "relativeBlend": true,
+  "osaBlend": true,
+  "scoutWeight": 0.9,
+  "osaWeight": 0.1
+}

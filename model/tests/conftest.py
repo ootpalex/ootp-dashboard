@@ -15,11 +15,13 @@ from src.players import load_players
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _resolve_player_dir() -> Path | None:
+def _resolve_player_dir() -> Path:
     """Locate user player data, preferring the new per-league layout.
 
-    Returns None when no data is available so fixtures can `pytest.skip`
-    cleanly on a fresh clone instead of erroring out.
+    Always returns a Path — when no data is available the path simply doesn't
+    exist, so `is_dir()` / `is_file()` checks naturally fail and fixtures /
+    module-level skipif markers in individual test files can `pytest.skip`
+    cleanly on a fresh clone.
     """
     candidates = [
         _PROJECT_ROOT / "leagues" / "default" / "csv" / "players",
@@ -28,10 +30,10 @@ def _resolve_player_dir() -> Path | None:
     for c in candidates:
         if c.is_dir() and any(c.glob("*.csv")):
             return c
-    return None
+    return candidates[0]  # canonical (non-existent) location for clear skip messages
 
 
-def _resolve_ballparks_csv() -> Path | None:
+def _resolve_ballparks_csv() -> Path:
     candidates = [
         _PROJECT_ROOT / "leagues" / "default" / "csv" / "ballparks.csv",
         _PROJECT_ROOT / "model" / "data" / "ballparks.csv",
@@ -39,11 +41,13 @@ def _resolve_ballparks_csv() -> Path | None:
     for c in candidates:
         if c.is_file():
             return c
-    return None
+    return candidates[0]
 
 
-PLAYERS_DIR = _resolve_player_dir()
-BALLPARKS_CSV = _resolve_ballparks_csv()
+PLAYERS_DIR: Path = _resolve_player_dir()
+BALLPARKS_CSV: Path = _resolve_ballparks_csv()
+HAS_PLAYER_DATA: bool = PLAYERS_DIR.is_dir() and any(PLAYERS_DIR.glob("*.csv"))
+HAS_BALLPARKS: bool = BALLPARKS_CSV.is_file()
 TEAM = "Nashville Stars"
 HOME_FRACTION = 0.5
 
@@ -56,16 +60,16 @@ HOME_FRACTION = 0.5
 @pytest.fixture(scope="session")
 def players():
     """Full player DataFrame (all CSV files, no blending)."""
-    if PLAYERS_DIR is None:
-        pytest.skip("No player data directory found (looked in leagues/default/ and model/data/)")
+    if not HAS_PLAYER_DATA:
+        pytest.skip(f"No player CSVs at {PLAYERS_DIR}")
     return load_players(PLAYERS_DIR)
 
 
 @pytest.fixture(scope="session")
 def table():
     """Ballparks lookup table."""
-    if BALLPARKS_CSV is None:
-        pytest.skip("No ballparks.csv found (looked in leagues/default/ and model/data/)")
+    if not HAS_BALLPARKS:
+        pytest.skip(f"No ballparks.csv at {BALLPARKS_CSV}")
     return BallparksTable.from_csv(BALLPARKS_CSV)
 
 

@@ -33,7 +33,7 @@ class TestInputHash:
     def test_hash_deterministic(self):
         """Same directory produces same hash."""
         from tests.conftest import PLAYERS_DIR
-        if PLAYERS_DIR is None:
+        if not PLAYERS_DIR.is_dir():
             pytest.skip("No player data directory")
         h1 = compute_input_hash(PLAYERS_DIR)
         h2 = compute_input_hash(PLAYERS_DIR)
