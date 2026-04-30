@@ -1,0 +1,29 @@
+# Changelog
+
+All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0] — 2026-04-30
+
+Initial public release. Reverse-engineered from the original Excel workbook into a Python pipeline plus a React SPA.
+
+### Added
+
+- **Multi-league support** — `leagues/<slug>/` per league (`league.json`, `csv/players/`, `csv/ballparks.csv`, `metadata/`, `output/`). Regressions live at `data/regressions/ootp<version>/` and are shared across leagues on the same OOTP version.
+- **One-click runner** — `python3 run.py` (plus `Run Dashboard.command` / `Run Dashboard.bat` shims) walks first-time users through league setup, runs the pipeline, starts the dev server, and opens the browser.
+- **Auto-migration** — when `model/pipeline_settings.json` is detected on first run, settings + data are migrated into `leagues/default/`.
+- **Validation layer** (`model/src/validation.py`) — pre-pipeline checks fire friendly errors with file paths and team-name diffs for ballpark/team mismatches, missing required CSVs, unknown teams.
+- **Optional player CSVs** — only `organization.csv` is strictly required. Missing `freeagents.csv` / `iafa.csv` / `draftYYYY.csv` hides the corresponding view (Free Agent Finder / IAFA Board / Draft Board) automatically. Draft year regex accepts any 4 digits (`draft1967.csv` through `draft2156.csv`).
+- **Frontend league switcher** — sidebar dropdown appears when more than one league is configured. Per-league localStorage namespacing for team, game date, league settings, roster moves, R5 threshold, IAFA signed list, prospect board settings.
+- **Pipeline test suite** — 338 passing pytest cases, 24 skipped (data-dependent skips on a fresh clone with no CSVs).
+- **GitHub release plumbing** — MIT LICENSE, GitHub Actions CI (pytest + Vite build on push/PR), bug-report and feature-request issue templates, pull-request template, CODE_OF_CONDUCT.
+
+### Documentation
+
+- Full rewrite of `README.md`, new `QUICKSTART.md`, new `docs/MULTI_LEAGUE.md`.
+- `docs/OOTP_EXPORT_GUIDE.md` filled in with screen-by-screen OOTP export instructions, OSA / AAA / AA blending workflow, and the bundled OOTP saved-views file at `docs/ootp_views/`.
+- Original Excel workbook README preserved verbatim at `docs/ORIGINAL_EXCEL_README.md`.
+
+[Unreleased]: https://github.com/ootpalex/ootp-dashboard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ootpalex/ootp-dashboard/releases/tag/v0.1.0

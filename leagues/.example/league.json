@@ -1,0 +1,13 @@
+{
+  "slug": "EXAMPLE",
+  "leagueName": "Example Sim Baseball League",
+  "ootpVersion": "26",
+  "team": "Your Team Name",
+  "statsplusUrl": "",
+  "parkFactorMode": "team",
+  "homeFraction": 0.5,
+  "relativeBlend": true,
+  "osaBlend": true,
+  "scoutWeight": 0.8,
+  "osaWeight": 0.2
+}

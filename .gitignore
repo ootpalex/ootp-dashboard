@@ -1,0 +1,58 @@
+# Dependencies
+app/node_modules/
+
+# Build output
+app/dist/
+
+# Generated data (re-create via: python3 run.py)
+app/public/data/
+
+# Python
+model/__pycache__/
+model/src/__pycache__/
+model/src/aggregators/__pycache__/
+model/tests/__pycache__/
+model/.metadata_cache.json
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# OOTP source data — per-league user uploads (too large for git, user-specific)
+leagues/*/league.json
+leagues/*/csv/players/*.csv
+leagues/*/csv/ballparks.csv
+leagues/*/metadata/*.csv
+leagues/*/metadata/.metadata_cache.json
+leagues/*/output/*
+
+# But keep the .example/ template's stub files in the repo so users have a
+# starting point. (Negations un-ignore matches from the patterns above.)
+!leagues/.example/league.json
+!leagues/.example/csv/ballparks.csv
+!leagues/.example/output/.gitkeep
+
+# OOTP-version-shared regression source CSVs (too large for git, user-supplied)
+data/regressions/*/*.csv
+data/regressions/*/calibration/
+data/regressions/*/.regressions_cache.json
+
+# Legacy paths (pre-multi-league restructure; still gitignored during transition)
+model/data/players/
+model/data/regressions/
+model/data/metadata/
+model/data/relative/
+model/data/ballparks.csv
+model/*.xlsx
+
+# Pipeline settings (user-specific; legacy, replaced by leagues/<slug>/league.json)
+model/pipeline_settings.json
+
+# Claude Code harness (local AI tooling, not for upload)
+.claude/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
