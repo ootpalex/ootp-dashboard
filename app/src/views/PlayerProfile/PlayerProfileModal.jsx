@@ -56,7 +56,7 @@ function HeaderTiles({ player }) {
   const ovr = num(meta.ovr ?? player.OVR);
   const pot = num(meta.pot ?? player.POT);
   const fv = player._fv;
-  const devPct = !player._matured && player._devPct != null ? player._devPct : null;
+  const devPct = !player._ageMatured && player._devPct != null ? player._devPct : null;
   const lev = meta.lev ?? player.Lev;
   const prone = meta.prone ?? player.Prone;
   const bats = meta.bats ?? player.B ?? "?";

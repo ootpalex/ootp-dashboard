@@ -25,6 +25,13 @@ export function isMatured(player, cs) {
   return false;
 }
 
+export function isAgeMatured(player, cs) {
+  const age = player._age;
+  if (age == null) return true;
+  if (age >= cs.maxCurrentAge) return true;
+  return false;
+}
+
 export function calcBestPos(player, type, matured) {
   if (type === "hitter") {
     for (let ti = 0; ti < DEF_TIERS.length; ti++) {

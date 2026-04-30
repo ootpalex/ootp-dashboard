@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react
 import { S } from "../theme.js";
 import { G5_DEFAULTS, PAGES } from "../utils/constants.js";
 import { loadLeagueSettings, detectExcludedTeams } from "../utils/settings.js";
-import { processData, isMatured, calcBestPos, recomputeAges } from "../utils/dataProcessing.js";
+import { processData, isMatured, isAgeMatured, calcBestPos, recomputeAges } from "../utils/dataProcessing.js";
 import { calcPositionalStrength } from "../utils/strength.js";
 import { getMaxWaa, getMaxWaaP, getBatR, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, scaleRpWaaP, pickPitcherRole } from "../utils/accessors.js";
 import { computeDevPercentile, calcFutureValue } from "../utils/futureValue.js";
@@ -120,22 +120,24 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
 
     const enrichHitter = (p) => {
       const matured = isMatured(p, curveSettings);
+      const ageMatured = isAgeMatured(p, curveSettings);
       const batR = getBatR(p);
-      const devPct = matured ? null : computeDevPercentile(batR, p._age, hitPeers, curveSettings.bandwidth);
+      const devPct = ageMatured ? null : computeDevPercentile(batR, p._age, hitPeers, curveSettings.bandwidth);
       const cur = getMaxWaa(p);
       const pot = getMaxWaaP(p);
       const fv = (matured || cur == null) ? cur :
         calcFutureValue(cur, pot, p._age, devPct, curveSettings);
-      return { ...p, _matured: matured, _devPct: devPct, _fv: fv };
+      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct, _fv: fv };
     };
 
     const enrichPitcher = (p) => {
       const matured = isMatured(p, curveSettings);
+      const ageMatured = isAgeMatured(p, curveSettings);
       // Provisional best-of-role pick (no FV yet) so devPct uses the role's
       // current WAA — matches boardUtils.computeDevPercentilesMap semantics.
       const provisional = pickPitcherRole(p, null, null, 'best');
       const devCur = provisional.waa;  // raw RP if RP wins, SP otherwise
-      const devPct = matured ? null : computeDevPercentile(devCur, p._age, pitPeers, curveSettings.bandwidth);
+      const devPct = ageMatured ? null : computeDevPercentile(devCur, p._age, pitPeers, curveSettings.bandwidth);
 
       // Compute FV per role with the same devPct, then pick best.
       const spWaa = getSpWaa(p);
@@ -163,7 +165,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
       const _fv = useRp ? rpFv : spFv;           // already SP-scaled
 
       const bestPos = matured ? calcBestPos(p, "pitcher", true) : p._bestPos;
-      return { ...p, _matured: matured, _devPct: devPct,
+      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct,
         _sp, _rp, _role: role, _waa, _waaP, _waaSort, _waaPSort, _fv,
         _bestPos: bestPos };
     };

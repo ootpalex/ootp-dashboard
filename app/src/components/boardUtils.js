@@ -64,7 +64,7 @@ export function buildDisplayPool(pool, search, posFilter, sort, toggles, orgNeed
   rows = rows.map((p) => ({
     ...p,
     _rank: anyToggle ? applySmartRank(p, toggles, orgNeed, scarcity, devPercentiles, curveSettings) : p._baseVal,
-    _devPct: (p._age != null && !p._matured) ? (devPercentiles.get(String(p.ID)) ?? null) : null,
+    _devPct: (p._age != null && !p._ageMatured) ? (devPercentiles.get(String(p.ID)) ?? null) : null,
   }));
 
   const { col, dir } = sort;

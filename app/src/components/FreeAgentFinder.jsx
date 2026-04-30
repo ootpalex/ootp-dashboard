@@ -196,7 +196,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
                     <td style={{ ...S.td, ...waaStyle(p._fv) }}>{fmt(p._fv)}</td>
                     <td style={{ ...S.td, ...waaStyle(p._waa) }}>{fmt(p._waa)}</td>
                     <td style={{ ...S.td, ...(p._matured ? { color: "#475569" } : waaStyle(p._waaP)) }}>{p._matured ? "—" : fmt(p._waaP)}</td>
-                    <td style={{ ...S.td, color: !p._matured && p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: !p._matured && p._devPct != null ? 600 : 400 }}>{!p._matured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}</td>
+                    <td style={{ ...S.td, color: !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: !p._ageMatured && p._devPct != null ? 600 : 400 }}>{!p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}</td>
                     <td style={{ ...S.td, color: "#94a3b8" }}>{(p.meta?.proy ?? p.PROY) || "—"}</td>
                     <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
                     <td style={{ ...S.td, color: "#94a3b8" }}>{p._price != null ? "$" + p._price.toLocaleString() : "—"}</td>

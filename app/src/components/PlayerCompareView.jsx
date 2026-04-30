@@ -47,7 +47,7 @@ export default function PlayerCompareView({ data, curveSettings }) {
       { key: "_fv", label: "Future Value", numeric: true, waa: true, fmt: (p) => fmt(p._fv) },
       { key: "Max WAA wtd", label: "WAA", numeric: true, waa: true },
       { key: "MAX WAA P", label: "WAA Potential", numeric: true, waa: true, fmt: (p) => p._matured ? "—" : fmt(getMaxWaaP(p)), color: (p) => p._matured ? "#475569" : undefined },
-      { key: "_devPct", label: "Dev%", fmt: (p) => !p._matured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._matured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
+      { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
     ]},
     { group: "Value (Pitchers)", appliesTo: "pitcher", stats: [
       { key: "_fv", label: "Future Value", numeric: true, waa: true, fmt: (p) => fmt(p._fv) },
@@ -55,7 +55,7 @@ export default function PlayerCompareView({ data, curveSettings }) {
       { key: "WAA wtd RP", label: "RP WAA", numeric: true, waa: true },
       { key: "WAP", label: "SP Potential", numeric: true, waa: true, fmt: (p) => (!p.starter && !p.starterP) || p._matured ? "—" : fmt(getSpWaaP(p)), color: (p) => (!p.starter && !p.starterP) || p._matured ? "#475569" : undefined },
       { key: "WAP RP", label: "RP Potential", numeric: true, waa: true, fmt: (p) => p._matured ? "—" : fmt(getRpWaaP(p)), color: (p) => p._matured ? "#475569" : undefined },
-      { key: "_devPct", label: "Dev%", fmt: (p) => !p._matured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._matured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
+      { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
       { key: "STM", label: "Stamina", numeric: true },
       { key: "VELO", label: "Velocity", numeric: true },
     ]},

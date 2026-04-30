@@ -200,7 +200,7 @@ function ProtectionPlanner({ data, myTeam, strength, curveSettings, onSelectPlay
     const build = (players, type) => players
       .filter((p) => (p.meta?.r5 ?? parseCSVBoolean(p.R5)) && !(p.meta?.on40 ?? (p.ON40 === "Yes")))
       .map((p) => {
-        const devPct = (p._age != null && !p._matured) ? (devPercentiles.get(String(p._uid)) ?? null) : null;
+        const devPct = (p._age != null && !p._ageMatured) ? (devPercentiles.get(String(p._uid)) ?? null) : null;
         return toRosterRow(p, type, { devPct });
       });
     let all = [...build(teamHitters, "hitter"), ...build(teamPitchers, "pitcher")];
