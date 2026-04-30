@@ -1,5 +1,7 @@
 # Regressions Workbook Analysis
 
+**STATUS: ARCHIVED — reverse-engineering reference for `25 Regressions.xlsx`, kept for history.** The math, sheet structure, and coefficient mapping documented here are still accurate descriptions of how the Excel workbook computes its outputs. The Python implementation in `model/src/regressions.py` faithfully replicates this WLS/OLS machinery — see [`../pipelines/REGRESSIONS_IMPLEMENTATION.md`](../pipelines/REGRESSIONS_IMPLEMENTATION.md) for the runtime view.
+
 ## Overview
 
 `25 Regressions.xlsx` (13 sheets) is the root dependency of the entire OOTP rating-to-stat architecture. It contains 50 years of simulated game output (5 separate 10-year sims, 2016–2025) plus the Weighted Least Squares (WLS) regressions that produce every coefficient used in `data_points.py`.
@@ -368,7 +370,7 @@ Spread across three sheets, mapped to `FieldingRegressionCoeffs` in `data_points
 
 ## Extracted Data Files
 
-The extraction script (`scripts/extract_regressions.py`) produces 17 CSV files in `data/regressions/`:
+The 17 CSVs derived from `25 Regressions.xlsx` ship pre-extracted at `data/regressions/ootp26/` (the previously-separate `scripts/extract_regressions.py` script was retired in v0.1.0). For a new OOTP version, drop fresh sim CSVs into `data/regressions/ootp<version>/` and run `regressions.py` directly — see [`docs/MULTI_LEAGUE.md`](../../../docs/MULTI_LEAGUE.md).
 
 | File | Source Sheet | Description |
 |------|-------------|-------------|

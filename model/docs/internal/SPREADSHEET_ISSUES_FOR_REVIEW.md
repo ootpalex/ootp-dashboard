@@ -1,5 +1,7 @@
 # Spreadsheet Issues Found During Reverse Engineering
 
+**STATUS: ARCHIVED — reverse-engineering review notes from the OOTP 26 phase, kept for history.** Several of the issues below were subsequently fixed by the spreadsheet creator in an updated `25 Regressions.xlsx` (notably #5 speed LOW filter and #8 Player 411 stale cache); the rest are either replicated faithfully in the Python pipeline (when intentional) or fixed in code (when buggy). For the runtime status of each see [`REGRESSION_RESIDUALS.md`](REGRESSION_RESIDUALS.md) and the `# ── Bug N` blocks in `model/tests/test_bug_fixes.py`.
+
 I reverse-engineered the hitter/pitcher sheets and the regressions workbook into Python. In the process of validating my output against the spreadsheets, I found a handful of issues that are either bugs or possibly intentional choices I wanted to flag. Figured I'd share them in case any are worth fixing.
 
 For context: I was able to reproduce 50 out of 60 regression slope coefficients to exact floating-point precision, so the vast majority of the spreadsheet logic is rock solid. These are the handful of things that stood out.

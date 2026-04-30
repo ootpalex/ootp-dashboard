@@ -1,5 +1,7 @@
 # Regression Residuals — Investigation & Action Items
 
+**STATUS: ARCHIVED — investigation log from the OOTP 26 reverse-engineering phase, kept for history.** All issues described here are resolved in the current Python implementation; some references to retired helper scripts (e.g. `scripts/stale_cache_proof.py`) are kept for historical context but no longer exist in the repo. For the current state of `regressions.py` see [`../pipelines/REGRESSIONS_IMPLEMENTATION.md`](../pipelines/REGRESSIONS_IMPLEMENTATION.md).
+
 ## Summary
 
 Out of 60 slope coefficients, **58 are exact (0.00%)**, **1 is near-exact (~0.003%)**, and
