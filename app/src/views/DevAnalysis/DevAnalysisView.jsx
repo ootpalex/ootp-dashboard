@@ -427,8 +427,6 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
           <FVImpactTable curveOpts={curveOpts} waaPercentileData={waaPercentileData} />
         </Section>
 
-        <LiveProspectPreview prospectPreview={prospectPreview} poolLabel={poolLabel} />
-
         <CurveTuningPanel
           curveSettings={curveSettings}
           maxCurrentAge={maxCurrentAge} setLocalMaxCurrentAge={setLocalMaxCurrentAge}
@@ -447,6 +445,8 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
           resetCurveSettings={resetCurveSettings}
           restoreDefaults={restoreDefaults}
         />
+
+        <LiveProspectPreview prospectPreview={prospectPreview} poolLabel={poolLabel} />
       </>}
     </div>
   );

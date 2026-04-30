@@ -3,10 +3,8 @@
 | File | Source view |
 |---|---|
 | `hero.png` | My Organization → Overview |
-| `roster-planner1.png` | Roster Planner — main view (active roster, contracts) |
-| `roster-planner2.png` | Roster Planner — depth chart, R5 risk, queues |
-| `dev-analysis1.png` | Dev Analysis — age-vs-WAA scatter + curve tuning |
-| `dev-analysis2.png` | Dev Analysis — FV impact table + live prospect preview |
+| `roster-planner.png` | Roster Planner — full page (active roster, contracts, depth chart, R5 risk, queues) |
+| `dev-analysis.png` | Dev Analysis — full page (age-vs-WAA scatter, curve tuning, FV impact, live prospect preview) |
 | `prospects.png` | Prospects → The Board with FV tier badges |
 | `quickstart-first-run.png` | Terminal screenshot of `run.py`'s first-time-setup prompt — used at the top of `QUICKSTART.md` |
 

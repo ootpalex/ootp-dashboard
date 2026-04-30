@@ -29,14 +29,12 @@ A few of the eleven dashboard pages:
 ### Roster Planner
 *Drag-and-drop roster builder with multi-year contract projections, Rule 5 risk panel, and arbitration / option-decision queues.*
 
-![Roster Planner — main view](docs/images/roster-planner1.png)
-![Roster Planner — depth + queues](docs/images/roster-planner2.png)
+![Roster Planner](docs/images/roster-planner.png)
 
 ### Dev Analysis
 *Tunable Future Value formula with live previews against your real prospect pool. Slide the curves; the rankings update in place.*
 
-![Dev Analysis — scatter + curves](docs/images/dev-analysis1.png)
-![Dev Analysis — FV impact + live preview](docs/images/dev-analysis2.png)
+![Dev Analysis](docs/images/dev-analysis.png)
 
 ### Prospects
 *Fangraphs-style prospect ranking with FV tier badges, scouting reports, and farm-system rankings.*
