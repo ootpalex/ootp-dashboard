@@ -11,7 +11,7 @@ There are two ways to get constants: hardcoded singletons (`DEFAULT_HITTER_DP` /
 | Input | Source | Description |
 |-------|--------|-------------|
 | None (hardcoded) | `src/data_points.py` | OOTP 26 defaults baked into dataclass field values |
-| Metadata CSVs (optional) | `data/metadata/inputs/*.csv` | Raw OOTP sim data for dynamic constant computation via `src/metadata.py` |
+| Metadata CSVs (optional) | `leagues/<slug>/metadata/*.csv` | Raw OOTP rating CSVs for league-specific constant computation via `src/metadata.py` |
 
 ## How to Use (Public API)
 
@@ -32,8 +32,8 @@ print(dp.fielding.pos_ss)       # 11.97
 ```python
 from src.metadata import generate_data_points, compose_data_points
 
-# Compute league params from raw OOTP simulation data
-hitting, pitching, fielding = generate_data_points("data/metadata/")
+# Compute league params from per-league metadata CSVs
+hitting, pitching, fielding = generate_data_points("leagues/<slug>/metadata/")
 
 # Combine with regression coefficients into pipeline-ready containers
 hitter_dp, pitcher_dp = compose_data_points(hitting, pitching, fielding)

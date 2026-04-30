@@ -9,13 +9,16 @@ producing ~60 coefficients currently hardcoded in `data_points.py`.
 
 | File | Purpose |
 |------|---------|
-| `src/regressions.py` | Main implementation (~960 lines) |
-| `tests/test_regressions.py` | 112 tests (loading, WLS, hitting, pitching, fielding, caching, e2e) |
-| `scripts/regression_diagnostics.py` | Full error baseline comparison script |
-| `scripts/extract_regression_expected.py` | Answer key extraction from Excel |
-| `data/regressions/expected/hitting_reg_players.json` | 440 hitter IDs |
-| `data/regressions/expected/pitching_reg_players.json` | 160 SP + 224 RP IDs |
-| `data/regressions/expected/fielding_reg_players.json` | Per-position IDs (C:30, IF:155, OF:90) |
+| `model/src/regressions.py` | Main implementation (~1200 lines) |
+| `model/tests/test_regressions.py` | Loading, WLS, hitting, pitching, fielding, caching, e2e |
+| `data/regressions/ootp26/*.csv` | 17 source sim CSVs (hitters/pitchers ratings + 5 sims each of batting/pitching/fielding) |
+| `data/regressions/ootp26/calibration/hitting_reg_players.json` | 440 hitter IDs |
+| `data/regressions/ootp26/calibration/pitching_reg_players.json` | 160 SP + 224 RP IDs |
+| `data/regressions/ootp26/calibration/fielding_reg_players.json` | Per-position IDs (C:30, IF:155, OF:90) |
+| `data/regressions/ootp26/calibration/expected_coefficients.json` | Excel-extracted answer keys for `data_points.py` constants |
+| `data/regressions/ootp26/calibration/team_dp_rates.json` | Team-level DP/IP rates (input to OLS DP regressions) |
+
+The previously-separate `scripts/regression_diagnostics.py` and `scripts/extract_regression_expected.py` were retired in v0.1.0 — the calibration JSONs now ship pre-extracted alongside the sim CSVs in `data/regressions/ootp<version>/calibration/` and are loaded by `regressions.py` directly via `_load_answer_key_ids()`.
 
 ## Phase Status
 

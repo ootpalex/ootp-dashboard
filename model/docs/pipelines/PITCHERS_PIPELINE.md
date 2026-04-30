@@ -36,15 +36,18 @@ The `_rating_to_delta()` helper (piecewise linear regression split at rating = 5
 
 ```
 src/
-  ballparks.py       # COMPLETE — park factor computation
-  data_points.py     # COMPLETE — model constants, regression coefficients
-  players.py         # COMPLETE — shared CSV ingestion
-  hitters.py         # COMPLETE — hitter stat computation pipeline
-  pitchers.py        # NEW — pitcher stat computation pipeline
+  ballparks.py       # park factor computation
+  data_points.py     # model constants, regression coefficients
+  players.py         # shared CSV ingestion
+  hitters.py         # hitter stat computation pipeline (sibling — see HITTERS_PIPELINE.md)
+  pitchers.py        # pitcher stat computation pipeline (this doc)
+  aggregators/       # Phase E split — hit/pitch/field aggregators for metadata.compose_data_points
 
 tests/
-  test_pitchers.py   # NEW — pitcher pipeline tests
+  test_pitchers.py   # pitcher pipeline tests
 ```
+
+> **Note on doc style:** "NEW" / "FUTURE" status flags throughout this doc reflect the original phased reverse-engineering rollout. All phases are now COMPLETE — see the Phased Roadmap table at the bottom for current status.
 
 ---
 

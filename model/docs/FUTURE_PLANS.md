@@ -52,7 +52,7 @@ The third mode evaluates each player at their **own organization's** ballpark. T
 ## 3. JSON Output Size Optimization
 
 **Priority:** Low (gzip already shipped)
-**Source:** Output is gzipped at `model/main.py:116-117`; uncompressed is ~29 MB
+**Source:** Output is gzipped in `model/main.py:234-236`; uncompressed is ~29 MB
 
 The gzipped JSON typically lands at 2–4 MB, which the SPA loads cleanly. Remaining size-reduction options if first-paint becomes a problem:
 
@@ -69,20 +69,17 @@ The gzipped JSON typically lands at 2–4 MB, which the SPA loads cleanly. Remai
 
 ---
 
-## 4. Metadata Pipeline Integration
+## 4. Metadata + Regressions Pipeline Integration
 
-**Priority:** Low
-**Source:** `src/metadata.py`, `src/regressions.py`
+**Priority:** Partial — metadata wired in v0.1.0; regressions still manual for OOTP-version migrations.
 
-Currently `build_dashboard()` uses hardcoded `DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP` singletons calibrated from OOTP 26 baseline data. The metadata and regressions pipelines can compute these dynamically from the user's own league data.
+**Source:** `src/metadata.py`, `src/regressions.py`, `src/export.py:build_dashboard`
 
-### What This Enables
-- Accurate parameters for different OOTP versions or custom league settings
-- Auto-recalibration when league conditions change (new season, rule changes)
-- Could be triggered by a `--recalibrate` flag or detected via data hash
+### What's wired (v0.1.0)
+- `build_dashboard()` accepts an optional `metadata_dir` parameter. When `leagues/<slug>/metadata/` contains CSV files, the pipeline auto-calls `generate_data_points()` → `compose_data_points()` to compute league-specific calibration. SHA-256 hash caching via `.metadata_cache.json` short-circuits unchanged inputs. Falls back to `DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP` when the directory is empty.
 
-### Requirements
-- Rating CSV files (batter/pitcher ratings by split, sp/rp data)
-- Regression sim data CSVs (batting/pitching/fielding sims)
-- Both pipelines already exist and are tested (50 metadata + 110 regression tests)
-- Need to wire `metadata.generate_data_points()` + `regressions.compute_regressions()` into `build_dashboard()` as an optional step
+### What's still manual
+- Regression coefficient regeneration for new OOTP versions. Today the OOTP 26 coefficients are hardcoded in `data_points.py` (originally Excel-derived). For OOTP 27, you drop sim CSVs into `data/regressions/ootp27/` and run `regressions.py` against that path; the resulting coefficients still need to be hand-merged into `data_points.py` (or a future `data_points_v27.py`).
+
+### Open work
+- Wire `compute_regressions()` output into `data_points.py` automatically based on `LeagueConfig.ootpVersion` so that new-version leagues don't require a manual constant-merge step. See [`../../docs/MULTI_LEAGUE.md`](../../docs/MULTI_LEAGUE.md) for the current OOTP-version migration workflow.

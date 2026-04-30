@@ -8,10 +8,10 @@ Loads OOTP CSV player exports from a directory, merges them into a single DataFr
 
 | Input | Source | Description |
 |-------|--------|-------------|
-| `data/players/*.csv` | OOTP export (paste-to-clipboard or HTML table) | 6 CSV files: `organization.csv`, `freeagents.csv`, `iafa.csv`, `draft{year}.csv` (x3) |
-| `data/players/*_osa.csv` (optional) | OOTP export (OSA scouting view) | Paired OSA files for blending: `organization_osa.csv`, `freeagents_osa.csv`, etc. |
-| `data/players/*_aaa.csv` (optional) | OOTP export (AAA relative view) | AAA relative exports for finer rating granularity |
-| `data/players/*_aa.csv` (optional) | OOTP export (AA relative view) | AA relative exports for even finer granularity (requires AAA) |
+| `leagues/<slug>/csv/players/*.csv` | OOTP export (Report → Write Report to CSV) | Up to 4 base CSVs: `organization.csv` (required), `freeagents.csv`, `iafa.csv`, `draftYYYY.csv` (any 4-digit year) |
+| `leagues/<slug>/csv/players/*_osa.csv` (optional) | OOTP export (OSA scouting view) | Paired OSA files for blending: `organization_osa.csv`, `freeagents_osa.csv`, etc. |
+| `leagues/<slug>/csv/players/*_aaa.csv` (optional) | OOTP export (AAA relative view) | AAA relative exports for finer rating granularity |
+| `leagues/<slug>/csv/players/*_aa.csv` (optional) | OOTP export (AA relative view) | AA relative exports for even finer granularity (requires AAA) |
 
 ### CSV format
 
@@ -30,14 +30,14 @@ Each file has ~184 columns covering biographical info, ratings (split by vR/vL/P
 from src.players import load_players
 
 # Basic load (no OSA blending)
-players = load_players("data/players/")
+players = load_players("leagues/<slug>/csv/players/")
 
 # With relative rating blending (AAA/AA)
-players = load_players("data/players/", relative_blend=True)
+players = load_players("leagues/<slug>/csv/players/", relative_blend=True)
 
 # With both relative and OSA blending
 players = load_players(
-    "data/players/",
+    "leagues/<slug>/csv/players/",
     relative_blend=True,
     osa_blend=True,
     scout_weight=0.8,

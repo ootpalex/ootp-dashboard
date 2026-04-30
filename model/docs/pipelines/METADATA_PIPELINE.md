@@ -4,9 +4,12 @@
 
 The `25 Metadata.xlsx` workbook is a **constant-generation pipeline**: raw OOTP game stats + player ratings → calibration constants stored in `data_points.py`.
 
-**Module:** `src/metadata.py`
-**Test suite:** `tests/test_metadata.py`
-**Extracted data:** `data/metadata/inputs/` (raw data CSVs), `data/metadata/expected/` (answer keys)
+**Module:** `src/metadata.py` (orchestrator + caching) + `src/aggregators/{hit,pitch,field}_aggregator.py` (Phase E split — domain-specific aggregation)
+**Test suite:** `model/tests/test_metadata.py`
+**Per-league inputs:** `leagues/<slug>/metadata/*.csv` (raw OOTP rating + sim CSVs the pipeline auto-detects on each build)
+**Calibration answer keys:** `data/regressions/ootp<version>/calibration/*.json` (shipped per OOTP version)
+
+After Phase E (2026-04-28), `src/metadata.py` slimmed from 1482 → 439 lines. It now owns: `MetadataInputs`, CSV loading + OSA/relative blending, result caching (SHA-256 hash via `.metadata_cache.json`), and the top-level orchestrators `generate_data_points` / `compose_data_points`. The heavy aggregation moved into the `src/aggregators/` package — `hit_aggregator.py` (`_aggregate_hitting`, `compute_hitting_constants`), `pitch_aggregator.py` (`_aggregate_pitching`, `compute_pitching_constants` with SP-normalized RP wOBA), `field_aggregator.py` (`_compute_fielding_aggregates`, `_compute_position_adjustments`, `compute_fielding_constants`), and `_shared.py` (`_compute_woba_from_aggregates`, weighted-mean helpers). `src.metadata` re-exports the private helpers that `tests/test_metadata.py` imports, so test imports stayed unchanged across the split.
 
 ## Data Flow
 

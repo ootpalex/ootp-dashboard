@@ -8,7 +8,7 @@ Translates a raw park factor CSV into stat adjustments consumed by the hitters a
 
 | Input | Source | Description |
 |-------|--------|-------------|
-| `data/ballparks.csv` | User-provided (copy from OOTP) | 28 teams, 11 columns: Team Name, Park, PF AVG, AVG L, AVG R, PF HR, HR L, HR R, PF D, PF T, PF |
+| `leagues/<slug>/csv/ballparks.csv` | User-provided (copy from OOTP) | 28 teams, 11 columns: Team Name, Park, PF AVG, AVG L, AVG R, PF HR, HR L, HR R, PF D, PF T, PF |
 | `BallparkConstants` | `data_points.py` defaults (or via `HitterLeagueParams.to_ballpark_constants()`) | League wOBA weights, stat rates, platoon splits, PA |
 
 ## How to Use (Public API)
@@ -17,7 +17,7 @@ Translates a raw park factor CSV into stat adjustments consumed by the hitters a
 from src.ballparks import BallparksTable, neutral_park_deltas, neutral_adjustments
 
 # 1. Load park factors and compute all team rows
-table = BallparksTable.from_csv("data/ballparks.csv")
+table = BallparksTable.from_csv("leagues/<slug>/csv/ballparks.csv")
 
 # 2. Get park deltas for a specific team (input to hitters/pitchers)
 park_deltas = table.compute_park_deltas("Nashville Stars", home_fraction=0.5)

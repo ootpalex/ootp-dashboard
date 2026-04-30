@@ -34,23 +34,24 @@ All raw CSV columns are retained in the DataFrame; computed columns are appended
 ## Module Organization
 
 ```
-data/
-  ballparks.csv          # park factor data (28 teams)
-  players/               # OOTP CSV exports
-    organization.csv     # players in any team's organization
-    freeagents.csv       # free agents
-    iafa.csv             # international amateur free agents
-    draft2042.csv        # draft class files
-    draft2043.csv
-    draft2044.csv
+leagues/<slug>/csv/        # OOTP CSV exports (per league)
+  ballparks.csv            # park factor data (28 teams)
+  players/
+    organization.csv       # players in any team's organization
+    freeagents.csv         # free agents (optional)
+    iafa.csv               # international amateur free agents (optional)
+    draftYYYY.csv          # draft class files, any 4-digit year (optional)
 
 src/
-  ballparks.py       # COMPLETE — park factor computation
-  data_points.py     # COMPLETE — model constants, regression coefficients
-  players.py         # COMPLETE — shared CSV ingestion, merging, tagging, two-way detection
-  hitters.py         # NEW — hitter stat computation pipeline
-  pitchers.py        # FUTURE — pitcher stat computation pipeline
+  ballparks.py       # park factor computation
+  data_points.py     # model constants, regression coefficients
+  players.py         # shared CSV ingestion, merging, tagging, two-way detection
+  hitters.py         # hitter stat computation pipeline (this doc)
+  pitchers.py        # pitcher stat computation pipeline (sibling — see PITCHERS_PIPELINE.md)
+  aggregators/       # Phase E split — hit/pitch/field aggregators called by metadata.compose_data_points
 ```
+
+> **Note on doc style:** "NEW" / "FUTURE" status flags throughout this doc reflect the original phased reverse-engineering rollout. All phases are now COMPLETE — see the Phased Roadmap table at the bottom for current status.
 
 ---
 
@@ -60,11 +61,11 @@ src/
 
 ### Input Files
 
-Load from `data/players/` directory containing OOTP CSV exports:
+Load from `leagues/<slug>/csv/players/` containing OOTP CSV exports:
 - `organization.csv` — players in any team's organization (~7,926 rows)
-- `freeagents.csv` — free agents (~784 rows)
-- `iafa.csv` — international amateur free agents (~90 rows)
-- `draftXXXX.csv` — draft class files (~1,647 rows total across 3 files)
+- `freeagents.csv` — free agents (~784 rows, optional)
+- `iafa.csv` — international amateur free agents (~90 rows, optional)
+- `draftYYYY.csv` — draft class files (~1,647 rows total across multiple years, optional)
 
 Total: ~10,447 rows × 184 raw columns per file.
 
@@ -315,9 +316,9 @@ Prospect stats are now computed in the export pipeline (`_prepare_prospect_hitte
 
 ### Phase 9: JSON Export — COMPLETE (via `src/export.py` + `main.py`)
 
-`build_dashboard()` in `src/export.py` assembles all computed stats (current + prospect) into nested JSON dicts. `main.py` writes the gzip-compressed output to `output/dashboard.json.gz`. Includes salary/price parsing, demand handling, and starter/starterP classification.
+`build_dashboard()` in `src/export.py` assembles all computed stats (current + prospect) into nested JSON dicts. `main.py` writes the gzip-compressed output to `leagues/<slug>/output/dashboard.json.gz`, then auto-copies to `app/public/data/<slug>/` and refreshes `leagues.json`. Includes salary/price parsing, demand handling, and starter/starterP classification.
 
-**Metadata auto-detection:** `build_dashboard()` accepts an optional `metadata_dir` parameter. If `data/metadata/inputs/` contains CSV files, the pipeline automatically calls `generate_data_points()` → `compose_data_points()` to compute custom league parameters. Otherwise it falls back to `DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP`.
+**Metadata auto-detection:** `build_dashboard()` accepts an optional `metadata_dir` parameter. If `leagues/<slug>/metadata/` contains CSV files, the pipeline automatically calls `generate_data_points()` → `compose_data_points()` to compute custom league parameters. Otherwise it falls back to `DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP`.
 
 ---
 

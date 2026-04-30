@@ -30,7 +30,7 @@ A first-day checklist for new contributors. The root [`README.md`](../README.md)
 
 ## What surprises new contributors
 
-- The auto-copy at the end of `python main.py` (`model/main.py:128-140`) copies the gzipped JSON straight into `app/public/data/` — there is no manual step between the pipeline and the SPA.
+- The auto-copy at the end of `python main.py` (`model/main.py:247-266`) copies the gzipped JSON straight into `app/public/data/<slug>/` and refreshes `app/public/data/leagues.json` — there is no manual step between the pipeline and the SPA.
 - Ratings are quantized to 5-point increments (20, 25, 30, …, 80) in OOTP exports. The optional AAA/AA relative-rating exports subdivide each tier; see `model/src/relative_ratings.py`.
 - The dev server runs on **port 3000**, not Vite's default 5173 — set in `app/vite.config.js`.
 - The pipeline writes `dashboard.json.gz` (gzipped). The browser decompresses it transparently because the file is served with a `.gz` content-encoding hint.
