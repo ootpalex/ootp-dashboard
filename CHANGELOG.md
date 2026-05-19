@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **`players/organization.csv` renamed to `players/org.csv`** — and all paired sibling files follow suit (`org_osa.csv`, `org_aaa.csv`, `org_aa.csv`, `org_osa_aaa.csv`, `org_osa_aa.csv`). Validation prints a friendly one-line rename reminder when it spots the legacy filename. Migration: `mv organization*.csv → org*.csv` in each `leagues/<slug>/csv/players/` directory.
+- `dashboard.json` `meta.csvPresence.hasOrganization` is now `hasOrg` (informational flag only — no frontend view consumes it today).
+
+### Added
+
+- **`players/intl.csv` (optional)** — IntlComplex players can now ship in a separate CSV when OOTP's "List All MLB Players" export paginates in larger leagues. Rows from `intl.csv` are concatenated with `org.csv` and tagged `source = "Organization"`, so all downstream views behave identically to a single-file export. OSA / AAA / AA pairing follows the same stem rule (`intl_osa.csv`, etc.). New `meta.csvPresence.hasIntl` flag in `dashboard.json` (informational).
+
 ## [0.1.1] — 2026-04-30
 
 Same-day patch: ship test fixtures so CI runs the full pytest suite without skip markers.
@@ -31,7 +40,7 @@ Initial public release. Reverse-engineered from the original Excel workbook into
 - **One-click runner** — `python3 run.py` (plus `Run Dashboard.command` / `Run Dashboard.bat` shims) walks first-time users through league setup, runs the pipeline, starts the dev server, and opens the browser.
 - **Auto-migration** — when `model/pipeline_settings.json` is detected on first run, settings + data are migrated into `leagues/default/`.
 - **Validation layer** (`model/src/validation.py`) — pre-pipeline checks fire friendly errors with file paths and team-name diffs for ballpark/team mismatches, missing required CSVs, unknown teams.
-- **Optional player CSVs** — only `organization.csv` is strictly required. Missing `freeagents.csv` / `iafa.csv` / `draftYYYY.csv` hides the corresponding view (Free Agent Finder / IAFA Board / Draft Board) automatically. Draft year regex accepts any 4 digits (`draft1967.csv` through `draft2156.csv`).
+- **Optional player CSVs** — only `organization.csv` was strictly required (renamed to `org.csv` post-v0.1.1; see Unreleased). Missing `freeagents.csv` / `iafa.csv` / `draftYYYY.csv` hides the corresponding view (Free Agent Finder / IAFA Board / Draft Board) automatically. Draft year regex accepts any 4 digits (`draft1967.csv` through `draft2156.csv`).
 - **Frontend league switcher** — sidebar dropdown appears when more than one league is configured. Per-league localStorage namespacing for team, game date, league settings, roster moves, R5 threshold, IAFA signed list, prospect board settings.
 - **Pipeline test suite** — 338 passing pytest cases, 24 skipped (data-dependent skips on a fresh clone with no CSVs).
 - **GitHub release plumbing** — MIT LICENSE, GitHub Actions CI (pytest + Vite build on push/PR), bug-report and feature-request issue templates, pull-request template, CODE_OF_CONDUCT.

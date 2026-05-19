@@ -1,6 +1,6 @@
 // Live prospect preview — sort/limit owned locally so changes don't churn the parent.
 import { memo, useCallback, useMemo, useState } from "react";
-import { S, waaStyle, devPctColor } from "../../theme.js";
+import { S, warStyle, devPctColor } from "../../theme.js";
 import { Section, SortHeader } from "../../components/shared.jsx";
 import { POS_SORT_ORDER } from "../../utils/accessors.js";
 
@@ -48,7 +48,7 @@ export const LiveProspectPreview = memo(function LiveProspectPreview({ prospectP
               <SortHeader label="Age" width={42} sortCol={ppSortCol} sortDir={ppSortDir} colKey="age" onClick={() => handlePpSort("age")} />
               <SortHeader label="Pos" width={42} sortCol={ppSortCol} sortDir={ppSortDir} colKey="pos" onClick={() => handlePpSort("pos")} />
               <SortHeader label="Org" width={100} sortCol={ppSortCol} sortDir={ppSortDir} colKey="org" onClick={() => handlePpSort("org")} />
-              <SortHeader label="Dev%" width={48} sortCol={ppSortCol} sortDir={ppSortDir} colKey="devPct" onClick={() => handlePpSort("devPct")} />
+              <SortHeader label="Dev%" width={56} sortCol={ppSortCol} sortDir={ppSortDir} colKey="devPct" onClick={() => handlePpSort("devPct")} />
               <SortHeader label="Cur" width={58} sortCol={ppSortCol} sortDir={ppSortDir} colKey="cur" onClick={() => handlePpSort("cur")} />
               <SortHeader label="Pot" width={58} sortCol={ppSortCol} sortDir={ppSortDir} colKey="pot" onClick={() => handlePpSort("pot")} />
               <SortHeader label="FV" width={58} sortCol={ppSortCol} sortDir={ppSortDir} colKey="fv" onClick={() => handlePpSort("fv")} />
@@ -62,10 +62,10 @@ export const LiveProspectPreview = memo(function LiveProspectPreview({ prospectP
                 <td style={{ ...S.td, color: "#94a3b8" }}>{p.age != null ? (Number.isInteger(p.age) ? p.age : p.age.toFixed(1)) : "—"}</td>
                 <td style={{ ...S.td, color: "#94a3b8" }}>{p.pos}</td>
                 <td style={{ ...S.td, color: "#94a3b8" }}>{p.org}</td>
-                <td style={{ ...S.td, textAlign: "center", color: devPctColor(p.devPct), fontWeight: 600 }}>{Math.round(p.devPct * 100)}th</td>
-                <td style={{ ...S.td, textAlign: "center", ...waaStyle(p.cur), fontWeight: 600 }}>{p.cur != null ? p.cur.toFixed(1) : "—"}</td>
-                <td style={{ ...S.td, textAlign: "center", ...waaStyle(p.pot), fontWeight: 600 }}>{p.pot != null ? p.pot.toFixed(1) : "—"}</td>
-                <td style={{ ...S.td, textAlign: "center", ...waaStyle(p.fv), fontWeight: 700 }}>{p.fv != null ? p.fv.toFixed(2) : "—"}</td>
+                <td style={{ ...S.td, textAlign: "center", color: p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: 600 }}>{p.devPct != null ? Math.round(p.devPct * 100) + "th" : "—"}</td>
+                <td style={{ ...S.td, textAlign: "center", ...warStyle(p.cur), fontWeight: 600 }}>{p.cur != null ? p.cur.toFixed(1) : "—"}</td>
+                <td style={{ ...S.td, textAlign: "center", ...warStyle(p.pot), fontWeight: 600 }}>{p.pot != null ? p.pot.toFixed(1) : "—"}</td>
+                <td style={{ ...S.td, textAlign: "center", ...warStyle(p.fv), fontWeight: 700 }}>{p.fv != null ? p.fv.toFixed(2) : "—"}</td>
               </tr>
             ))}
           </tbody>

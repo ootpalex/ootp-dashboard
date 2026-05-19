@@ -1,13 +1,12 @@
 import { useState, useMemo, useCallback } from "react";
 import { S } from "../theme.js";
-import { posColor, levelColor, proneColor, waaStyle, intangibleColor, devPctColor, zToColor } from "../theme.js";
+import { posColor, levelColor, proneColor, warStyle, intangibleColor, devPctColor, zToColor } from "../theme.js";
 import { fmt, fmtAge, num, parseCSVBoolean, paginateRows, toRosterRow, sortRosterRows, rankSuffix } from "../utils/helpers.js";
-import { getMaxWaa, getMaxWaaP, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, getBatR, isEligible, resolveKey, genericSort } from "../utils/accessors.js";
+import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, isEligible, resolveKey, genericSort } from "../utils/accessors.js";
 import { ALL_DISPLAY_POS, HITTER_POS, PER_PAGE } from "../utils/constants.js";
-import { calcOrgNeed, calcPositionalScarcity } from "../utils/strength.js";
-import { computeDevPercentile, calcFutureValue } from "../utils/futureValue.js";
+import { calcOrgNeed } from "../utils/strength.js";
 import { isMatured } from "../utils/dataProcessing.js";
-import { buildBoardPool, computeDevPercentilesMap, buildDisplayPool } from "./boardUtils.js";
+import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
 import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 
@@ -20,7 +19,7 @@ const FORTY_MAN_POS_MINS = { C: 2, "1B": 2, "2B": 2, "3B": 2, SS: 2, LF: 2, CF: 
 
 function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
   const [r5Tab, setR5Tab] = useState("board");
-  const [toggles, setToggles] = useState({ orgNeed: false, scarcity: false, devAdj: false, defSpectrum: false });
+  const [toggles, setToggles] = useState({ orgNeed: false, devAdj: false, injury: false, intangibles: false });
   const setToggle = (key) => setToggles((t) => ({ ...t, [key]: !t[key] }));
   const [search, setSearch] = useState("");
   const [posFilter, setPosFilter] = useState([]);
@@ -41,17 +40,13 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
   const isR5 = (p) => (p.meta?.r5 ?? parseCSVBoolean(p.R5)) && (p.meta?.org ?? p.ORG) !== myTeam;
   const pool = useMemo(() => buildBoardPool(data, isR5, isR5), [data, myTeam]);
 
-  const scarcity = useMemo(() => toggles.scarcity ? calcPositionalScarcity(pool) : null, [pool, toggles.scarcity]);
-
-  const devPercentiles = useMemo(() => computeDevPercentilesMap(pool, data), [pool, data.hitters, data.pitchers]);
-
   const debouncedSearch = useDebouncedValue(search);
   const displayPool = useMemo(() =>
-    buildDisplayPool(pool, debouncedSearch, posFilter, sort, toggles, orgNeed, scarcity, devPercentiles, curveSettings, { _fv: (p) => p._fv }),
-    [pool, debouncedSearch, posFilter, sort, toggles, orgNeed, scarcity, devPercentiles, curveSettings]);
+    buildDisplayPool(pool, debouncedSearch, posFilter, sort, toggles, orgNeed, curveSettings, null, { _fv: (p) => p._fv }),
+    [pool, debouncedSearch, posFilter, sort, toggles, orgNeed, curveSettings]);
 
   const { paged, totalPages } = paginateRows(displayPool, page, PER_PAGE);
-  const anyToggle = toggles.orgNeed || toggles.scarcity || toggles.devAdj || toggles.defSpectrum;
+  const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.injury || toggles.intangibles;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -86,10 +81,10 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
 
       <Section title="Smart Rank Adjustments">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
           <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
-          <Toggle label="Positional Scarcity" description="Boost scarce positions" checked={toggles.scarcity} onChange={() => setToggle("scarcity")} />
-          <Toggle label="Future Value" description="Risk-adjusted future value rating" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
-          <Toggle label="Defensive Spectrum" description="Premium for C/SS/CF" checked={toggles.defSpectrum} onChange={() => setToggle("defSpectrum")} />
+          <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
+          <Toggle label="Intangibles" description="Bonus for elite intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
         </div>
       </Section>
 
@@ -105,7 +100,7 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
           <table style={S.table}>
             <thead><tr>
               {[
-                { key: "_rank", label: anyToggle ? "Smart" : "WAA P", w: 70 },
+                { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70 },
                 { key: "Name", label: "Name", w: 170 },
                 { key: "Age", label: "Age", w: 45 },
                 { key: "_devPct", label: "Dev%", w: 48 },
@@ -114,8 +109,8 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
                 { key: "ORG", label: "ORG", w: 130 },
                 { key: "Lev", label: "Level", w: 50 },
                 { key: "_fv", label: "FV", w: 60 },
-                { key: "_currentVal", label: "WAA", w: 65 },
-                { key: "_baseVal", label: "WAA P", w: 65 },
+                { key: "_currentVal", label: "WAR", w: 65 },
+                { key: "_baseVal", label: "WAR P", w: 65 },
                 { key: "Prone", label: "Prone", w: 65 },
                 ...(anyToggle ? [{ key: "_baseVal_raw", label: "Raw", w: 60 }] : []),
                 { key: "B", label: "B/T", w: 50 },
@@ -126,7 +121,7 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
             <tbody>
               {paged.map((p, i) => (
                 <tr key={p.ID + "-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
-                  <td style={{ ...S.td, ...waaStyle(p._rank), fontWeight: 700 }}>{fmt(p._rank)}</td>
+                  <td style={{ ...S.td, ...warStyle(p._rank), fontWeight: 700 }}>{fmt(p._rank)}</td>
                   <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
                       onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
                   <td style={S.td}>{fmtAge(p._age)}</td>
@@ -135,11 +130,11 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
                   <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
                   <td style={{ ...S.td, color: "#cbd5e1", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.meta?.org ?? p.ORG}</td>
                   <td style={{ ...S.td, color: levelColor(p.meta?.lev ?? p.Lev) }}>{p.meta?.lev ?? p.Lev}</td>
-                  <td style={{ ...S.td, ...waaStyle(p._fv) }}>{fmt(p._fv)}</td>
-                  <td style={{ ...S.td, ...waaStyle(p._currentVal) }}>{fmt(p._currentValDisplay ?? p._currentVal)}</td>
-                  <td style={{ ...S.td, ...(p._matured ? { color: "#475569" } : waaStyle(p._baseVal)) }}>{p._matured ? "—" : fmt(p._baseValDisplay ?? p._baseVal)}</td>
+                  <td style={{ ...S.td, ...warStyle(p._fv) }}>{fmt(p._fv)}</td>
+                  <td style={{ ...S.td, ...warStyle(p._currentVal) }}>{fmt(p._currentValDisplay ?? p._currentVal)}</td>
+                  <td style={{ ...S.td, ...(p._matured ? { color: "#475569" } : warStyle(p._baseVal)) }}>{p._matured ? "—" : fmt(p._baseValDisplay ?? p._baseVal)}</td>
                   <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
-                  {anyToggle && <td style={{ ...S.td, ...waaStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
+                  {anyToggle && <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
                   <td style={S.td}>{`${p.meta?.bats ?? p.B ?? ""}/${p.meta?.throws ?? p.T ?? ""}`}</td>
                 </tr>
               ))}
@@ -181,19 +176,15 @@ function ProtectionPlanner({ data, myTeam, strength, curveSettings, onSelectPlay
     return { hitters, pitchers, all: [...hitters, ...pitchers] };
   }, [teamHitters, teamPitchers]);
 
-  // Dev percentiles for protect candidates
+  // Per-player devPct (cur-WAR-pct within age cohort) for protect candidates.
+  // Pulls already-computed _devPct from Dashboard.jsx enrichment.
   const devPercentiles = useMemo(() => {
-    const hitPeers = data.hitters.map((p) => ({ age: p._age, currentWAA: getBatR(p) }));
-    const pitPeers = data.pitchers.map((p) => ({ age: p._age, currentWAA: (p.meta?.pos ?? p.POS) === "SP" ? getSpWaa(p) : getRpWaa(p) }));
     const m = new Map();
     [...teamHitters, ...teamPitchers].forEach((p) => {
-      const isPit = p._type === "pitcher";
-      const peers = isPit ? pitPeers : hitPeers;
-      const devVal = isPit ? ((p.meta?.pos ?? p.POS) === "SP" ? getSpWaa(p) : getRpWaa(p)) : getBatR(p);
-      m.set(String(p._uid), computeDevPercentile(devVal, p._age, peers));
+      m.set(String(p._uid), p._devPct ?? null);
     });
     return m;
-  }, [teamHitters, teamPitchers, data.hitters, data.pitchers]);
+  }, [teamHitters, teamPitchers]);
 
   // Protection candidates: R5-eligible, NOT on 40-man
   const protectCandidates = useMemo(() => {
@@ -419,8 +410,8 @@ function ProtectionPlanner({ data, myTeam, strength, curveSettings, onSelectPlay
                 { key: "name", label: "Name", w: 170 }, { key: "age", label: "Age", w: 45 },
                 { key: "devPct", label: "Dev%", w: 48 }, { key: "pos", label: "POS", w: 48 },
                 { key: "bestPos", label: "Best", w: 48 }, { key: "level", label: "Level", w: 50 },
-                { key: "fv", label: "FV", w: 60 }, { key: "waa", label: "WAA", w: 65 },
-                { key: "waaP", label: "WAA P", w: 65 }, { key: "prone", label: "Prone", w: 65 },
+                { key: "fv", label: "FV", w: 60 }, { key: "war", label: "WAR", w: 65 },
+                { key: "warP", label: "WAR P", w: 65 }, { key: "prone", label: "Prone", w: 65 },
                 { key: "bt", label: "B/T", w: 50 },
               ].map(({ key, label, w }) => (
                 <SortHeader key={key} label={label} width={w} sortCol={protectSort.col} sortDir={protectSort.dir} colKey={key} onClick={() => toggleProtectSort(key)} />
@@ -443,9 +434,9 @@ function ProtectionPlanner({ data, myTeam, strength, curveSettings, onSelectPlay
                     <td style={{ ...S.td, color: posColor(p.pos) }}>{p.pos}</td>
                     <td style={{ ...S.td, color: posColor((p.bestPos || "").replace("*", "")) }}>{p.bestPos || "—"}</td>
                     <td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>
-                    <td style={{ ...S.td, ...waaStyle(p.fv) }}>{fmt(p.fv)}</td>
-                    <td style={{ ...S.td, ...waaStyle(p.waa) }}>{fmt(p.waa)}</td>
-                    <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : waaStyle(p.waaP)) }}>{p.matured ? "—" : fmt(p.waaP)}</td>
+                    <td style={{ ...S.td, ...warStyle(p.fv) }}>{fmt(p.fv)}</td>
+                    <td style={{ ...S.td, ...warStyle(p.war) }}>{fmt(p.war)}</td>
+                    <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : warStyle(p.warP)) }}>{p.matured ? "—" : fmt(p.warP)}</td>
                     <td style={{ ...S.td, color: proneColor(p.prone) }}>{p.prone}</td>
                     <td style={S.td}>{p.bt}</td>
                     <td style={{ ...S.td, fontSize: 10, fontWeight: 700, color: gap ? coverageColor(posCoverage[gap]?.status) : "#475569" }}>
@@ -487,7 +478,7 @@ function ProtectionPlanner({ data, myTeam, strength, curveSettings, onSelectPlay
                 { key: "name", label: "Name", w: 170 }, { key: "age", label: "Age", w: 45 },
                 { key: "pos", label: "POS", w: 48 }, { key: "bestPos", label: "Best", w: 48 },
                 { key: "level", label: "Level", w: 50 }, { key: "fv", label: "FV", w: 60 },
-                { key: "waa", label: "WAA", w: 65 }, { key: "waaP", label: "WAA P", w: 65 },
+                { key: "war", label: "WAR", w: 65 }, { key: "warP", label: "WAR P", w: 65 },
                 { key: "prone", label: "Prone", w: 65 }, { key: "opt", label: "OPT", w: 45 },
                 { key: "price", label: "Salary", w: 80 },
               ].map(({ key, label, w }) => (
@@ -516,9 +507,9 @@ function ProtectionPlanner({ data, myTeam, strength, curveSettings, onSelectPlay
                     <td style={{ ...S.td, color: posColor(p.pos) }}>{p.pos}</td>
                     <td style={{ ...S.td, color: posColor((p.bestPos || "").replace("*", "")) }}>{p.bestPos || "—"}</td>
                     <td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>
-                    <td style={{ ...S.td, ...waaStyle(p.fv) }}>{fmt(p.fv)}</td>
-                    <td style={{ ...S.td, ...waaStyle(p.waa) }}>{fmt(p.waa)}</td>
-                    <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : waaStyle(p.waaP)) }}>{p.matured ? "—" : fmt(p.waaP)}</td>
+                    <td style={{ ...S.td, ...warStyle(p.fv) }}>{fmt(p.fv)}</td>
+                    <td style={{ ...S.td, ...warStyle(p.war) }}>{fmt(p.war)}</td>
+                    <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : warStyle(p.warP)) }}>{p.matured ? "—" : fmt(p.warP)}</td>
                     <td style={{ ...S.td, color: proneColor(p.prone) }}>{p.prone}</td>
                     <td style={{ ...S.td, color: p.outOfOptions ? "#ef4444" : p.opt != null ? "#94a3b8" : "#475569", fontWeight: p.outOfOptions ? 700 : 400 }}>
                       {p.opt != null ? `${p.opt}/${MAX_OPTIONS}` : "—"}

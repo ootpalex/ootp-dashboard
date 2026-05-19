@@ -21,11 +21,12 @@ cd OOTPdashboard
 
 ## 2. Export CSVs from OOTP
 
-The dashboard reads CSV exports from your OOTP save. Only `organization.csv` is strictly required; the rest unlock additional views.
+The dashboard reads CSV exports from your OOTP save. Only `org.csv` is strictly required; the rest unlock additional views.
 
 | File | Purpose | Required? |
 |---|---|---|
-| `organization.csv` | Every player in your league | **Yes** |
+| `org.csv` | Every MLB + MiLB player in your league | **Yes** |
+| `intl.csv` | IntlComplex players — needed only when OOTP paginates the org export | Optional |
 | `ballparks.csv` | Park factors for each team | **Yes** |
 | `freeagents.csv` | Free-agent pool | Optional — enables Free Agent Finder |
 | `iafa.csv` | International FAs | Optional — enables IAFA Board |
@@ -52,6 +53,8 @@ If no leagues are configured yet, you'll see a "First-time league setup" prompt:
   OOTP version (e.g. 26 or 27) [26]: 26
   Your team's full name (must match a row in ballparks.csv): Atlanta Braves
   StatsPlus URL (optional; press Enter to skip) — e.g. https://atl-01.statsplus.net/ssb/: https://atl-01.statsplus.net/ssb/
+  AAA/AA and OSA companion CSVs are auto-detected per file.
+  Scout weight 0.0-1.0 (used only when <name>_osa.csv companions exist) [0.8]: 0.8
 ```
 
 After answering the prompts, the script creates `leagues/SSB/` (or whatever slug you chose) with the right subfolder structure and tells you where to drop your CSVs:
@@ -59,14 +62,17 @@ After answering the prompts, the script creates `leagues/SSB/` (or whatever slug
 ```
   Created leagues/SSB/
   Next: drop these files into leagues/SSB/csv/:
-    - players/organization.csv  (required)
+    - players/org.csv          (required — MLB + MiLB)
+    - players/intl.csv         (optional — IntlComplex; needed when OOTP paginates the org export)
     - players/freeagents.csv    (optional — enables Free Agent Finder)
     - players/iafa.csv          (optional — enables IAFA Board)
     - players/draftYYYY.csv     (optional — one per draft year)
     - ballparks.csv             (required — see leagues/.example/)
 ```
 
-Drop your CSVs into those folders, then re-run `python3 run.py`.
+Each scout CSV can have optional `_aaa.csv`, `_aa.csv`, and `_osa.csv` companions (e.g. `org_aaa.csv`, `draft2026_osa.csv`). The pipeline auto-detects them per file at build time — drop in only the ones you have, and the per-file build log shows which were used.
+
+Drop your CSVs into those folders, then re-run `python3 run.py`. To revisit the tuning settings later (team, park factors, scout weight, StatsPlus URL), use `python3 run.py --league <slug> --configure`.
 
 ### Subsequent runs
 
@@ -89,8 +95,8 @@ The dashboard remembers your selection — your team, game date, roster moves, e
 
 `run.py` runs validation before the heavy compute, so most errors fire in under a second with an explanation. Common ones:
 
-- **Ballpark/team mismatch** — your `ballparks.csv` doesn't list the same teams as `organization.csv`. The error names the missing/extra teams. Usually means you copied a ballparks file from another league.
-- **Required file missing** — `organization.csv` isn't present. Check `leagues/<slug>/csv/players/`.
+- **Ballpark/team mismatch** — your `ballparks.csv` doesn't list the same teams as `org.csv`. The error names the missing/extra teams. Usually means you copied a ballparks file from another league.
+- **Required file missing** — `org.csv` isn't present. Check `leagues/<slug>/csv/players/`. If you have a legacy `organization.csv` from an earlier version, validation prints a one-line rename reminder.
 - **Your team is not listed in ballparks** — the `team` field in `league.json` doesn't match any row in `ballparks.csv`. Edit one or the other so they match.
 
 ## 5. Migrating from the legacy single-league layout

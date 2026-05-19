@@ -1,12 +1,12 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import * as Papa from "papaparse";
 import { S } from "../theme.js";
-import { posColor, proneColor, waaStyle, intangibleColor, devPctColor, gradeStyle, zToColor } from "../theme.js";
+import { posColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle, zToColor } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows } from "../utils/helpers.js";
-import { PER_PAGE, CAP_GROUPS } from "../utils/constants.js";
+import { PER_PAGE, CAP_GROUPS, CAP_GROUP_DISPLAY_ORDER } from "../utils/constants.js";
 import { getStatsplusBase } from "../utils/settings.js";
-import { calcOrgNeed, calcPositionalScarcity } from "../utils/strength.js";
-import { buildBoardPool, computeDevPercentilesMap, buildDisplayPool } from "./boardUtils.js";
+import { calcOrgNeed } from "../utils/strength.js";
+import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
 import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 
@@ -23,26 +23,42 @@ async function fetchDraftData(statsplusBase) {
   }
 }
 
-function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onSelectPlayer }) {
+function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onUpdateLeagueSettings, onSelectPlayer }) {
   const [draftedPlayers, setDraftedPlayers] = useState([]);
   const [apiError, setApiError] = useState(null);
   const [apiLoading, setApiLoading] = useState(false);
   const [lastFetch, setLastFetch] = useState(null);
   const [manualCSV, setManualCSV] = useState("");
   const [showManual, setShowManual] = useState(false);
-  const [toggles, setToggles] = useState({ orgNeed: false, scarcity: false, devAdj: false, defSpectrum: false });
+  const [toggles, setToggles] = useState({
+    orgNeed: false,
+    devAdj: false,
+    posCaps: false,
+    signability: false,
+    injury: false,
+    intangibles: false,
+  });
   const setToggle = (key) => setToggles((t) => ({ ...t, [key]: !t[key] }));
   const [totalPicks, setTotalPicks] = useState(25);
-  const [caps, setCaps] = useState(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.round(g.pct * 25); }); return c; });
-  useEffect(() => { setCaps(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.max(1, Math.round(g.pct * totalPicks)); }); return c; }); }, [totalPicks]);
+  // Caps use Math.ceil so fractional percentages round UP — gives a bit more
+  // breathing room, especially in shorter drafts (20 rounds × 12% = 2.4 → 3,
+  // not 2). Caps are soft ceilings via the penalty system, so generous
+  // defaults are fine.
+  const [caps, setCaps] = useState(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.ceil(g.pct * 25); }); return c; });
+  const resetCapsToProportions = () => setCaps(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.max(1, Math.ceil(g.pct * totalPicks)); }); return c; });
+  useEffect(() => { setCaps(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.max(1, Math.ceil(g.pct * totalPicks)); }); return c; }); }, [totalPicks]);
   const [search, setSearch] = useState("");
   const [posFilter, setPosFilter] = useState([]);
   const [sort, setSort] = useState({ col: "_rank", dir: "desc" });
   const [page, setPage] = useState(0);
 
-  // Draft demands
+  // Draft demands (page-level controls mirror leagueSettings)
   const demandsOn = leagueSettings?.draftDemands || false;
   const budget = leagueSettings?.draftBudget || 0;
+  const [showDraftSettings, setShowDraftSettings] = useState(() => demandsOn);
+  const updateLeagueField = (key, value) => {
+    if (typeof onUpdateLeagueSettings === "function") onUpdateLeagueSettings({ [key]: value });
+  };
 
   // Manual "I Drafted" tracking
   const [myManualPicks, setMyManualPicks] = useState([]);
@@ -120,12 +136,6 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
   // Available pool (not yet drafted)
   const availablePool = useMemo(() => fullPool.filter((p) => !draftedIds.has(String(p.ID))), [fullPool, draftedIds]);
 
-  const scarcity = useMemo(() => toggles.scarcity ? calcPositionalScarcity(availablePool) : null, [availablePool, toggles.scarcity]);
-
-  // Precompute dev percentiles against full league pool (always computed for Dev% column)
-  // Hitters use BatR wtd (batting runs only, excludes defense/baserunning which lack potential ratings)
-  const devPercentiles = useMemo(() => computeDevPercentilesMap(availablePool, data), [availablePool, data.hitters, data.pitchers]);
-
   // Cap status from allMyPicks
   const capStatus = useMemo(() => {
     const status = {};
@@ -139,14 +149,18 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
     return status;
   }, [allMyPicks, caps]);
 
+  // draftContext: surface what applySmartRank's cap + signability helpers need.
+  const draftContext = useMemo(() => ({ capStatus, budget, spent, demandsOn }), [capStatus, budget, spent, demandsOn]);
+
   // Apply rankings + sort
   const debouncedSearch = useDebouncedValue(search);
   const displayPool = useMemo(() =>
-    buildDisplayPool(availablePool, debouncedSearch, posFilter, sort, toggles, orgNeed, scarcity, devPercentiles, curveSettings),
-    [availablePool, debouncedSearch, posFilter, sort, toggles, orgNeed, scarcity, devPercentiles, curveSettings]);
+    buildDisplayPool(availablePool, debouncedSearch, posFilter, sort, toggles, orgNeed, curveSettings, draftContext),
+    [availablePool, debouncedSearch, posFilter, sort, toggles, orgNeed, curveSettings, draftContext]);
 
   const { paged, totalPages } = paginateRows(displayPool, page, PER_PAGE);
-  const anyToggle = toggles.orgNeed || toggles.scarcity || toggles.devAdj || toggles.defSpectrum;
+  const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.posCaps || toggles.signability || toggles.injury || toggles.intangibles;
+  const signabilityAvailable = demandsOn && budget > 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -191,21 +205,64 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
           <span>My picks: <strong style={{ color: "#e2e8f0" }}>{allMyPicks.length}</strong></span>
           {lastFetch && <span>Updated: {lastFetch.toLocaleTimeString()}</span>}
         </div>
-        {demandsOn && budget > 0 && (() => {
-          const pct = budget > 0 ? Math.max(0, remaining / budget) : 1;
-          const barColor = pct > 0.5 ? "#22c55e" : pct > 0.2 ? "#eab308" : "#ef4444";
-          return (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
-                <span style={{ color: "#94a3b8" }}>Budget: <strong style={{ color: barColor }}>${remaining.toLocaleString()}</strong> remaining</span>
-                <span style={{ color: "#64748b" }}>${spent.toLocaleString()} / ${budget.toLocaleString()}</span>
-              </div>
-              <div style={{ height: 6, background: "#1e293b", borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct * 100}%`, background: barColor, borderRadius: 3, transition: "width 0.3s" }} />
+      </Section>
+
+      {/* Draft Settings — page-level controls mirrored to leagueSettings */}
+      <Section title={
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }} onClick={() => setShowDraftSettings((s) => !s)}>
+          <span style={{ fontSize: 11, color: "#64748b" }}>{showDraftSettings ? "▼" : "▶"}</span>
+          Draft Settings
+        </span>
+      }>
+        {showDraftSettings ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={demandsOn}
+                  onChange={(e) => updateLeagueField("draftDemands", e.target.checked)}
+                />
+                Enable Draft Demands tracking
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>Budget</span>
+                <span style={{ color: "#64748b" }}>$</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={budget}
+                  onChange={(e) => updateLeagueField("draftBudget", Math.max(0, parseInt(e.target.value) || 0))}
+                  disabled={!demandsOn}
+                  style={{ ...S.searchInput, width: 140, opacity: demandsOn ? 1 : 0.4 }}
+                  placeholder="0"
+                />
               </div>
             </div>
-          );
-        })()}
+            {demandsOn && budget > 0 && (() => {
+              const pct = budget > 0 ? Math.max(0, remaining / budget) : 1;
+              const barColor = pct > 0.5 ? "#22c55e" : pct > 0.2 ? "#eab308" : "#ef4444";
+              return (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                    <span style={{ color: "#94a3b8" }}>Budget: <strong style={{ color: barColor }}>${remaining.toLocaleString()}</strong> remaining</span>
+                    <span style={{ color: "#64748b" }}>${spent.toLocaleString()} / ${budget.toLocaleString()}</span>
+                  </div>
+                  <div style={{ height: 8, background: "#1e293b", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct * 100}%`, background: barColor, borderRadius: 4, transition: "width 0.3s" }} />
+                  </div>
+                </div>
+              );
+            })()}
+            <div style={{ fontSize: 10, color: "#64748b" }}>
+              These controls mirror the league-wide settings modal — changes here update both places.
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: "#64748b" }}>
+            Demands {demandsOn ? "ON" : "OFF"}{demandsOn && budget > 0 ? ` · $${remaining.toLocaleString()} of $${budget.toLocaleString()} remaining` : ""}
+          </div>
+        )}
       </Section>
 
       {/* My Draft Class */}
@@ -230,23 +287,62 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
 
       {/* Position Caps + Smart Rank side by side */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Section title="Position Caps">
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: "#94a3b8" }}>Total picks:</span>
+        <Section title="Position Caps" actions={
+          <>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>Total picks</span>
             <input type="number" value={totalPicks} onChange={(e) => setTotalPicks(Math.max(1, parseInt(e.target.value) || 1))} style={{ ...S.searchInput, width: 60, textAlign: "center" }} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            {CAP_GROUPS.map((g) => {
+            <button onClick={resetCapsToProportions} style={{ ...S.pillBtn, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+          </>
+        }>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+            {CAP_GROUP_DISPLAY_ORDER.map((id) => {
+              const g = CAP_GROUPS.find((cg) => cg.id === id);
+              if (!g) return null;
               const s = capStatus[g.id] || { picked: 0, cap: 0, pct: 0 };
-              const atCap = s.picked >= s.cap;
+              const atCap = s.cap > 0 && s.picked >= s.cap;
               const nearCap = s.pct >= 0.75 && !atCap;
+              const fillPct = Math.min(100, s.pct * 100);
+              const barColor = atCap ? "#ef4444" : nearCap ? "#eab308" : "#22c55e";
+              const valueColor = atCap ? "#f87171" : nearCap ? "#fbbf24" : "#86efac";
+              const adjustCap = (delta) => setCaps((c) => ({ ...c, [g.id]: Math.max(0, (c[g.id] ?? 0) + delta) }));
+              const stepBtn = {
+                background: "rgba(51,65,85,0.5)",
+                border: "1px solid #334155",
+                color: "#cbd5e1",
+                width: 18,
+                height: 18,
+                borderRadius: 4,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1,
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              };
               return (
-                <div key={g.id} style={{ background: atCap ? "rgba(239,68,68,0.1)" : nearCap ? "rgba(234,179,8,0.1)" : "rgba(15,23,42,0.4)", border: `1px solid ${atCap ? "#dc2626" : nearCap ? "#ca8a04" : "#1e293b"}`, borderRadius: 6, padding: "6px 8px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8" }}>{g.label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: atCap ? "#f87171" : nearCap ? "#fbbf24" : "#86efac" }}>{s.picked}/{s.cap}</span>
+                <div key={g.id} style={{
+                  background: "rgba(15,23,42,0.4)",
+                  border: `1px solid ${atCap ? "#7f1d1d" : nearCap ? "#854d0e" : "#1e293b"}`,
+                  borderRadius: 6,
+                  padding: "6px 8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 5,
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1" }}>{g.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: valueColor }}>{s.picked}/{caps[g.id] ?? 0}</span>
                   </div>
-                  <input type="number" value={caps[g.id]} onChange={(e) => setCaps((c) => ({ ...c, [g.id]: Math.max(0, parseInt(e.target.value) || 0) }))} style={{ ...S.searchInput, width: "100%", marginTop: 4, textAlign: "center", fontSize: 10, padding: "2px 4px" }} />
+                  <div style={{ height: 4, background: "#0f172a", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ width: `${fillPct}%`, height: "100%", background: barColor, borderRadius: 2, transition: "width 0.2s" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+                    <button onClick={() => adjustCap(-1)} style={stepBtn} title="Decrease cap" aria-label={`Decrease ${g.label} cap`}>−</button>
+                    <span style={{ fontSize: 9, color: "#64748b", letterSpacing: 0.3 }}>CAP</span>
+                    <button onClick={() => adjustCap(1)} style={stepBtn} title="Increase cap" aria-label={`Increase ${g.label} cap`}>+</button>
+                  </div>
                 </div>
               );
             })}
@@ -255,10 +351,20 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
 
         <Section title="Smart Rank Adjustments">
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
             <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
-            <Toggle label="Positional Scarcity (VBD)" description="Boost positions with steep talent drop-offs" checked={toggles.scarcity} onChange={() => setToggle("scarcity")} />
-            <Toggle label="Future Value" description="Risk-adjusted future value rating" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
-            <Toggle label="Defensive Spectrum" description="Premium for C/SS/CF, discount for 1B/DH" checked={toggles.defSpectrum} onChange={() => setToggle("defSpectrum")} />
+            <Toggle label="Position Caps" description="Penalize players whose eligible positions are filling up — falls off as they have alternative landing spots" checked={toggles.posCaps} onChange={() => setToggle("posCaps")} />
+            <Toggle
+              label="Signability"
+              description={signabilityAvailable
+                ? "Penalize players whose demand eats your budget — scales harder as you spend down"
+                : "Requires Draft Demands enabled and a budget set"}
+              checked={toggles.signability && signabilityAvailable}
+              onChange={() => signabilityAvailable && setToggle("signability")}
+              disabled={!signabilityAvailable}
+            />
+            <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
+            <Toggle label="Intangibles" description="Bonus for elite 20-80 intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
           </div>
         </Section>
       </div>
@@ -290,7 +396,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
             <thead><tr>
               <th style={{ ...S.th, width: 40 }}></th>
               {[
-                { key: "_rank", label: anyToggle ? "Smart" : "WAA P", w: 70 },
+                { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70 },
                 { key: "Name", label: "Name", w: 170 },
                 { key: "Age", label: "Age", w: 45 },
                 { key: "_devPct", label: "Dev%", w: 48 },
@@ -310,7 +416,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
             <tbody>
               {paged.map((p, i) => {
                 const isManualPick = manualPickIds.has(String(p.ID));
-                const dpct = devPercentiles.get(String(p.ID));
+                const dpct = p._devPct;
                 const showDevPct = p._age != null && p._age < curveSettings.maxCurrentAge;
                 return (
                   <tr key={p.ID + "-" + i} style={{ background: isManualPick ? "rgba(59,130,246,0.08)" : i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
@@ -321,7 +427,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
                         <span style={{ color: "#3b82f6", fontSize: 12 }}>★</span>
                       )}
                     </td>
-                    <td style={{ ...S.td, ...waaStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
+                    <td style={{ ...S.td, ...warStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
                     <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
                         onClick={() => onSelectPlayer?.(p)}>
                       {p.meta?.name ?? p.Name}<TwoWayBadge player={p} />
@@ -331,7 +437,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onS
                     <td style={{ ...S.td, color: showDevPct && dpct != null ? devPctColor(dpct) : "#475569", fontWeight: showDevPct && dpct != null ? 600 : 400 }}>{showDevPct && dpct != null ? Math.round(dpct * 100) + "th" : "—"}</td>
                     <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
                     <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
-                    {anyToggle && <td style={{ ...S.td, ...waaStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
+                    {anyToggle && <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
                     {demandsOn && <td style={{ ...S.td, color: "#94a3b8" }}>{(p.meta?.dem ?? p.DEM) && (p.meta?.dem ?? p.DEM) !== "-" ? (p.meta?.dem ?? p.DEM) : "—"}</td>}
                     <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
                     <td style={{ ...S.td, ...gradeStyle(p._intangibles), fontWeight: 700 }}>{p._intangibles ?? "—"}</td>

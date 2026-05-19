@@ -58,7 +58,7 @@ Each league lives in `leagues/<slug>/`. The slug is a short abbreviation you cho
 leagues/<slug>/
 ├── league.json          # team, statsplus URL, OOTP version, etc.
 ├── csv/
-│   ├── players/         # OOTP exports (organization.csv required; others optional)
+│   ├── players/         # OOTP exports (org.csv required; intl.csv + others optional)
 │   └── ballparks.csv    # one row per team, with park factors
 ├── metadata/            # optional per-league metadata CSVs
 └── output/              # auto-populated by the pipeline
@@ -66,7 +66,7 @@ leagues/<slug>/
 
 Run `python3 run.py` to pick from a menu of configured leagues, or `python3 run.py --league <slug>` to skip the menu. The dashboard's sidebar has a league switcher when more than one league is configured. See [`docs/MULTI_LEAGUE.md`](docs/MULTI_LEAGUE.md) for adding leagues, sharing regressions across same-version leagues, and migrating to a new OOTP version.
 
-Only `organization.csv` is required. If `freeagents.csv`, `iafa.csv`, or `draftYYYY.csv` files are absent, the corresponding views (Free Agent Finder, IAFA Board, Draft Board) hide automatically.
+Only `org.csv` (MLB + MiLB) is required. For large leagues whose org export paginates in OOTP, split IntlComplex players into a separate `intl.csv`. If `freeagents.csv`, `iafa.csv`, or `draftYYYY.csv` files are absent, the corresponding views (Free Agent Finder, IAFA Board, Draft Board) hide automatically.
 
 ## Common commands
 
@@ -75,7 +75,7 @@ Only `organization.csv` is required. If `freeagents.csv`, `iafa.csv`, or `draftY
 | Run dashboard end-to-end | `python3 run.py` |
 | Build a specific league | `python3 run.py --league <slug>` |
 | Just open the SPA against an existing build | `python3 run.py --skip-pipeline` |
-| Re-prompt pipeline settings | `python3 run.py --configure` |
+| Re-prompt pipeline settings (team, park factors, scout weight, StatsPlus URL) | `python3 run.py --league <slug> --configure` |
 | Skip the StatsPlus network probe | `python3 run.py --skip-network-check` |
 | Pipeline tests | `cd model && python3 -m pytest` |
 | Frontend production build | `cd app && npm run build` |
@@ -92,10 +92,14 @@ flowchart LR
 
 `run.py` orchestrates the pipeline run plus the dev server. For a deeper view see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+### Rating companions
+
+Each scout CSV in `leagues/<slug>/csv/players/` can have optional companions that the pipeline auto-detects per file: `<name>_aaa.csv` and `<name>_aa.csv` (relative rating exports for finer granularity) and `<name>_osa.csv` (OSA ratings, blended at the configured scout weight). For example, `org_aaa.csv` + `org_aa.csv` + `org_osa.csv` next to `org.csv`. Drop in only the ones you have; the per-file build log prints which companions were found and applied.
+
 ## Troubleshooting
 
-- **`Ballpark/team mismatch in 'leagues/<slug>/csv/ballparks.csv'`** — your ballparks file lists a different team set than `organization.csv`. The error names the missing/extra teams. Common cause: copying a ballparks file from another league.
-- **`Required file missing: leagues/<slug>/csv/players/organization.csv`** — drop the `organization.csv` export from OOTP into that folder. See [`docs/OOTP_EXPORT_GUIDE.md`](docs/OOTP_EXPORT_GUIDE.md).
+- **`Ballpark/team mismatch in 'leagues/<slug>/csv/ballparks.csv'`** — your ballparks file lists a different team set than `org.csv`. The error names the missing/extra teams. Common cause: copying a ballparks file from another league.
+- **`Required file missing: leagues/<slug>/csv/players/org.csv`** — drop the `org.csv` export from OOTP into that folder. See [`docs/OOTP_EXPORT_GUIDE.md`](docs/OOTP_EXPORT_GUIDE.md). If you have a legacy `organization.csv`, validation prints a one-line rename reminder.
 - **Dashboard shows the manual file-upload prompt instead of your data** — `leagues.json` or the per-league `dashboard.json.gz` is missing. Re-run `python3 run.py --league <slug>`.
 - **StatsPlus contracts not loading** — your `statsplusUrl` in `leagues/<slug>/league.json` is empty or unreachable. Pipeline prints a warning and continues without it. Use `--skip-network-check` to silence the probe entirely.
 - **Ages look wrong** — set the game date in the sidebar; `recomputeAges()` recomputes fractional ages from DOB.

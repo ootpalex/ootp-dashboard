@@ -300,14 +300,20 @@ export const TwoWayBadge = memo(({ player }) => player._twoWay ? (
   </span>
 ) : null);
 
-export function Toggle({ label, checked, onChange, description }) {
+export function Toggle({ label, checked, onChange, description, disabled = false }) {
+  const handleClick = (e) => {
+    e.preventDefault();
+    if (disabled) return;
+    onChange(!checked);
+  };
+  const labelColor = disabled ? "#475569" : (checked ? "#e2e8f0" : "#94a3b8");
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0" }}>
-      <div onClick={(e) => { e.preventDefault(); onChange(!checked); }} style={{ width: 36, height: 20, borderRadius: 10, background: checked ? "#3b82f6" : "#334155", position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
+    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: disabled ? "not-allowed" : "pointer", padding: "4px 0", opacity: disabled ? 0.55 : 1 }} title={disabled ? description : undefined}>
+      <div onClick={handleClick} style={{ width: 36, height: 20, borderRadius: 10, background: checked ? "#3b82f6" : "#334155", position: "relative", cursor: disabled ? "not-allowed" : "pointer", transition: "background 0.2s", flexShrink: 0 }}>
         <div style={{ width: 16, height: 16, borderRadius: 8, background: "#e2e8f0", position: "absolute", top: 2, left: checked ? 18 : 2, transition: "left 0.2s" }} />
       </div>
       <div>
-        <div style={{ fontSize: 12, color: checked ? "#e2e8f0" : "#94a3b8", fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 12, color: labelColor, fontWeight: 600 }}>{label}</div>
         {description && <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{description}</div>}
       </div>
     </label>

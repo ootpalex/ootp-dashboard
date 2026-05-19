@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
 import { S } from "../theme.js";
-import { posColor, proneColor, waaStyle, intangibleColor, devPctColor, gradeStyle } from "../theme.js";
+import { posColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows } from "../utils/helpers.js";
 import { PER_PAGE } from "../utils/constants.js";
-import { calcOrgNeed, calcPositionalScarcity } from "../utils/strength.js";
-import { buildBoardPool, computeDevPercentilesMap, buildDisplayPool } from "./boardUtils.js";
+import { calcOrgNeed } from "../utils/strength.js";
+import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
 import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { readScoped, writeScoped } from "../hooks/useLocalStorage.js";
@@ -27,7 +27,7 @@ function saveSignedIds(set) {
 }
 
 export default function IAFABoard({ data, myTeam, strength, curveSettings, leagueSettings, onSelectPlayer }) {
-  const [toggles, setToggles] = useState({ orgNeed: false, scarcity: false, devAdj: false, defSpectrum: false });
+  const [toggles, setToggles] = useState({ orgNeed: false, devAdj: false, injury: false, intangibles: false });
   const setToggle = (key) => setToggles((t) => ({ ...t, [key]: !t[key] }));
   const [search, setSearch] = useState("");
   const [posFilter, setPosFilter] = useState([]);
@@ -59,30 +59,26 @@ export default function IAFABoard({ data, myTeam, strength, curveSettings, leagu
   const demFields = (p) => ({ _demSort: p.meta?.demSort ?? num(p["DEM Sort"]) });
   const pool = useMemo(() => buildBoardPool(data, isIafa, isIafa, demFields), [data, iafaTag]);
 
-  const scarcity = useMemo(() => toggles.scarcity ? calcPositionalScarcity(pool) : null, [pool, toggles.scarcity]);
-
-  const devPercentiles = useMemo(() => computeDevPercentilesMap(pool, data), [pool, data.hitters, data.pitchers]);
-
   const debouncedSearch = useDebouncedValue(search);
   const displayPool = useMemo(() =>
-    buildDisplayPool(pool, debouncedSearch, posFilter, sort, toggles, orgNeed, scarcity, devPercentiles, curveSettings),
-    [pool, debouncedSearch, posFilter, sort, toggles, orgNeed, scarcity, devPercentiles, curveSettings]);
+    buildDisplayPool(pool, debouncedSearch, posFilter, sort, toggles, orgNeed, curveSettings),
+    [pool, debouncedSearch, posFilter, sort, toggles, orgNeed, curveSettings]);
 
   const visiblePool = useMemo(() =>
     hideSigned ? displayPool.filter((p) => !signedIds.has(p.ID)) : displayPool,
     [displayPool, hideSigned, signedIds]);
 
   const { paged, totalPages } = paginateRows(visiblePool, page, PER_PAGE);
-  const anyToggle = toggles.orgNeed || toggles.scarcity || toggles.devAdj || toggles.defSpectrum;
+  const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.injury || toggles.intangibles;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Section title="Smart Rank Adjustments">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
           <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
-          <Toggle label="Positional Scarcity" description="Boost scarce positions" checked={toggles.scarcity} onChange={() => setToggle("scarcity")} />
-          <Toggle label="Future Value" description="Risk-adjusted future value rating" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
-          <Toggle label="Defensive Spectrum" description="Premium for C/SS/CF" checked={toggles.defSpectrum} onChange={() => setToggle("defSpectrum")} />
+          <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
+          <Toggle label="Intangibles" description="Bonus for elite intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
         </div>
       </Section>
 
@@ -107,7 +103,7 @@ export default function IAFABoard({ data, myTeam, strength, curveSettings, leagu
             <thead><tr>
               <th style={{ ...S.th, width: 50, textAlign: "center" }}>Signed</th>
               {[
-                { key: "_rank", label: anyToggle ? "Smart" : "WAA P", w: 70 },
+                { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70 },
                 { key: "Name", label: "Name", w: 140 },
                 { key: "Age", label: "Age", w: 45 },
                 { key: "_devPct", label: "Dev%", w: 48 },
@@ -131,14 +127,14 @@ export default function IAFABoard({ data, myTeam, strength, curveSettings, leagu
                   <td style={{ ...S.td, textAlign: "center" }}>
                     <input type="checkbox" checked={isSigned} onChange={() => toggleSigned(p.ID)} style={{ cursor: "pointer" }} />
                   </td>
-                  <td style={{ ...S.td, ...waaStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
+                  <td style={{ ...S.td, ...warStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
                   <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 140, cursor: "pointer" }}
                       onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
                   <td style={S.td}>{fmtAge(p._age)}</td>
                   <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>{p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}</td>
                   <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
                   <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
-                  {anyToggle && <td style={{ ...S.td, ...waaStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
+                  {anyToggle && <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
                   <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
                   <td style={{ ...S.td, ...gradeStyle(p._intangibles), fontWeight: 700 }}>{p._intangibles ?? "—"}</td>
                   <td style={{ ...S.td, color: intangibleColor(p.meta?.we ?? p.WE) }}>{(p.meta?.we ?? p.WE) || "—"}</td>

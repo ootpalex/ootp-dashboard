@@ -2,15 +2,15 @@
 // that the chart sub-components consume as props.
 import { useState, useMemo, useRef } from "react";
 import { Section, PositionFilter } from "../../components/shared.jsx";
-import { getMaxWaa, getMaxWaaP, getBatR, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, passesPositionFilter, pickFielderPos, pickPitcherRole, scaleRpWaaP } from "../../utils/accessors.js";
-import { G5_DEFAULTS } from "../../utils/constants.js";
+import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, passesPositionFilter, pickFielderPos, pickPitcherRole, scaleRpWarP } from "../../utils/accessors.js";
+import { DEV_CURVE_DEFAULTS } from "../../utils/constants.js";
 import { isProspect, isInOrg } from "../../utils/prospects.js";
-import { computeDevPercentile, calcFutureValue, normalizedLogit } from "../../utils/futureValue.js";
+import { calcFutureValue, devPercentileRank, calcCreditAge, typicalAtAge } from "../../utils/futureValue.js";
 
 import { weightedPercentile } from "./_shared.js";
 import { DevScatterChart } from "./DevScatterChart.jsx";
 import { GapDistributionChart } from "./GapDistributionChart.jsx";
-import { WaaPercentileChart } from "./WaaPercentileChart.jsx";
+import { WarPercentileChart } from "./WarPercentileChart.jsx";
 import { FVImpactTable } from "./FVImpactTable.jsx";
 import { LiveProspectPreview } from "./LiveProspectPreview.jsx";
 import { CurveTuningPanel } from "./CurveTuningPanel.jsx";
@@ -35,15 +35,11 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
     return { isAll, hasBroadHitters, hasHitterAny, hasPitcherAny, hasSpecificHitterPos, onlySP, onlyRP };
   }, [posFilter]);
 
-  // Local state for sliders (live preview), only persisted on Save
+  // Local state for sliders (live preview), only persisted on Save.
+  // v21: two exposed knobs — gapMax, gapExp.
+  const [localGapMax, setLocalGapMax] = useState(curveSettings.gapMax);
+  const [localGapExp, setLocalGapExp] = useState(curveSettings.gapExp);
   const [localMaxCurrentAge, setLocalMaxCurrentAge] = useState(curveSettings.maxCurrentAge);
-  const [localRiskMin, setLocalRiskMin] = useState(curveSettings.riskMin);
-  const [localRiskMax, setLocalRiskMax] = useState(curveSettings.riskMax);
-  const [localRiskExp, setLocalRiskExp] = useState(curveSettings.riskExp);
-  const [localRiskMode, setLocalRiskMode] = useState(curveSettings.riskMode ?? 'logit');
-  const [localLogitK, setLocalLogitK] = useState(curveSettings.logitK ?? 0.5);
-  const handleRiskMin = (v) => { setLocalRiskMin(v); if (v > localRiskMax) setLocalRiskMax(v); };
-  const handleRiskMax = (v) => { setLocalRiskMax(v); if (v < localRiskMin) setLocalRiskMin(v); };
   const [localBandwidth, setLocalBandwidth] = useState(curveSettings.bandwidth);
   const [computedBandwidth, setComputedBandwidth] = useState(curveSettings.bandwidth);
   const bwDebounceRef = useRef(null);
@@ -52,29 +48,42 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
     clearTimeout(bwDebounceRef.current);
     bwDebounceRef.current = setTimeout(() => setComputedBandwidth(val), 200);
   };
-  const [localGapMax, setLocalGapMax] = useState(curveSettings.gapMax);
-  const [localGapExp, setLocalGapExp] = useState(curveSettings.gapExp);
 
-  const maxCurrentAge = localMaxCurrentAge;
-  const riskMin = localRiskMin;
-  const riskMax = localRiskMax;
-  const riskExp = localRiskExp;
-  const riskMode = localRiskMode;
-  const logitK = localLogitK;
-  const bandwidth = computedBandwidth;
   const gapMax = localGapMax;
   const gapExp = localGapExp;
+  const maxCurrentAge = localMaxCurrentAge;
+  const bandwidth = computedBandwidth;
 
-  const curveSettingsDirty = maxCurrentAge !== curveSettings.maxCurrentAge || riskMin !== curveSettings.riskMin || riskMax !== curveSettings.riskMax || riskExp !== curveSettings.riskExp || gapMax !== curveSettings.gapMax || gapExp !== curveSettings.gapExp || riskMode !== (curveSettings.riskMode ?? 'logit') || logitK !== (curveSettings.logitK ?? 0.5);
+  const curveSettingsDirty =
+    gapMax !== curveSettings.gapMax
+    || gapExp !== curveSettings.gapExp
+    || maxCurrentAge !== curveSettings.maxCurrentAge;
   const bandwidthDirty = localBandwidth !== curveSettings.bandwidth;
-  const isLocalDefault = maxCurrentAge === G5_DEFAULTS.maxCurrentAge && riskMin === G5_DEFAULTS.riskMin && riskMax === G5_DEFAULTS.riskMax && riskExp === G5_DEFAULTS.riskExp && gapMax === G5_DEFAULTS.gapMax && gapExp === G5_DEFAULTS.gapExp && riskMode === G5_DEFAULTS.riskMode && logitK === G5_DEFAULTS.logitK;
-  const isSavedDefault = curveSettings.maxCurrentAge === G5_DEFAULTS.maxCurrentAge && curveSettings.riskMin === G5_DEFAULTS.riskMin && curveSettings.riskMax === G5_DEFAULTS.riskMax && curveSettings.riskExp === G5_DEFAULTS.riskExp && curveSettings.gapMax === G5_DEFAULTS.gapMax && curveSettings.gapExp === G5_DEFAULTS.gapExp && (curveSettings.riskMode ?? 'logit') === G5_DEFAULTS.riskMode && (curveSettings.logitK ?? 0.5) === G5_DEFAULTS.logitK;
+  const _eqDefault = (obj) =>
+    obj.gapMax === DEV_CURVE_DEFAULTS.gapMax
+    && obj.gapExp === DEV_CURVE_DEFAULTS.gapExp
+    && obj.maxCurrentAge === DEV_CURVE_DEFAULTS.maxCurrentAge;
+  const isLocalDefault = _eqDefault({ gapMax, gapExp, maxCurrentAge });
+  const isSavedDefault = _eqDefault(curveSettings);
 
-  const saveCurveSettings = () => updateCurveSettings({ maxCurrentAge, riskMin, riskMax, riskExp, gapMax, gapExp, riskMode, logitK });
+  const saveCurveSettings = () => updateCurveSettings({ gapMax, gapExp, maxCurrentAge });
   const saveBandwidth = () => updateCurveSettings({ bandwidth });
-  const resetCurveSettings = () => { setLocalMaxCurrentAge(curveSettings.maxCurrentAge); setLocalRiskMin(curveSettings.riskMin); setLocalRiskMax(curveSettings.riskMax); setLocalRiskExp(curveSettings.riskExp); setLocalGapMax(curveSettings.gapMax); setLocalGapExp(curveSettings.gapExp); setLocalRiskMode(curveSettings.riskMode ?? 'logit'); setLocalLogitK(curveSettings.logitK ?? 0.5); };
-  const restoreDefaults = () => { setLocalMaxCurrentAge(G5_DEFAULTS.maxCurrentAge); setLocalRiskMin(G5_DEFAULTS.riskMin); setLocalRiskMax(G5_DEFAULTS.riskMax); setLocalRiskExp(G5_DEFAULTS.riskExp); setLocalGapMax(G5_DEFAULTS.gapMax); setLocalGapExp(G5_DEFAULTS.gapExp); setLocalRiskMode(G5_DEFAULTS.riskMode); setLocalLogitK(G5_DEFAULTS.logitK); };
+  const resetCurveSettings = () => {
+    setLocalGapMax(curveSettings.gapMax);
+    setLocalGapExp(curveSettings.gapExp);
+    setLocalMaxCurrentAge(curveSettings.maxCurrentAge);
+  };
+  const restoreDefaults = () => {
+    setLocalGapMax(DEV_CURVE_DEFAULTS.gapMax);
+    setLocalGapExp(DEV_CURVE_DEFAULTS.gapExp);
+    setLocalMaxCurrentAge(DEV_CURVE_DEFAULTS.maxCurrentAge);
+  };
   const resetBandwidth = () => { setLocalBandwidth(curveSettings.bandwidth); setComputedBandwidth(curveSettings.bandwidth); };
+
+  // v20: devCurves still embedded in JSON for devPct lookup AND for the
+  // empirical reference overlay in the gapFactor chart.
+  const devCurves = data.meta?.devCurve ?? null;
+  const hitCurve = devCurves?.hit ?? null;
 
   const players = useMemo(() => {
     const { hasBroadHitters, hasHitterAny, hasPitcherAny, hasSpecificHitterPos, onlySP, onlyRP } = filterIntent;
@@ -83,19 +92,19 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
       for (const h of data.hitters) {
         if (h._age == null) continue;
         if (!passesPositionFilter(h, posFilter)) continue;
-        let currentWAA, potentialWAA;
+        let currentWAR, potentialWAR;
         if (hasSpecificHitterPos && !hasBroadHitters) {
           const picked = pickFielderPos(h, posFilter);
           if (!picked) continue;
-          currentWAA = picked.waa;
-          potentialWAA = picked.waaP;
+          currentWAR = picked.war;
+          potentialWAR = picked.warP;
         } else {
-          currentWAA = getMaxWaa(h);
-          potentialWAA = getMaxWaaP(h);
+          currentWAR = getMaxWar(h);
+          potentialWAR = getMaxWarP(h);
         }
         pool.push({
           name: h.meta?.name ?? h.Name, age: h._age, pos: h.meta?.pos ?? h.POS, org: h.meta?.org ?? h.ORG, manual: h.meta?.source ?? h.meta?.manual ?? h.Manual,
-          currentWAA, potentialWAA, type: "hitter",
+          currentWAR, potentialWAR, type: "hitter",
         });
       }
     }
@@ -103,22 +112,22 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
       for (const p of data.pitchers) {
         if (p._age == null) continue;
         if (!passesPositionFilter(p, posFilter)) continue;
-        let currentWAA, potentialWAA;
+        let currentWAR, potentialWAR;
         if (onlySP) {
-          currentWAA = getSpWaa(p);
-          if (currentWAA == null) continue;
-          potentialWAA = getSpWaaP(p);
+          currentWAR = getSpWar(p);
+          if (currentWAR == null) continue;
+          potentialWAR = getSpWarP(p);
         } else if (onlyRP) {
-          currentWAA = scaleRpWaaP(getRpWaa(p));
-          potentialWAA = scaleRpWaaP(getRpWaaP(p));
+          currentWAR = scaleRpWarP(getRpWar(p));
+          potentialWAR = scaleRpWarP(getRpWarP(p));
         } else {
           const role = pickPitcherRole(p);
-          currentWAA = role.waaSort;
-          potentialWAA = role.waaPSort;
+          currentWAR = role.warSort;
+          potentialWAR = role.warPSort;
         }
         pool.push({
           name: p.meta?.name ?? p.Name, age: p._age, pos: p.meta?.pos ?? p.POS, org: p.meta?.org ?? p.ORG, manual: p.meta?.source ?? p.meta?.manual ?? p.Manual,
-          currentWAA, potentialWAA, type: "pitcher",
+          currentWAR, potentialWAR, type: "pitcher",
         });
       }
     }
@@ -139,19 +148,19 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
   }, [players]);
 
   const scatterCurrent = useMemo(() =>
-    players.filter((p) => p.currentWAA != null).map((p) => ({ age: p.age, y: p.currentWAA, name: p.name, pos: p.pos, org: p.org, manual: p.manual })),
+    players.filter((p) => p.currentWAR != null).map((p) => ({ age: p.age, y: p.currentWAR, name: p.name, pos: p.pos, org: p.org, manual: p.manual })),
     [players]
   );
   const scatterPotential = useMemo(() =>
-    players.filter((p) => p.potentialWAA != null).map((p) => ({ age: p.age, y: p.potentialWAA, name: p.name, pos: p.pos, org: p.org, manual: p.manual })),
+    players.filter((p) => p.potentialWAR != null).map((p) => ({ age: p.age, y: p.potentialWAR, name: p.name, pos: p.pos, org: p.org, manual: p.manual })),
     [players]
   );
 
   // Kernel-smoothed average trend lines (Gaussian-weighted regression).
   // Optimized: sort by age, binary-search for nearby players within 3*bandwidth window.
   const avgTrendData = useMemo(() => {
-    const withCurrent = players.filter((p) => p.currentWAA != null).sort((a, b) => a.age - b.age);
-    const withPotential = players.filter((p) => p.potentialWAA != null).sort((a, b) => a.age - b.age);
+    const withCurrent = players.filter((p) => p.currentWAR != null).sort((a, b) => a.age - b.age);
+    const withPotential = players.filter((p) => p.potentialWAR != null).sort((a, b) => a.age - b.age);
     if (withCurrent.length < 10 && withPotential.length < 10) return [];
     const step = 0.25;
     const radius = 3 * bandwidth;
@@ -168,13 +177,13 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
       for (let i = startC; i < withCurrent.length && withCurrent[i].age <= hi; i++) {
         const d = (withCurrent[i].age - age) / bandwidth;
         const w = Math.exp(-0.5 * d * d);
-        if (w > 0.001) { sumWC += w; sumVC += w * withCurrent[i].currentWAA; }
+        if (w > 0.001) { sumWC += w; sumVC += w * withCurrent[i].currentWAR; }
       }
       let startP = lowerBound(withPotential, lo);
       for (let i = startP; i < withPotential.length && withPotential[i].age <= hi; i++) {
         const d = (withPotential[i].age - age) / bandwidth;
         const w = Math.exp(-0.5 * d * d);
-        if (w > 0.001) { sumWP += w; sumVP += w * withPotential[i].potentialWAA; }
+        if (w > 0.001) { sumWP += w; sumVP += w * withPotential[i].potentialWAR; }
       }
       const avgCurrent = sumWC >= 1 ? sumVC / sumWC : null;
       const avgPotential = sumWP >= 1 ? sumVP / sumWP : null;
@@ -189,14 +198,14 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
   // Kernel-smoothed percentile regression of gap across ages
   const gapMinPotNum = gapMinPot === "" ? null : parseFloat(gapMinPot);
   const gapPlayerDataAll = useMemo(() =>
-    players.filter((p) => p.currentWAA != null && p.potentialWAA != null)
-      .map((p) => ({ age: p.age, gap: Math.max(0, p.potentialWAA - p.currentWAA) })),
+    players.filter((p) => p.currentWAR != null && p.potentialWAR != null)
+      .map((p) => ({ age: p.age, gap: Math.max(0, p.potentialWAR - p.currentWAR) })),
     [players]
   );
   const gapPlayerData = useMemo(() =>
     gapMinPotNum == null ? gapPlayerDataAll :
-    players.filter((p) => p.currentWAA != null && p.potentialWAA != null && p.potentialWAA >= gapMinPotNum)
-      .map((p) => ({ age: p.age, gap: Math.max(0, p.potentialWAA - p.currentWAA) })),
+    players.filter((p) => p.currentWAR != null && p.potentialWAR != null && p.potentialWAR >= gapMinPotNum)
+      .map((p) => ({ age: p.age, gap: Math.max(0, p.potentialWAR - p.currentWAR) })),
     [players, gapPlayerDataAll, gapMinPotNum]
   );
 
@@ -251,19 +260,19 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
     [gapRegressionData, gapChartMaxAge]
   );
 
-  const waaPercentileData = useMemo(() => {
-    const withCurrent = players.filter((p) => p.currentWAA != null);
+  const warPercentileData = useMemo(() => {
+    const withCurrent = players.filter((p) => p.currentWAR != null);
     if (withCurrent.length < 10) return [];
-    const sortedByWAA = [...withCurrent].sort((a, b) => a.currentWAA - b.currentWAA);
+    const sortedByWAR = [...withCurrent].sort((a, b) => a.currentWAR - b.currentWAR);
     const step = 0.25;
     const pts = [];
     for (let age = minAge; age <= maxAge; age += step) {
       const vals = [], ws = [];
-      for (const d of sortedByWAA) {
+      for (const d of sortedByWAR) {
         const dist = (d.age - age) / bandwidth;
         if (Math.abs(dist) > 3) continue;
         const w = Math.exp(-0.5 * dist * dist);
-        if (w > 0.001) { vals.push(d.currentWAA); ws.push(w); }
+        if (w > 0.001) { vals.push(d.currentWAR); ws.push(w); }
       }
       const totalW = ws.reduce((s, w) => s + w, 0);
       if (totalW < 1) continue;
@@ -281,71 +290,62 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
     return pts;
   }, [players, minAge, maxAge, bandwidth]);
 
-  const curveData = useMemo(() => {
+  // v21 — creditAge by Age. Slider-responsive on gapMax + gapExp.
+  // Single line for the parametric power-law curve, with empirical reference
+  // (1 − progressCurve.p50) overlaid as a dashed line for visual comparison.
+  const progressCurveHit = data.meta?.progressCurve?.hit ?? null;
+  const creditFactorData = useMemo(() => {
     const pts = [];
-    for (let age = 14; age <= 40; age += 0.5) {
-      if (age >= maxCurrentAge) { pts.push({ age, gapFactor: 0 }); continue; }
-      const t = Math.max(0, Math.min(1, (age - 14) / (maxCurrentAge - 14)));
-      const gf = Math.max(0, gapMax * (1 - Math.pow(t, gapExp)));
-      pts.push({ age, gapFactor: gf });
+    for (let age = 14; age <= maxCurrentAge; age += 0.5) {
+      const a = Math.round(age * 10) / 10;
+      const parametric = calcCreditAge(a, { gapMax, gapExp, maxCurrentAge });
+      // Empirical creditAge = 1 − progressCurve.p50[age], linear-interp.
+      let empirical = null;
+      if (progressCurveHit) {
+        const p50 = typicalAtAge(progressCurveHit, a);
+        if (p50 != null) empirical = Math.max(0, 1 - p50);
+      }
+      pts.push({ age: a, parametric, empirical });
     }
     return pts;
-  }, [maxCurrentAge, gapMax, gapExp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gapMax, gapExp, maxCurrentAge, progressCurveHit]);
 
-  const riskCurveData = useMemo(() => {
-    const pts = [];
-    for (let dp = 0; dp <= 1; dp += 0.01) {
-      const rf = riskMode === 'logit'
-        ? riskMin + (riskMax - riskMin) * normalizedLogit(dp, logitK)
-        : riskMin + (riskMax - riskMin) * Math.pow(dp, riskExp);
-      pts.push({ devPct: Math.round(dp * 100), riskFactor: rf });
-    }
-    return pts;
-  }, [riskMin, riskMax, riskExp, riskMode, logitK]);
+  // Legacy chart data — retained as no-op for backward-compat with sub-components
+  // that may still reference it. v21 chart is creditFactorData.
+  const gapFactorChartData = creditFactorData;
 
   // Always rank against the full prospect pool (global semantics) so filtering
   // narrows visible rows but each player keeps their league-wide Rk.
   const prospectPreview = useMemo(() => {
-    const curveOpts = { maxCurrentAge, riskMin, riskMax, riskExp, gapMax, gapExp, riskMode, logitK };
+    const curveOpts = { gapMax, gapExp, maxCurrentAge };
     const pool = [];
 
-    const hitterPeers = data.hitters
-      .filter(h => getBatR(h) != null && h._age != null)
-      .map(h => ({ age: h._age, currentWAA: getBatR(h) }));
     for (const h of data.hitters) {
       if (!isProspect(h) || !isInOrg(h)) continue;
       if (h._age == null) continue;
-      const cur = getMaxWaa(h);
-      const pot = getMaxWaaP(h);
-      const devVal = getBatR(h);
-      const dp = devVal != null ? computeDevPercentile(devVal, h._age, hitterPeers, bandwidth) : 0.5;
-      const fv = calcFutureValue(cur, pot, h._age, dp, curveOpts);
+      if (h._age >= maxCurrentAge) continue;
+      const cur = getMaxWar(h);
+      const pot = getMaxWarP(h);
+      // v21: Dev% = cur-WAR percentile within age cohort (display only).
+      const devPct = (hitCurve && cur != null) ? devPercentileRank(hitCurve, h._age, cur) : null;
+      const fv = calcFutureValue(cur, pot, h._age, curveOpts);
       pool.push({
         _player: h,
         name: h.meta?.name ?? h.Name, age: h._age, pos: h.meta?.pos ?? h.POS, org: h.meta?.org ?? h.ORG,
-        devPct: dp, cur, pot, fv, type: "hitter",
+        devPct, cur, pot, fv, type: "hitter",
       });
     }
 
-    const pitcherPeers = [];
-    for (const p of data.pitchers) {
-      if (p._age == null) continue;
-      const peerVal = pickPitcherRole(p).waaSort;
-      if (peerVal == null) continue;
-      pitcherPeers.push({ age: p._age, currentWAA: peerVal });
-    }
     for (const p of data.pitchers) {
       if (!isProspect(p) || !isInOrg(p)) continue;
       if (p._age == null) continue;
-      const role = pickPitcherRole(p);
-      const cur = role.waaSort;
-      const pot = role.waaPSort;
-      const dp = cur != null ? computeDevPercentile(cur, p._age, pitcherPeers, bandwidth) : 0.5;
-      const fv = calcFutureValue(cur, pot, p._age, dp, curveOpts);
+      if (p._age >= maxCurrentAge) continue;
+      const role = pickPitcherRole(p, devCurves, curveOpts, 'best');
       pool.push({
         _player: p,
         name: p.meta?.name ?? p.Name, age: p._age, pos: p.meta?.pos ?? p.POS, org: p.meta?.org ?? p.ORG,
-        devPct: dp, cur, pot, fv, type: "pitcher",
+        devPct: role.devPct, cur: role.warSort, pot: role.warPSort, fv: role.fv, type: "pitcher",
       });
     }
 
@@ -353,7 +353,7 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
     const ranked = pool.map((p, i) => ({ ...p, fvRank: i + 1 }));
     if (posFilter.length === 0) return ranked;
     return ranked.filter(p => passesPositionFilter(p._player, posFilter));
-  }, [data, posFilter, maxCurrentAge, riskMin, riskMax, riskExp, gapMax, gapExp, riskMode, logitK, bandwidth]);
+  }, [data, posFilter, gapMax, gapExp, maxCurrentAge, hitCurve, devCurves]);
 
   const poolLabel = useMemo(() => {
     const { isAll, hasHitterAny, hasPitcherAny, onlySP, onlyRP } = filterIntent;
@@ -374,7 +374,7 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
     </div>
   );
 
-  const curveOpts = { maxCurrentAge, riskMin, riskMax, riskExp, gapMax, gapExp, riskMode, logitK };
+  const curveOpts = { gapMax, gapExp, maxCurrentAge };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -383,7 +383,7 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
       {players.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#475569", fontSize: 14 }}>No player data available for the selected type.</div>}
 
       {players.length > 0 && <>
-        <Section title="Age vs WAA Distribution">
+        <Section title="Age vs WAR Distribution">
           <DevScatterChart
             scatterCurrent={scatterCurrent}
             scatterPotential={scatterPotential}
@@ -411,8 +411,8 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
           resetBandwidth={resetBandwidth}
         />
 
-        <WaaPercentileChart
-          waaPercentileData={waaPercentileData}
+        <WarPercentileChart
+          warPercentileData={warPercentileData}
           minAge={minAge}
           maxAge={maxAge}
           localBandwidth={localBandwidth}
@@ -424,23 +424,18 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
         />
 
         <Section title="Future Value Impact Analysis">
-          <FVImpactTable curveOpts={curveOpts} waaPercentileData={waaPercentileData} />
+          <FVImpactTable curveOpts={curveOpts} devCurves={devCurves} />
         </Section>
 
         <CurveTuningPanel
           curveSettings={curveSettings}
-          maxCurrentAge={maxCurrentAge} setLocalMaxCurrentAge={setLocalMaxCurrentAge}
-          riskMin={riskMin} riskMax={riskMax} handleRiskMin={handleRiskMin} handleRiskMax={handleRiskMax}
-          riskExp={riskExp} setLocalRiskExp={setLocalRiskExp}
-          riskMode={riskMode} setLocalRiskMode={setLocalRiskMode}
-          logitK={logitK} setLocalLogitK={setLocalLogitK}
-          gapMax={gapMax} setLocalGapMax={setLocalGapMax}
-          gapExp={gapExp} setLocalGapExp={setLocalGapExp}
+          gapMax={gapMax}   setGapMax={setLocalGapMax}
+          gapExp={gapExp}   setGapExp={setLocalGapExp}
+          maxCurrentAge={maxCurrentAge} setMaxCurrentAge={setLocalMaxCurrentAge}
           curveSettingsDirty={curveSettingsDirty}
           isLocalDefault={isLocalDefault}
           isSavedDefault={isSavedDefault}
-          curveData={curveData}
-          riskCurveData={riskCurveData}
+          creditFactorData={creditFactorData}
           saveCurveSettings={saveCurveSettings}
           resetCurveSettings={resetCurveSettings}
           restoreDefaults={restoreDefaults}

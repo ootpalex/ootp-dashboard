@@ -2,7 +2,7 @@
 // STRENGTH — Positional strength, org need, scarcity, league percentiles
 // ============================================================================
 import { num, parseCSVBoolean } from "./helpers.js";
-import { getWaa, getWaaP, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP } from "./accessors.js";
+import { getWar, getWarP, getSpWar, getRpWar, getSpWarP, getRpWarP } from "./accessors.js";
 import { ALL_DISPLAY_POS, HITTER_POS, DEF_SPECTRUM, DEF_SPECTRUM_POT, DEPTH_N, DEPTH_N_POT } from "./constants.js";
 
 export function calcPositionalStrength(hitters, pitchers, teams) {
@@ -20,8 +20,8 @@ export function calcPositionalStrength(hitters, pitchers, teams) {
       const posClaimed = {};
       spectrum.forEach((pos) => { posClaimed[pos] = []; });
       const getVal = (h, pos) => {
-        let val = mode === "current" ? getWaa(h, pos) : getWaaP(h, pos);
-        if (mode === "potential" && val === null) val = getWaa(h, pos);
+        let val = mode === "current" ? getWar(h, pos) : getWarP(h, pos);
+        if (mode === "potential" && val === null) val = getWar(h, pos);
         return val;
       };
 
@@ -45,16 +45,16 @@ export function calcPositionalStrength(hitters, pitchers, teams) {
       spectrum.forEach((pos) => { teamScores[team][mode][pos] = posClaimed[pos].reduce((s, c) => s + c.val, 0); });
     });
 
-    const spsCur = tp.filter((p) => (p.starter ?? parseCSVBoolean(p.Starter)) || (p.meta?.pos ?? p.POS) === "SP").map((p) => getSpWaa(p)).filter((v) => v !== null).sort((a, b) => b - a);
+    const spsCur = tp.filter((p) => (p.starter ?? parseCSVBoolean(p.Starter)) || (p.meta?.pos ?? p.POS) === "SP").map((p) => getSpWar(p)).filter((v) => v !== null).sort((a, b) => b - a);
     teamScores[team].current.SP = spsCur.slice(0, DEPTH_N.SP).reduce((s, v) => s + v, 0);
-    const rpsCur = tp.map((p) => getRpWaa(p)).filter((v) => v !== null).sort((a, b) => b - a);
+    const rpsCur = tp.map((p) => getRpWar(p)).filter((v) => v !== null).sort((a, b) => b - a);
     teamScores[team].current.RP = rpsCur.slice(0, DEPTH_N.RP).reduce((s, v) => s + v, 0);
 
     const spElig = tp.filter((p) => (p.starterP ?? parseCSVBoolean(p["Starter P"])) || (p.starter ?? parseCSVBoolean(p.Starter)) || (p.meta?.pos ?? p.POS) === "SP");
-    const spsPot = spElig.map((p) => ({ id: p.ID, val: getSpWaaP(p) ?? getSpWaa(p) })).filter((c) => c.val !== null).sort((a, b) => b.val - a.val);
+    const spsPot = spElig.map((p) => ({ id: p.ID, val: getSpWarP(p) ?? getSpWar(p) })).filter((c) => c.val !== null).sort((a, b) => b.val - a.val);
     const spClaimed = new Set(spsPot.slice(0, DEPTH_N_POT.SP).map((c) => c.id));
     teamScores[team].potential.SP = spsPot.slice(0, DEPTH_N_POT.SP).reduce((s, c) => s + c.val, 0);
-    const rpsPot = tp.filter((p) => !spClaimed.has(p.ID)).map((p) => ({ id: p.ID, val: getRpWaaP(p) ?? getRpWaa(p) })).filter((c) => c.val !== null).sort((a, b) => b.val - a.val);
+    const rpsPot = tp.filter((p) => !spClaimed.has(p.ID)).map((p) => ({ id: p.ID, val: getRpWarP(p) ?? getRpWar(p) })).filter((c) => c.val !== null).sort((a, b) => b.val - a.val);
     teamScores[team].potential.RP = rpsPot.slice(0, DEPTH_N_POT.RP).reduce((s, c) => s + c.val, 0);
   });
 
@@ -86,19 +86,6 @@ export function calcOrgNeed(team, strength) {
     needs[pos] = Math.max(0, (-z + 1) * 0.3);
   });
   return needs;
-}
-
-export function calcPositionalScarcity(pool) {
-  const scarcity = {};
-  const allPos = [...new Set(pool.map((p) => p.meta?.pos ?? p.POS))];
-  allPos.forEach((pos) => {
-    const atPos = pool.filter((p) => (p.meta?.pos ?? p.POS) === pos);
-    const sorted = atPos.map((p) => p._baseVal).sort((a, b) => b - a);
-    if (sorted.length <= 1) { scarcity[pos] = 0.8; return; }
-    const gap = sorted[0] - sorted[Math.min(4, sorted.length - 1)];
-    scarcity[pos] = Math.min(1.0, Math.max(0, gap / 3));
-  });
-  return scarcity;
 }
 
 export const leaguePercentile = (v, arr) => {

@@ -26,6 +26,7 @@ Each player object has nested groups instead of flat columns:
   baserunning: { vR: { bsr, ... }, vL: { ... }, wtd: { ... } },
   positions: { c: { eligible, waa: { vR, vL, wtd }, stats: { runsP, ... } }, "1b": { ... }, ... },
   maxWaa: { vR, vL, wtd },
+  maxWar: { vR, vL, wtd },          // post-v0.2.0: parallel WAR fields throughout
   sp: { vR: { waa, ... }, vL: { ... }, wtd: { ... } },
   rp: { vR: { waa, ... }, vL: { ... }, wtd: { ... } },
   prospect: { waa: { max, c, "1b", ..., sp, rp }, sp: { waa }, rp: { waa } },
@@ -36,17 +37,17 @@ Each player object has nested groups instead of flat columns:
 
 ### Accessor Helpers (nested JSON with CSV fallback)
 All data access should use these helpers — **never access flat column names directly**:
-- `getWaa(p, pos, split)` — Position WAA (e.g., `getWaa(p, "SS", "wtd")`)
-- `getWaaP(p, pos)` — Position potential WAA
+- `getWar(p, pos, split)` / `getWarP(p, pos)` — Position WAR / potential WAR (post-v0.2.0 default value metric)
+- `getMaxWar(p, split)` / `getMaxWarP(p)` — Best WAR / potential WAR across eligible positions
+- `getSpWar(p, split)` / `getRpWar(p, split)` — SP/RP WAR
+- `getSpWarP(p)` / `getRpWarP(p)` — SP/RP potential WAR
+- `getFloorWar(p, split)` / `getSpFloorWar(p)` / `getRpFloorWar(p)` — Floor WAR (developable-rating min)
+- `getWaa*` family (`getWaa`, `getMaxWaa`, `getSpWaa`, `getRpWaa`, etc.) — **Preserved but unused.** Pipeline still emits WAA columns alongside WAR in `dashboard.json`; the WAA accessors remain available for a future "show WAA" toggle. Don't introduce new WAA-only views.
 - `getRunsP(p, pos)` — Defensive runs saved
 - `isEligible(p, pos)` — Position eligibility boolean
-- `getMaxWaa(p, split)` — Best WAA across eligible positions
-- `getMaxWaaP(p)` — Best potential WAA
 - `getBatR(p, split)` — Batting runs
 - `getBsr(p, split)` — Baserunning runs
-- `getSpWaa(p, split)` / `getRpWaa(p, split)` — SP/RP WAA
-- `getSpWaaP(p)` / `getRpWaaP(p)` — SP/RP potential WAA
-- `resolveKey(p, key)` — Maps flat column-name keys (used in column definitions) to nested JSON values. Single choke-point for sort/render code.
+- `resolveKey(p, key)` — Maps flat column-name keys (used in column definitions) to nested JSON values. Single choke-point for sort/render code. Handles both `"Max WAR wtd"` and the legacy `"Max WAA wtd"` keys.
 
 ### Key Meta Fields
 - **ID**: Player identifier, links to StatsPlus API
@@ -234,23 +235,48 @@ Four stackable toggles:
 3. **Future Value** — Risk-adjusted future value rating using power-law current/potential blend with development percentile risk discount
 4. **Defensive Spectrum Premium** — Flat bonuses for C/SS/CF, penalties for 1B/DH
 
-### `computeDevPercentile(playerCurrentWAA, playerAge, peerPool, bandwidth=2.0)`
-Gaussian-kernel-weighted percentile rank of a player's current value among age-peers of the same type. Returns 0-1 (0.5 = average development for age). **Hitters use `BatR wtd`** (batting runs only — excludes defense and baserunning which lack potential ratings and develop unpredictably). Pitchers use `WAA wtd` (SP) or `WAA wtd RP` (RP).
+### v21 — Three-input simplification with power-law creditAge
+**FV = cur + gap × creditAge.** Drops devPct from the formula entirely. Pot is reframed as the *ceiling* (max valuation at maturity) — `(cur, pot, age)` already encode the relevant per-player spread, so within-cohort discrimination via batR-pct is unnecessary. `creditAge` uses a smooth power-law decay from `gapMax` at age 14 to 0 at maturity.
 
-### `calcFutureValue(currentWAA, potentialWAA, age, devPercentile, cs={})`
-Gap-factor blend. 5th param is a settings object with keys: `maxCurrentAge`, `riskMin`, `riskMax`, `riskExp`, `gapMax`, `gapExp`, `riskMode`, `logitK`.
-- `t = clamp((age - 14) / (maxCurrentAge - 14), 0, 1)`
-- Risk factor has two modes (controlled by `riskMode`):
-  - **Power mode** (`riskMode='power'`): `riskFactor = riskMin + (riskMax - riskMin) * devPercentile^riskExp`. riskExp controls curve shape: <1 = concave, 1 = linear, >1 = convex.
-  - **Logit mode** (`riskMode='logit'`): `riskFactor = riskMin + (riskMax - riskMin) * normalizedLogit(dp, logitK)`. `logitK` (0.1–2.0) controls curve shape: k < 1 = flat middle/steep edges (differentiation at extremes), k = 1 = linear, k > 1 = steep middle/flat edges. `normalizedLogit` applies `sigmoid(k * logit(x))` normalized to [0,1].
-- `gap = potentialWAA - currentWAA`
-- `gapFactor = max(0, gapMax * (1 - t^gapExp))` — age-driven gap discount. `gapMax` (0–1.00) sets the Y-intercept at age 14 (how much gap credit the youngest players get). Curve always reaches 0 at maturity age. `gapExp` (Gap Flex) controls curve shape: 1 = linear, 3 = cubic, max 20.
-- `futureValue = currentWAA + gap * riskFactor * gapFactor` — risk and gap factor both apply to the improvement gap, not raw potential. High dev% players have smaller gaps (already developed) so differentation comes from both the gap size and the risk discount.
-- At age >= maxCurrentAge: pure current WAA (guaranteed)
-- Default mode is logit (G5_DEFAULTS: `riskMode='logit'`, `logitK=0.6`, `riskMin=0.50`, `riskMax=0.95`, `gapMax=0.85`, `gapExp=2`)
-- G5_POWER_DEFAULTS: `riskMin=0.82`, `riskMax=0.90`, `riskExp=30`, `gapMax=0.95`, `gapExp=6` — original power-law defaults, auto-loaded when switching to Power mode in Dev Analysis
-- Draft/IAFA boards precompute `devPercentiles` Map against the **full league pool** (all `data.hitters`/`data.pitchers`), not board-specific pools
-- Curve settings (maturity age, risk min/max/flex, gap discount/flex, risk mode, logitK, devScale, crossover) persisted to localStorage (`ssb_dev_curve_settings`) and shared across DraftBoard, IAFABoard, and DevAnalysis via props from Dashboard
+**Migration history**: v17–v18 (gap+trajectory + variance), v19 Path D (empirical credit_age × multiplicative dev penalty), v20 (Gap/Risk Revival with batR-pct + age-sharpening sigmoid riskFactor), v21 (this — power-law). The logistic shape was explored and rejected as too aggressive in the 19→22 window for high-pot prospect ranking. v21 specifically drops devPct because (a) `(cur, pot, age)` are sufficient when pot is the ceiling, and (b) batR-pct actively penalizes high-floor (defense-driven) players. Each pivot documented in `Leftovers/dev-curve/history.md`.
+
+Pipeline outputs (`model/src/export.py`, embedded in `data.meta`):
+- `progressCurve.{hit,sp,rp}` — kernel-smoothed median-progress-by-age. **Load-bearing** for the empirical-overlay chart in CurveTuningPanel (parametric `creditAge` plotted against `1 − progressCurve.p50`).
+- `devCurve.{hit,sp,rp}` — **v21: dev signal unified on cur-WAA across all three cohorts** (hitter `maxWaa.wtd`, SP `sp.wtd.waa`, RP scaled `rp.wtd.waa`). Used purely for the Dev% display column on tables — not in the FV formula. (Pre-v21 used batR for hitters; switched to cur-WAA for unified semantics.)
+- `gapDist.{hit,sp,rp}` — embedded diagnostic. Not used by the FV formula.
+
+### `devPercentileRank(devCurve, age, devValue)`
+Player's percentile rank within their age cohort, interpolated from the embedded percentile distribution at the player's exact age. Returns 0..1. **Display only** in v21 (Dev% column).
+
+### `typicalAtAge(devCurve, age)`
+Linear-interpolated `p50` lookup. Used by the FVIAT subtext and the empirical reference overlay in CurveTuningPanel.
+
+### `calcFutureValue(cur, pot, age, cs={})`
+v21 (power-law creditAge). `cs` keys: `gapMax`, `gapExp`, `maxCurrentAge`. **No `devPct` parameter.**
+- `t = clamp((age − 14) / (maxCurrentAge − 14), 0, 1)`
+- `gap = max(0, pot − cur)`
+- `creditAge = max(0, gapMax × (1 − t^gapExp))`
+- `FV = (age ≥ maxCurrentAge) ? cur : (cur > pot) ? cur : cur + gap × creditAge`
+- Defaults (`DEV_CURVE_DEFAULTS`): `gapMax=0.80, gapExp=3, maxCurrentAge=27, bandwidth=0.5`.
+- Slider ranges (`DEV_CURVE_RANGES`): `gapMax 0.65–1.00 step 0.05`, `gapExp 1–8 step 1`, `maxCurrentAge 26–27`.
+- Pre-v21-power saved curveSettings reset on `_version !== "v21-power-v1"`.
+
+### `calcCreditAge(age, cs={})`
+Returns the parametric creditAge value at a given age — used by CurveTuningPanel's chart memo to render the parametric curve against the empirical overlay.
+
+### Pool helpers
+- `buildBoardPool(data, hitterFilter, pitcherFilter, extraFields)` still stamps `_devPct` per pool entry for the optional display column, but `applySmartRank` calls `calcFutureValue(cur, pot, age, cs)` — no devPct in the formula path.
+- `pickPitcherRole(p, devCurves, curveSettings, roleHint)` returns `{role, waa, waaP, waaSort, waaPSort, floorSort, devPct, devCurve, fv}`. `devPct` retained as a metadata field; `fv` is the v21 logistic FV when `curveSettings` provided.
+- `pickFielderPos(p, posHint, hitDevCurve, curveSettings)` mirrors the pattern. `hitDevCurve` is no longer needed for FV — kept for the metadata `devPct` field.
+
+### Why logistic over power-law `(1 − t^gapExp)`
+Real OOTP development is S-shaped: flat through ~17, steep ramp 19→22, plateau through 27. The power-law `(1 − t³)` is a smooth monotone decay that runs ~2× too generous through ages 22–27. The logistic with empirical-anchored midpoint matches OOTP development directly — within ±0.05 of `1 − progressCurve.p50` from age 20+ onward. The CurveTuningPanel chart shows this comparison live.
+
+### R-test calibration
+Validated by `Leftovers/dev-curve/tests/fv_formula_v21.cjs` against {R1, R2, R4, R10, R_curveMatch} composite. Weights `{r1:2.0, r2:2.0, r4:1.0, r10:3.0, R_curveMatch:4.0}`. Hard-fail conditions: hard invariants (FV ≥ cur, FV ≤ pot) AND `R_curveMatch ≥ 0.5`. The `r4 < 0.95` hard-fail from v20 was dropped because monotonicity is structurally guaranteed under v21 logistic. Winner config (gapMax=0.85, devMidAge=21, devScale=2.0): Combined=0.9044, R_curveMatch=0.837, no FV invariant violations across all cohorts.
+
+### Dev% column
+Stores `_devPct` (0..1 percentile rank within age cohort). Null for matured players. Color via `devPctColor()` unchanged. Display formatter uses "Nth" suffix.
 
 ### Dev Analysis Age Binning
 Players are binned by integer age using `Math.round()` — age 27.5–28.4 maps to bin 28, age 17.5–18.4 maps to bin 18, etc. Min/max age ranges auto-adjust to whatever is in the dataset (no hardcoded bounds). Age bins with fewer than 3 players are excluded from trend/threshold data. The `ageBins` memo is shared between the gap chart and the avg trend line chart.
@@ -263,12 +289,13 @@ Shown on Draft Board, IAFA Board, and Org View Prospect Watch tables. Displays `
 - Always visible (not gated behind Future Value toggle)
 
 ### Persisted Curve Settings
-Settings persisted to localStorage under `ssb_dev_curve_settings`:
-- `maxCurrentAge` (maturity age), `riskMin`, `riskMax`, `riskExp`, `gapMax`, `gapExp`, `bandwidth`, `riskMode`, `logitK`
-- Read in Dashboard and passed as `curveSettings` prop to DraftBoard, IAFABoard, DevAnalysisView, OrgView
-- DraftBoard/IAFABoard use these for `calcFutureValue` calls in `applySmartRank`
-- DevAnalysisView uses **local state** for live slider preview; only persists on explicit Save button click
-- Bandwidth is used for kernel smoothing in gap distribution, WAA percentile charts, and devPercentile computation
+Settings persisted to localStorage under `ssb_dev_curve_settings` (versioned via `_version`):
+- v21 keys: `gapMax`, `gapExp`, `maxCurrentAge`, `bandwidth`. Two formula knobs exposed as sliders (down from v20's six).
+- Read in Dashboard and passed as `curveSettings` prop to DraftBoard, IAFABoard, DevAnalysisView, OrgView, RosterPlanner.
+- Boards consume them via `applySmartRank` → `calcFutureValue` for the per-row FV.
+- DevAnalysisView uses **local state** for live slider preview; only persists on explicit Save button click.
+- Bandwidth drives kernel smoothing for the gap distribution and WAA percentile charts; the embedded `progressCurve` is built at the same default (0.5).
+- Migration: any saved blob with `_version !== "v21-power-v1"` is detected and reset to v21 defaults.
 
 ### Dev Analysis Performance
 The scatter chart (thousands of data points) is wrapped in `React.memo` as `DevScatterChart` to prevent re-renders when curve sliders change. The scatter chart depends on `scatterCurrent`, `scatterPotential`, `minAge`, `maxAge`. Outlier-only tooltips show player name/pos for points outside the 10th-90th percentile band at their age. If adding new heavy visualizations to Dev Analysis, consider similar memoization.
@@ -296,9 +323,9 @@ The scatter chart (thousands of data points) is wrapped in `React.memo` as `DevS
    - **Age vs WAA Scatter Plot**: Recharts scatter with Current (blue) and Potential (green) dots. Extracted as `DevScatterChart` (`React.memo`) so it doesn't re-render when curve sliders change.
    - **Gap Distribution by Age**: Kernel-smoothed percentile bands (10th-90th, 25th-75th, median) of the gap (Potential - Current). Bandwidth slider with Save button. Trimmed where median hits zero.
    - **DevPercentile Distribution**: Kernel-smoothed current WAA percentile bands by age. ComposedChart with Area bands + Lines. Makes dev percentile concrete: "At age 20, the 75th percentile has current WAA of X."
-   - **FV Impact Analysis**: Interactive table showing Future Value at key ages (16-26) x dev percentiles (10th-99th). Current WAA comes from the distribution chart (what a player at that dev% actually has at that age) + user-configurable example potential WAA. High dev% players naturally have smaller gaps (higher curWAA), so differentiation comes from both gap size and risk discount.
-   - **Live Prospect Preview**: Real-time table of org-affiliated prospects ranked by FV with current slider settings. Updates live as curve parameters change. Shows top 30/50/100 with Name, Age, Pos, Org, Dev%, Cur, Pot, FV columns. Uses `isProspect()` + `isInOrg()` filters, `computeDevPercentile()` with current bandwidth, `calcFutureValue()` with current curve params. Respects playerType toggle (hitters/starters/relievers).
-   - **Development Curve Tuning**: Split into two side-by-side boxes. **Gap Factor box**: Maturity Age (24-32), Gap Max (0-1.00, Y-intercept at age 14), Gap Flex (1-20) sliders with gap curve chart below. **Risk Factor box**: Mode toggle (Logit/Power) with auto-preset loading — switching to Power loads G5_POWER_DEFAULTS values, switching to Logit loads G5_DEFAULTS values. Risk Min (0-1.00), Risk Max (0-1.00) sliders shared by both modes. Logit mode shows Edge Sensitivity (0.1-2.0) slider. Power mode shows Risk Flex (0.01-100, log-scale slider). Risk curve chart below updates for selected mode. Risk Min/Max are constrained so min never exceeds max. Save/Reset buttons below both boxes. Settings only persist when Save is clicked. Saved values from old ranges are clamped to new ranges on load. Migration: old `riskWeight` -> `riskMin`, old `gapSens` -> `gapMax`, old `riskMode='sigmoid'` -> `'logit'`.
+   - **FV Impact Analysis** (v19): Interactive table with **age columns** (14, 16, 18, 20, 22, 24, 26) and **dev percentile rows** (p95, p90, p75, p50, p25, p10). The row's percentile IS the devPct fed into the formula. Each cell shows the FV for a synthetic player at that (age, devPct) given the example pot. The cell sub-text shows the cohort's raw batR / cur-WAA at that (age, percentile) for context. Dropdown selects cohort (hit / sp / rp). p50 row is the typical-track baseline (deviation=0, no dev penalty); below = behind, above = ahead. `cur` reconstructed as `floor_assumed + devPct × (pot − floor_assumed)` using cohort median floor.
+   - **Live Prospect Preview**: Real-time table of org-affiliated prospects ranked by FV with current slider settings. Updates live as curve parameters change. Shows top 30/50/100 with Name, Age, Pos, Org, Dev%, Cur, Pot, FV columns. Dev% is the player's batR-pct (hitters) or cur-WAA-pct (pitchers) within their age cohort. Respects playerType toggle.
+   - **Development Curve Tuning** (v21 power-law creditAge): Single chart with the parametric `creditAge(age) = gapMax × (1 − t^gapExp)` plotted against the empirical `1 − progressCurve.hit.p50` dashed reference. The parametric is intentionally more generous than empirical at moderate ages — high-pot prospects don't follow the median trajectory. **Two sliders**: Gap Max (overall ceiling, default 0.80), Gap Exp (time-decay shape, default 3). Maturity Age toggle (26 or 27). Save/Revert/Defaults buttons.
    - **Current vs Potential Gap by Age**: Line chart showing avg current and avg potential WAA at each integer age bin.
 
 7. **Scout View** — Browse any team's organization with trade analysis:
@@ -354,7 +381,8 @@ The scatter chart (thousands of data points) is wrapped in `React.memo` as `DevS
 - `fmtAge(v)` — Format age: integers as whole numbers, fractional as 1 decimal, "—" for null
 - `parseCSVBoolean(v)` — Parse "Yes"/"true"/true to boolean
 - `posColor(pos)` — Position color mapping for consistent styling
-- `waaStyle(v)` — WAA value color using OOTP 20-80 scale gradient (blue→cyan→teal→green→yellow→orange→red) based on z-score relative to MLB WAA distribution (mean=-0.25, std=1.49). Grade 50=green (league avg), ±10=one std dev. Bold for extreme grades (≥70 or ≤30).
+- `warStyle(v)` — WAR value color using OOTP 20-80 scale gradient (blue→cyan→teal→green→yellow→orange→red) based on z-score relative to MLB WAR distribution (mean=1.60, std=1.60 — initial estimate, recompute from dataset after first WAR-pipeline build). Grade 50=green (league avg), ±10=one std dev. Bold for extreme grades (≥70 or ≤30). Use this for all WAR display cells.
+- `waaStyle(v)` — Preserved alongside `warStyle`. Uses old MLB WAA distribution (mean=-0.25, std=1.49). Unused in the current UI; available for a future "show WAA" toggle.
 - `calcBestPos(player, type)` — Compute best defensive position for a player
 - `recomputeAges(data, gameDateStr)` — Recompute all `_age` fields from DOB + game date
 - `calcExactAge(dob, gameDate)` — Fractional years between DOB and game date
@@ -422,6 +450,6 @@ The Python pipeline at `model/` generates `dashboard.json.gz` + uncompressed `da
 - localStorage persistence is split: **global** keys (`ssb_current_league`, `ssb_dev_curve_settings`) are shared across all leagues; **per-league** keys (team selection, game date, roster plan + order, R5 threshold, league settings, prospect settings, IAFA signed IDs) are namespaced via `keyFor(slug, baseKey)` → `"baseKey::slug"`. Use `useScopedLocalStorage` (hook) or `readScoped`/`writeScoped` (non-hook) — see **Multi-League Architecture** for the full key mapping.
 - All styling is inline (no CSS files) — dark theme with monospace fonts.
 - `datedData` in Dashboard is the age-recomputed version of `data` — all views should receive `datedData`, not raw `data`.
-- **Always use accessor helpers** (`getWaa`, `isEligible`, `resolveKey`, etc.) — never access flat column names like `p["Max WAA wtd"]` directly.
+- **Always use accessor helpers** (`getWar`, `isEligible`, `resolveKey`, etc.) — never access flat column names like `p["Max WAR wtd"]` directly. WAR accessors are the post-v0.2.0 default; WAA accessors are preserved but unused.
 - Heavy pages (`RosterPlanner`, `DevAnalysisView`, `PlayerCompareView`) are `React.lazy`-loaded with a single `<Suspense>` in Dashboard — confirm bundle is split when changing imports.
 - Pages can be hidden by missing CSV inputs via `dashMeta.csvPresence` flags (see **CSV Presence & Page Visibility**). Always test with a partial-CSV league before assuming a sidebar item is broken.

@@ -1,11 +1,11 @@
 import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
 import { S } from "../theme.js";
-import { G5_DEFAULTS, PAGES } from "../utils/constants.js";
-import { loadLeagueSettings, detectExcludedTeams } from "../utils/settings.js";
+import { DEV_CURVE_DEFAULTS, DEV_CURVE_RANGES, PAGES } from "../utils/constants.js";
+import { loadLeagueSettings, saveLeagueSettings, detectExcludedTeams } from "../utils/settings.js";
 import { processData, isMatured, isAgeMatured, calcBestPos, recomputeAges } from "../utils/dataProcessing.js";
 import { calcPositionalStrength } from "../utils/strength.js";
-import { getMaxWaa, getMaxWaaP, getBatR, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, scaleRpWaaP, pickPitcherRole } from "../utils/accessors.js";
-import { computeDevPercentile, calcFutureValue } from "../utils/futureValue.js";
+import { getMaxWar, getMaxWarP, pickPitcherRole } from "../utils/accessors.js";
+import { calcFutureValue, devPercentileRank } from "../utils/futureValue.js";
 import { calcRawIntangibles } from "../utils/helpers.js";
 import { useLocalStorage, useScopedLocalStorage } from "../hooks/useLocalStorage.js";
 import OrgView from "../views/Org/OrgView.jsx";
@@ -62,6 +62,17 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
     setShowSettings(false);
   }, []);
 
+  // Page-level callback: persist + propagate a partial settings update without
+  // closing any modal. DraftBoard uses this to mirror its on-page Draft Settings
+  // controls into the same `league_settings` localStorage entry the modal uses.
+  const handleUpdateLeagueSettings = useCallback((partial) => {
+    setLeagueSettings((prev) => {
+      const next = { ...prev, ...partial };
+      saveLeagueSettings(next);
+      return next;
+    });
+  }, []);
+
   const visiblePages = useMemo(() => {
     const presence = dashMeta?.csvPresence || {};
     return PAGES.filter((pg) => !pg.requires || presence[pg.requires] !== false);
@@ -77,29 +88,34 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
   const [gameDate, setGameDate] = useScopedLocalStorage("ssb_game_date", dashMeta?.gameDate || "");
   const [strengthMode, setStrengthMode] = useState("current");
   const [curveSettings, setCurveSettings] = useState(() => {
+    // Bumped on each defaults change so prior auto-saved blobs reset cleanly.
+    // v21 — three-input simplification with power-law creditAge.
+    // Two exposed knobs: gapMax, gapExp.
+    const CURRENT_VERSION = "v21-power-v1";
+    const writeAndReturn = (obj) => {
+      try { localStorage.setItem("ssb_dev_curve_settings", JSON.stringify(obj)); } catch {}
+      return obj;
+    };
     try {
-      const saved = JSON.parse(localStorage.getItem("ssb_dev_curve_settings"));
-      const raw = {
-        maxCurrentAge: saved?.maxCurrentAge ?? G5_DEFAULTS.maxCurrentAge,
-        riskMin: saved?.riskMin ?? (saved?.riskWeight != null ? (1 - saved.riskWeight) : G5_DEFAULTS.riskMin),
-        riskMax: saved?.riskMax ?? G5_DEFAULTS.riskMax,
-        riskExp: saved?.riskExp ?? G5_DEFAULTS.riskExp,
-        bandwidth: saved?.bandwidth ?? G5_DEFAULTS.bandwidth,
-        gapMax: saved?.gapMax ?? (saved?.gapSens ?? G5_DEFAULTS.gapMax),
-        gapExp: saved?.gapExp ?? G5_DEFAULTS.gapExp,
-        riskMode: (saved?.riskMode === 'power' || saved?.riskMode === 'logit') ? saved.riskMode : (saved?.riskMode === 'sigmoid' ? 'logit' : G5_DEFAULTS.riskMode),
-        logitK: saved?.logitK ?? G5_DEFAULTS.logitK,
+      const saved = JSON.parse(localStorage.getItem("ssb_dev_curve_settings") || "{}");
+      const isOldFormat = !saved || saved._version !== CURRENT_VERSION;
+      if (isOldFormat) {
+        // Eagerly write the reset back so stale v20-era keys
+        // (riskMin/riskMax/kBase/kMax/gapExp/etc.) don't linger and confuse
+        // anyone reading the blob directly via DevTools.
+        return writeAndReturn({ ...DEV_CURVE_DEFAULTS, _version: CURRENT_VERSION });
+      }
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      return {
+        gapMax:        clamp(saved.gapMax        ?? DEV_CURVE_DEFAULTS.gapMax,        DEV_CURVE_RANGES.gapMax.min,        DEV_CURVE_RANGES.gapMax.max),
+        gapExp:        clamp(saved.gapExp        ?? DEV_CURVE_DEFAULTS.gapExp,        DEV_CURVE_RANGES.gapExp.min,        DEV_CURVE_RANGES.gapExp.max),
+        maxCurrentAge: clamp(saved.maxCurrentAge ?? DEV_CURVE_DEFAULTS.maxCurrentAge, DEV_CURVE_RANGES.maxCurrentAge.min, DEV_CURVE_RANGES.maxCurrentAge.max),
+        bandwidth:     clamp(saved.bandwidth     ?? DEV_CURVE_DEFAULTS.bandwidth,     DEV_CURVE_RANGES.bandwidth.min,     DEV_CURVE_RANGES.bandwidth.max),
+        _version:      CURRENT_VERSION,
       };
-      raw.maxCurrentAge = Math.max(24, Math.min(32, raw.maxCurrentAge));
-      raw.riskMin = Math.max(0, Math.min(1, raw.riskMin));
-      raw.riskMax = Math.max(0, Math.min(1, raw.riskMax));
-      raw.riskExp = Math.max(0.01, Math.min(100, raw.riskExp));
-      raw.gapMax = Math.max(0, Math.min(1.00, raw.gapMax));
-      raw.gapExp = Math.max(1, Math.min(20, raw.gapExp));
-      raw.logitK = Math.max(0.1, Math.min(2.0, raw.logitK));
-
-      return raw;
-    } catch { return { ...G5_DEFAULTS }; }
+    } catch {
+      return writeAndReturn({ ...DEV_CURVE_DEFAULTS, _version: CURRENT_VERSION });
+    }
   });
   const updateCurveSettings = useCallback((updates) => {
     setCurveSettings((prev) => {
@@ -112,61 +128,49 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
   const datedData = useMemo(() => recomputeAges(data, gameDate), [data, gameDate]);
 
   const enrichedData = useMemo(() => {
-    const hitPeers = datedData.hitters.map(p => ({ age: p._age, currentWAA: getBatR(p) }));
-    const pitPeers = datedData.pitchers.map(p => ({
-      age: p._age,
-      currentWAA: (p.meta?.pos ?? p.POS) === "SP" ? getSpWaa(p) : getRpWaa(p)
-    }));
+    const devCurves = dashMeta?.devCurve ?? null;
+    const hitCurve = devCurves?.hit ?? null;
 
     const enrichHitter = (p) => {
       const matured = isMatured(p, curveSettings);
       const ageMatured = isAgeMatured(p, curveSettings);
-      const batR = getBatR(p);
-      const devPct = ageMatured ? null : computeDevPercentile(batR, p._age, hitPeers, curveSettings.bandwidth);
-      const cur = getMaxWaa(p);
-      const pot = getMaxWaaP(p);
+      const cur = getMaxWar(p);
+      const pot = getMaxWarP(p);
+      // v21: Dev% is the player's cur-WAR percentile within their age cohort
+      // (display only — not in the FV formula). Unified on cur-WAR across all
+      // three cohorts (hitter `maxWar.wtd`, SP `sp.wtd.war`, RP scaled `rp.wtd.war`).
+      const devPct = (ageMatured || hitCurve == null || cur == null) ? null
+        : devPercentileRank(hitCurve, p._age, cur);
+      const cohortCurve = ageMatured ? null : hitCurve;
       const fv = (matured || cur == null) ? cur :
-        calcFutureValue(cur, pot, p._age, devPct, curveSettings);
-      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct, _fv: fv };
+        calcFutureValue(cur, pot, p._age, curveSettings);
+      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct, _devCurve: cohortCurve, _fv: fv };
     };
 
     const enrichPitcher = (p) => {
       const matured = isMatured(p, curveSettings);
       const ageMatured = isAgeMatured(p, curveSettings);
-      // Provisional best-of-role pick (no FV yet) so devPct uses the role's
-      // current WAA — matches boardUtils.computeDevPercentilesMap semantics.
-      const provisional = pickPitcherRole(p, null, null, 'best');
-      const devCur = provisional.waa;  // raw RP if RP wins, SP otherwise
-      const devPct = ageMatured ? null : computeDevPercentile(devCur, p._age, pitPeers, curveSettings.bandwidth);
+      // pickPitcherRole returns scaled cur/pot for the chosen role plus the
+      // cohort-specific dev curve, devPct, and FV. Pass null curveSettings
+      // when matured so it falls back to cur instead of running the formula.
+      const r = pickPitcherRole(p, ageMatured ? null : devCurves, ageMatured ? null : curveSettings, 'best');
+      const role = r.role;
 
-      // Compute FV per role with the same devPct, then pick best.
-      const spWaa = getSpWaa(p);
-      const spWaaP = getSpWaaP(p);
-      const rpWaa = getRpWaa(p);
-      const rpWaaP = getRpWaaP(p);
-      const rpWaaScaled = scaleRpWaaP(rpWaa);
-      const rpWaaPScaled = scaleRpWaaP(rpWaaP);
-      const fvFor = (cur, pot) => {
-        if (cur == null) return null;
-        if (matured) return cur;
-        return calcFutureValue(cur, pot, p._age, devPct, curveSettings);
-      };
-      const spFv = fvFor(spWaa, spWaaP);
-      const rpFv = fvFor(rpWaaScaled, rpWaaPScaled);  // always SP-scaled
-
-      const useRp = (spWaaP == null) || (rpWaaPScaled != null && rpWaaPScaled > spWaaP);
-      const role = useRp ? 'rp' : 'sp';
-      const _sp = { waa: spWaa, waaP: spWaaP, fv: spFv };
-      const _rp = { waa: rpWaa, waaP: rpWaaP, waaScaled: rpWaaScaled, waaPScaled: rpWaaPScaled, fv: rpFv };
-      const _waa = useRp ? rpWaa : spWaa;        // raw display
-      const _waaP = useRp ? rpWaaP : spWaaP;     // raw display
-      const _waaSort = useRp ? rpWaaScaled : spWaa;
-      const _waaPSort = useRp ? rpWaaPScaled : spWaaP;
-      const _fv = useRp ? rpFv : spFv;           // already SP-scaled
+      // Build per-role companion blocks for downstream views (FV projection
+      // chart, etc.) that compare SP vs RP outcomes.
+      const spRoleResult  = pickPitcherRole(p, ageMatured ? null : devCurves, ageMatured ? null : curveSettings, 'sp');
+      const rpRoleResult  = pickPitcherRole(p, ageMatured ? null : devCurves, ageMatured ? null : curveSettings, 'rp');
+      const _sp = { war: spRoleResult.war, warP: spRoleResult.warP, fv: spRoleResult.fv };
+      const _rp = { war: rpRoleResult.war, warP: rpRoleResult.warP, warScaled: rpRoleResult.warSort, warPScaled: rpRoleResult.warPSort, fv: rpRoleResult.fv };
 
       const bestPos = matured ? calcBestPos(p, "pitcher", true) : p._bestPos;
-      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct,
-        _sp, _rp, _role: role, _waa, _waaP, _waaSort, _waaPSort, _fv,
+      return { ...p, _matured: matured, _ageMatured: ageMatured,
+        _devPct: ageMatured ? null : r.devPct,
+        _devCurve: r.devCurve,
+        _sp, _rp, _role: role,
+        _war: r.war, _warP: r.warP,
+        _warSort: r.warSort, _warPSort: r.warPSort,
+        _fv: r.fv,
         _bestPos: bestPos };
     };
 
@@ -191,8 +195,9 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
       ...datedData,
       hitters: enrichedHitters.map(addIntGrade),
       pitchers: enrichedPitchers.map(addIntGrade),
+      meta: { ...(datedData.meta || {}), ...(dashMeta || {}) },
     };
-  }, [datedData, curveSettings]);
+  }, [datedData, curveSettings, dashMeta]);
 
   const strength = useMemo(() => calcPositionalStrength(enrichedData.hitters, enrichedData.pitchers, enrichedData.teams), [enrichedData]);
 
@@ -267,7 +272,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
           {activePage === "org" && myTeam && <OrgView data={enrichedData} team={myTeam} strength={strength} strengthMode={strengthMode} setStrengthMode={setStrengthMode} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "players" && <PlayersView data={enrichedData} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "fa" && myTeam && <FreeAgentFinder data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
-          {activePage === "draft" && myTeam && <DraftBoard data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
+          {activePage === "draft" && myTeam && <DraftBoard data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onUpdateLeagueSettings={handleUpdateLeagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "iafa" && <IAFABoard data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "dev" && <DevAnalysisView data={enrichedData} curveSettings={curveSettings} updateCurveSettings={updateCurveSettings} />}
           {activePage === "scout" && myTeam && <ScoutView data={enrichedData} myTeam={myTeam} strength={strength} strengthMode={strengthMode} setStrengthMode={setStrengthMode} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
