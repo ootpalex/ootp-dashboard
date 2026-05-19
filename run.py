@@ -481,8 +481,12 @@ def main() -> int:
     proc = start_dev_server(npm)
     try:
         if wait_for_port("127.0.0.1", DEV_PORT, timeout=15):
-            url = f"http://localhost:{DEV_PORT}"
-            print(green(f"\n  Dashboard ready at {bold(url)}"))
+            base_url = f"http://localhost:{DEV_PORT}"
+            # Pass ?league=<slug> so the SPA opens to the league we just
+            # built/selected, not whatever was last persisted in the browser.
+            from urllib.parse import quote
+            url = f"{base_url}/?league={quote(slug)}"
+            print(green(f"\n  Dashboard ready at {bold(base_url)}"))
             if not args.no_browser:
                 webbrowser.open(url)
         else:

@@ -22,6 +22,25 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Read the optional ?league=<slug> URL parameter (used by `run.py` to open
+// the browser already pointed at the league that was just built). Strips
+// the param from the URL after reading so a manual refresh doesn't force
+// the override on every reload.
+function readLeagueFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get("league");
+    if (!slug) return null;
+    params.delete("league");
+    const rest = params.toString();
+    const newUrl = window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash;
+    window.history.replaceState({}, "", newUrl);
+    return slug;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [rawData, setRawData] = useState(null);
   const [platoonSplits, setPlatoonSplits] = useState(null);
@@ -29,6 +48,8 @@ export default function App() {
   const [leagues, setLeagues] = useState([]);
   const [currentLeague, setCurrentLeague] = useLocalStorage("ssb_current_league", null);
   const initSettings = useMemo(() => loadLeagueSettings(), []);
+  // URL param wins on first mount — captured before the auto-load effect runs.
+  const urlLeague = useMemo(() => readLeagueFromUrl(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,7 +73,15 @@ export default function App() {
 
         if (leaguesList.length > 0) {
           const slugs = leaguesList.map((l) => l.slug);
-          activeSlug = slugs.includes(currentLeague) ? currentLeague : slugs[0];
+          // Priority: ?league= URL param (set by run.py) > persisted choice >
+          // first league in the index.
+          if (urlLeague && slugs.includes(urlLeague)) {
+            activeSlug = urlLeague;
+          } else if (slugs.includes(currentLeague)) {
+            activeSlug = currentLeague;
+          } else {
+            activeSlug = slugs[0];
+          }
           if (activeSlug !== currentLeague && !cancelled) {
             // Persist the resolved slug so reloads stay in sync.
             setCurrentLeague(activeSlug);
@@ -82,7 +111,7 @@ export default function App() {
     }
     autoLoad();
     return () => { cancelled = true; };
-  }, [currentLeague]);
+  }, [currentLeague, urlLeague]);
 
   if (rawData) {
     return (

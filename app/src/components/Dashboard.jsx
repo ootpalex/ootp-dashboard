@@ -34,6 +34,17 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
   const [showSettings, setShowSettings] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
 
+  // `loadLeagueSettings` runs once via the lazy useState initializer above.
+  // When the user switches leagues, the slug in localStorage changes but the
+  // settings state would stay pinned to the previous league's values —
+  // re-read from the new league's scope whenever `currentLeague` changes.
+  // Also closes the settings modal so an in-progress edit doesn't leak from
+  // one league into another.
+  useEffect(() => {
+    setLeagueSettings(loadLeagueSettings());
+    setShowSettings(false);
+  }, [currentLeague]);
+
   // Auto-detect excluded teams from raw data
   const autoExcluded = useMemo(() => detectExcludedTeams([...rawHitters, ...rawPitchers]), [rawHitters, rawPitchers]);
   const allRawTeams = useMemo(() => {
@@ -86,6 +97,22 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [myTeam, setMyTeam] = useScopedLocalStorage("ssb_my_team", "");
   const [gameDate, setGameDate] = useScopedLocalStorage("ssb_game_date", dashMeta?.gameDate || "");
+
+  // The pipeline pulls the current in-game date from StatsPlus and ships it
+  // in `dashMeta.gameDate`. Treat that as authoritative — whenever a fresh
+  // dashboard arrives with a newer game date than what's persisted, sync to
+  // it (and persist via the setter so it sticks across league switches).
+  // The user can still override via the sidebar input afterwards; the next
+  // pipeline run will overwrite again.
+  useEffect(() => {
+    const fresh = dashMeta?.gameDate;
+    if (fresh && fresh !== gameDate) {
+      setGameDate(fresh);
+    }
+    // We intentionally do NOT depend on `gameDate` here — that would cause
+    // every user edit to be reverted to dashMeta.gameDate on the next render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashMeta?.gameDate]);
   const [strengthMode, setStrengthMode] = useState("current");
   const [curveSettings, setCurveSettings] = useState(() => {
     // Bumped on each defaults change so prior auto-saved blobs reset cleanly.

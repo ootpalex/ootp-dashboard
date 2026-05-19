@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import * as Papa from "papaparse";
 import { S } from "../theme.js";
 import { posColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle, zToColor } from "../theme.js";
@@ -9,6 +9,27 @@ import { calcOrgNeed } from "../utils/strength.js";
 import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
 import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+import { useScopedLocalStorage } from "../hooks/useLocalStorage.js";
+
+// JSON serialize/deserialize options for useScopedLocalStorage. Handles any
+// JSON-safe value (objects, arrays, numbers, booleans, null).
+const JSON_OPTS = { serialize: JSON.stringify, deserialize: JSON.parse };
+
+// Default toggle state for a fresh league.
+const DEFAULT_TOGGLES = {
+  orgNeed: false,
+  devAdj: false,
+  posCaps: false,
+  signability: false,
+  injury: false,
+  intangibles: false,
+};
+const DEFAULT_TOTAL_PICKS = 25;
+const defaultCaps = (totalPicks) => {
+  const c = {};
+  CAP_GROUPS.forEach((g) => { c[g.id] = Math.max(1, Math.ceil(g.pct * totalPicks)); });
+  return c;
+};
 
 async function fetchDraftData(statsplusBase) {
   try {
@@ -24,44 +45,56 @@ async function fetchDraftData(statsplusBase) {
 }
 
 function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onUpdateLeagueSettings, onSelectPlayer }) {
-  const [draftedPlayers, setDraftedPlayers] = useState([]);
+  // --- Persisted, per-league state ----------------------------------------
+  // The user expects everything they tune on this page (toggles, caps, total
+  // picks, the most-recent API pull, manual picks, the draft class) to stick
+  // across reloads and league switches.
+  const [draftedPlayers, setDraftedPlayers] = useScopedLocalStorage("ssb_draft_drafted", [], JSON_OPTS);
+  const [lastFetch, setLastFetch] = useScopedLocalStorage("ssb_draft_last_fetch", null, JSON_OPTS);
+  const [toggles, setToggles] = useScopedLocalStorage("ssb_draft_toggles", DEFAULT_TOGGLES, JSON_OPTS);
+  const [totalPicks, setTotalPicks] = useScopedLocalStorage("ssb_draft_total_picks", DEFAULT_TOTAL_PICKS, JSON_OPTS);
+  const [caps, setCaps] = useScopedLocalStorage("ssb_draft_caps", defaultCaps(DEFAULT_TOTAL_PICKS), JSON_OPTS);
+  const [myManualPicks, setMyManualPicks] = useScopedLocalStorage("ssb_draft_my_picks", [], JSON_OPTS);
+  const [posFilter, setPosFilter] = useScopedLocalStorage("ssb_draft_pos_filter", [], JSON_OPTS);
+  const [sort, setSort] = useScopedLocalStorage("ssb_draft_sort", { col: "_rank", dir: "desc" }, JSON_OPTS);
+
+  // --- Transient UI state (does not persist) ------------------------------
   const [apiError, setApiError] = useState(null);
   const [apiLoading, setApiLoading] = useState(false);
-  const [lastFetch, setLastFetch] = useState(null);
   const [manualCSV, setManualCSV] = useState("");
   const [showManual, setShowManual] = useState(false);
-  const [toggles, setToggles] = useState({
-    orgNeed: false,
-    devAdj: false,
-    posCaps: false,
-    signability: false,
-    injury: false,
-    intangibles: false,
-  });
-  const setToggle = (key) => setToggles((t) => ({ ...t, [key]: !t[key] }));
-  const [totalPicks, setTotalPicks] = useState(25);
-  // Caps use Math.ceil so fractional percentages round UP — gives a bit more
-  // breathing room, especially in shorter drafts (20 rounds × 12% = 2.4 → 3,
-  // not 2). Caps are soft ceilings via the penalty system, so generous
-  // defaults are fine.
-  const [caps, setCaps] = useState(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.ceil(g.pct * 25); }); return c; });
-  const resetCapsToProportions = () => setCaps(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.max(1, Math.ceil(g.pct * totalPicks)); }); return c; });
-  useEffect(() => { setCaps(() => { const c = {}; CAP_GROUPS.forEach((g) => { c[g.id] = Math.max(1, Math.ceil(g.pct * totalPicks)); }); return c; }); }, [totalPicks]);
   const [search, setSearch] = useState("");
-  const [posFilter, setPosFilter] = useState([]);
-  const [sort, setSort] = useState({ col: "_rank", dir: "desc" });
   const [page, setPage] = useState(0);
 
-  // Draft demands (page-level controls mirror leagueSettings)
+  const setToggle = (key) => setToggles((t) => ({ ...t, [key]: !t[key] }));
+
+  // Recompute caps from CAP_GROUPS proportions whenever totalPicks changes —
+  // but skip the very first render so persisted user-tuned caps aren't
+  // clobbered on mount.
+  const isFirstTotalPicksRender = useRef(true);
+  useEffect(() => {
+    if (isFirstTotalPicksRender.current) {
+      isFirstTotalPicksRender.current = false;
+      return;
+    }
+    setCaps(defaultCaps(totalPicks));
+  }, [totalPicks, setCaps]);
+  const resetCapsToProportions = () => setCaps(defaultCaps(totalPicks));
+
+  // Draft demands (page-level controls mirror leagueSettings — already
+  // per-league via the league_settings localStorage key).
   const demandsOn = leagueSettings?.draftDemands || false;
   const budget = leagueSettings?.draftBudget || 0;
-  const [showDraftSettings, setShowDraftSettings] = useState(() => demandsOn);
+  const [showDraftSettings, setShowDraftSettings] = useScopedLocalStorage(
+    "ssb_draft_settings_open",
+    demandsOn,
+    JSON_OPTS,
+  );
   const updateLeagueField = (key, value) => {
     if (typeof onUpdateLeagueSettings === "function") onUpdateLeagueSettings({ [key]: value });
   };
 
-  // Manual "I Drafted" tracking
-  const [myManualPicks, setMyManualPicks] = useState([]);
+  // Manual "I Drafted" helpers
   const addManualPick = (player) => setMyManualPicks((prev) => [...prev, player]);
   const removeManualPick = (id) => setMyManualPicks((prev) => prev.filter((p) => p.ID !== id));
 
@@ -77,15 +110,29 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
     return [...classes].sort();
   }, [data]);
 
-  const [selectedClass, setSelectedClass] = useState(() => draftClasses[0] || "");
-  useEffect(() => { if (!selectedClass && draftClasses.length > 0) setSelectedClass(draftClasses[0]); }, [draftClasses]);
+  // Persist the active draft class. On mount we may have a remembered class
+  // that no longer exists in the current data (e.g. league advanced a year);
+  // fall back to draftClasses[0] in that case.
+  const [selectedClass, setSelectedClass] = useScopedLocalStorage("ssb_draft_class", "", { serialize: (v) => v ?? "", deserialize: (s) => s ?? "" });
+  useEffect(() => {
+    if (draftClasses.length === 0) return;
+    if (selectedClass === "__ALL__") return;
+    if (!selectedClass || !draftClasses.includes(selectedClass)) {
+      setSelectedClass(draftClasses[0]);
+    }
+  }, [draftClasses, selectedClass, setSelectedClass]);
 
   const fetchDraft = useCallback(async () => {
     setApiLoading(true); setApiError(null);
     const { data: d, error } = await fetchDraftData(getStatsplusBase(leagueSettings));
-    if (error) { setApiError(error); } else if (d) { setDraftedPlayers(d); setLastFetch(new Date()); }
+    if (error) {
+      setApiError(error);
+    } else if (d) {
+      setDraftedPlayers(d);
+      setLastFetch(new Date().toISOString());
+    }
     setApiLoading(false);
-  }, [leagueSettings]);
+  }, [leagueSettings, setDraftedPlayers, setLastFetch]);
 
   const handleManualPaste = () => {
     try {
@@ -93,7 +140,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
       if (parsed.data.length === 0) { setApiError("No data rows found in pasted CSV"); return; }
       const hasId = parsed.data[0].ID != null || parsed.data[0].id != null;
       if (!hasId) { setApiError("CSV must have an ID column to match players"); return; }
-      setDraftedPlayers(parsed.data); setLastFetch(new Date()); setApiError(null); setShowManual(false);
+      setDraftedPlayers(parsed.data); setLastFetch(new Date().toISOString()); setApiError(null); setShowManual(false);
     } catch { setApiError("Failed to parse pasted data"); }
   };
 
@@ -203,7 +250,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
           <span>Drafted: <strong style={{ color: "#e2e8f0" }}>{draftedPlayers.length}</strong></span>
           <span>Available: <strong style={{ color: "#e2e8f0" }}>{availablePool.length}</strong></span>
           <span>My picks: <strong style={{ color: "#e2e8f0" }}>{allMyPicks.length}</strong></span>
-          {lastFetch && <span>Updated: {lastFetch.toLocaleTimeString()}</span>}
+          {lastFetch && <span>Updated: {new Date(lastFetch).toLocaleString()}</span>}
         </div>
       </Section>
 
