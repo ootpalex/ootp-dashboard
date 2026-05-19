@@ -23,10 +23,12 @@ class ErrorBoundary extends Component {
 }
 
 // Read the optional ?league=<slug> URL parameter (used by `run.py` to open
-// the browser already pointed at the league that was just built). Strips
-// the param from the URL after reading so a manual refresh doesn't force
-// the override on every reload.
-function readLeagueFromUrl() {
+// the browser already pointed at the league that was just built). Runs
+// exactly once at module load — BEFORE React's StrictMode double-mount can
+// re-invoke a useMemo factory and clobber the captured value by stripping
+// the URL on the first call and reading null on the second.
+const URL_LEAGUE_PARAM = (() => {
+  if (typeof window === "undefined") return null;
   try {
     const params = new URLSearchParams(window.location.search);
     const slug = params.get("league");
@@ -39,7 +41,7 @@ function readLeagueFromUrl() {
   } catch {
     return null;
   }
-}
+})();
 
 export default function App() {
   const [rawData, setRawData] = useState(null);
@@ -48,8 +50,8 @@ export default function App() {
   const [leagues, setLeagues] = useState([]);
   const [currentLeague, setCurrentLeague] = useLocalStorage("ssb_current_league", null);
   const initSettings = useMemo(() => loadLeagueSettings(), []);
-  // URL param wins on first mount — captured before the auto-load effect runs.
-  const urlLeague = useMemo(() => readLeagueFromUrl(), []);
+  // Captured once at module load — see the IIFE above.
+  const urlLeague = URL_LEAGUE_PARAM;
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +113,7 @@ export default function App() {
     }
     autoLoad();
     return () => { cancelled = true; };
-  }, [currentLeague, urlLeague]);
+  }, [currentLeague]);
 
   if (rawData) {
     return (
