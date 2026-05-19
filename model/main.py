@@ -411,7 +411,11 @@ def main() -> None:
     # Run pipeline
     try:
         t0 = time.time()
-        result = build_dashboard(settings, player_dir, ballpark_path, metadata_dir, contracts, salary_reports, players_extra)
+        result = build_dashboard(
+            settings, player_dir, ballpark_path, metadata_dir,
+            contracts, salary_reports, players_extra,
+            statsplus_game_date=current_date if statsplus_url else None,
+        )
         elapsed = time.time() - t0
     except FileNotFoundError as e:
         print(f"Error: missing file — {e}", file=sys.stderr)

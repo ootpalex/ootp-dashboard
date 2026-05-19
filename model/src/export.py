@@ -1489,6 +1489,7 @@ def build_dashboard(
     contracts: dict | None = None,
     salary_reports: dict | None = None,
     players_extra: dict | None = None,
+    statsplus_game_date: str | None = None,
 ) -> dict:
     """Full pipeline: load → compute → build JSON dict.
 
@@ -1637,8 +1638,9 @@ def build_dashboard(
     if contracts:
         from src.statsplus import contract_to_json
 
-    # Game-date derived projection inputs
-    game_date_str = _detect_game_date(players)
+    # Game-date derived projection inputs. Prefer the live StatsPlus date
+    # over the CSV's "Sct" column (which lags the actual in-game date).
+    game_date_str = statsplus_game_date or _detect_game_date(players)
     if game_date_str:
         game_dt = datetime.strptime(game_date_str, "%Y-%m-%d")
     else:
@@ -1818,7 +1820,11 @@ def build_dashboard(
         },
         "meta": {
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
-            "gameDate": _detect_game_date(players),
+            # Prefer the live StatsPlus date over the CSV's "Sct" column —
+            # CSVs are exported once per scouting cycle, so their date lags
+            # the actual in-game date. Fall back to CSV detection only when
+            # StatsPlus is unconfigured or unreachable.
+            "gameDate": statsplus_game_date or _detect_game_date(players),
             "settings": {
                 "team": settings.team,
                 "parkFactorMode": settings.park_factor_mode,
