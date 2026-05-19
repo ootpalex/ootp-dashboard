@@ -1,4 +1,4 @@
-// Shared bandwidth slider+save controls used by Gap & WAA percentile charts.
+// Shared bandwidth slider+save controls used by Gap & WAR percentile charts.
 import { S } from "../../theme.js";
 import { NumInput } from "../../components/shared.jsx";
 import { bwToSlider, sliderToBw } from "./_shared.js";

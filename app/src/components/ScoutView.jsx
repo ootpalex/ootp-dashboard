@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { S } from "../theme.js";
-import { posColor, levelColor, proneColor, waaStyle, devPctColor, zToColor } from "../theme.js";
+import { posColor, levelColor, proneColor, warStyle, devPctColor, zToColor } from "../theme.js";
 import { fmt, fmtAge, toRosterRow, sortRosterRows, rankSuffix, paginateRows } from "../utils/helpers.js";
 import { ALL_DISPLAY_POS, POT_DISPLAY_POS, PER_PAGE } from "../utils/constants.js";
 import { passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
@@ -11,7 +11,7 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
   const [scoutTeam, setScoutTeam] = useState(() => data.teams.find((t) => t !== myTeam) || data.teams[0]);
   const [rosterLevel, setRosterLevel] = useState([]);
   const [posFilter, setPosFilter] = useState([]);
-  const [rosterSort, setRosterSort] = useState({ col: "waa", dir: "desc" });
+  const [rosterSort, setRosterSort] = useState({ col: "war", dir: "desc" });
   const [page, setPage] = useState(0);
 
   const mode = strengthMode;
@@ -49,7 +49,7 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
   const roster = useMemo(() => {
     let players = baseRosterRows.map((p) => {
       const need = orgNeed[p.pos] ?? 0;
-      const fit = (p.waa != null && p.waa > 0 && need > 0) ? p.waa * (1 + need) : null;
+      const fit = (p.war != null && p.war > 0 && need > 0) ? p.war * (1 + need) : null;
       return { ...p, fit };
     });
     if (posFilter.length > 0) players = players.filter((p) => passesPositionFilter(p._original, posFilter));
@@ -63,8 +63,8 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
   const tradeTargets = useMemo(() => {
     const weakPos = new Set(positions.filter((pos) => (myZ[pos] ?? 0) < 0));
     return baseRosterRows
-      .filter((p) => weakPos.has(p.pos) && p.waa != null && p.waa > 0)
-      .map((p) => ({ ...p, fit: p.waa * (1 + (orgNeed[p.pos] ?? 0)) }))
+      .filter((p) => weakPos.has(p.pos) && p.war != null && p.war > 0)
+      .map((p) => ({ ...p, fit: p.war * (1 + (orgNeed[p.pos] ?? 0)) }))
       .sort((a, b) => b.fit - a.fit);
   }, [baseRosterRows, positions, myZ, orgNeed]);
 
@@ -131,22 +131,22 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
           <div style={S.tableWrap}>
             <table style={S.table}>
               <thead><tr>
-                {[{ k: "fit", l: "Fit", w: 65 }, { k: "name", l: "Name", w: 170 }, { k: "pos", l: "POS", w: 48 }, { k: "bestPos", l: "Best", w: 48 }, { k: "age", l: "Age", w: 50 }, { k: "level", l: "Lvl", w: 45 }, { k: "waa", l: "WAA", w: 65 }, { k: "waaP", l: "WAA P", w: 65 }, { k: "prone", l: "Prone", w: 65 }].map(({ k, l, w }) => (
+                {[{ k: "fit", l: "Fit", w: 65 }, { k: "name", l: "Name", w: 170 }, { k: "pos", l: "POS", w: 48 }, { k: "bestPos", l: "Best", w: 48 }, { k: "age", l: "Age", w: 50 }, { k: "level", l: "Lvl", w: 45 }, { k: "war", l: "WAR", w: 65 }, { k: "warP", l: "WAR P", w: 65 }, { k: "prone", l: "Prone", w: 65 }].map(({ k, l, w }) => (
                   <th key={k} style={{ ...S.th, width: w }}>{l}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {tradeTargets.slice(0, 30).map((p, i) => (
                   <tr key={p.id + "-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
-                    <td style={{ ...S.td, ...waaStyle(p.fit), fontWeight: 700 }}>{fmt(p.fit)}</td>
+                    <td style={{ ...S.td, ...warStyle(p.fit), fontWeight: 700 }}>{fmt(p.fit)}</td>
                     <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", cursor: "pointer" }}
                         onClick={() => onSelectPlayer?.(p._original || p)}>{p.name}<TwoWayBadge player={p} /></td>
                     <td style={{ ...S.td, color: posColor(p.pos) }}>{p.pos}</td>
                     <td style={{ ...S.td, color: posColor((p.bestPos || "").replace("*", "")) }}>{p.bestPos || "—"}</td>
                     <td style={S.td}>{fmtAge(p.age)}</td>
                     <td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>
-                    <td style={{ ...S.td, ...waaStyle(p.waa) }}>{fmt(p.waa)}</td>
-                    <td style={{ ...S.td, ...waaStyle(p.waaP) }}>{fmt(p.waaP)}</td>
+                    <td style={{ ...S.td, ...warStyle(p.war) }}>{fmt(p.war)}</td>
+                    <td style={{ ...S.td, ...warStyle(p.warP) }}>{fmt(p.warP)}</td>
                     <td style={{ ...S.td, color: proneColor(p.prone) }}>{p.prone || "—"}</td>
                   </tr>
                 ))}
@@ -164,7 +164,7 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
         <div style={S.tableWrap}>
           <table style={S.table}>
             <thead><tr>
-              {[{ key: "name", label: "Name", w: 170 }, { key: "age", label: "Age", w: 50 }, { key: "pos", label: "POS", w: 50 }, { key: "bestPos", label: "Best", w: 50 }, { key: "bt", label: "B/T", w: 50 }, { key: "level", label: "Level", w: 55 }, { key: "on40", label: "40M", w: 45 }, { key: "fv", label: "FV", w: 60 }, { key: "waa", label: "WAA", w: 65 }, { key: "waaP", label: "WAA P", w: 65 }, { key: "devPct", label: "Dev%", w: 48 }, { key: "prone", label: "Prone", w: 65 }, { key: "fit", label: "Fit", w: 60 }, { key: "price", label: "Salary", w: 85 }].map(({ key, label, w }) => <SortHeader key={key} label={label} width={w} sortCol={rosterSort.col} sortDir={rosterSort.dir} colKey={key} onClick={() => toggleSort(key)} />)}
+              {[{ key: "name", label: "Name", w: 170 }, { key: "age", label: "Age", w: 50 }, { key: "pos", label: "POS", w: 50 }, { key: "bestPos", label: "Best", w: 50 }, { key: "bt", label: "B/T", w: 50 }, { key: "level", label: "Level", w: 55 }, { key: "on40", label: "40M", w: 45 }, { key: "fv", label: "FV", w: 60 }, { key: "war", label: "WAR", w: 65 }, { key: "warP", label: "WAR P", w: 65 }, { key: "devPct", label: "Dev%", w: 48 }, { key: "prone", label: "Prone", w: 65 }, { key: "fit", label: "Fit", w: 60 }, { key: "price", label: "Salary", w: 85 }].map(({ key, label, w }) => <SortHeader key={key} label={label} width={w} sortCol={rosterSort.col} sortDir={rosterSort.dir} colKey={key} onClick={() => toggleSort(key)} />)}
             </tr></thead>
             <tbody>
               {paged.map((p, i) => (
@@ -177,12 +177,12 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
                   <td style={S.td}>{p.bt}</td>
                   <td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>
                   <td style={S.td}>{p.on40 === "Yes" ? "✓" : ""}</td>
-                  <td style={{ ...S.td, ...waaStyle(p.fv) }}>{fmt(p.fv)}</td>
-                  <td style={{ ...S.td, ...waaStyle(p.waa) }}>{fmt(p.waa)}</td>
-                  <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : waaStyle(p.waaP)) }}>{p.matured ? "—" : fmt(p.waaP)}</td>
+                  <td style={{ ...S.td, ...warStyle(p.fv) }}>{fmt(p.fv)}</td>
+                  <td style={{ ...S.td, ...warStyle(p.war) }}>{fmt(p.war)}</td>
+                  <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : warStyle(p.warP)) }}>{p.matured ? "—" : fmt(p.warP)}</td>
                   <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? Math.round(p.devPct * 100) + "th" : "—"}</td>
                   <td style={{ ...S.td, color: proneColor(p.prone) }}>{p.prone || "—"}</td>
-                  <td style={{ ...S.td, ...waaStyle(p.fit), fontWeight: p.fit != null ? 700 : 400 }}>{p.fit != null ? fmt(p.fit) : ""}</td>
+                  <td style={{ ...S.td, ...warStyle(p.fit), fontWeight: p.fit != null ? 700 : 400 }}>{p.fit != null ? fmt(p.fit) : ""}</td>
                   <td style={{ ...S.td, color: "#94a3b8" }}>{p.price != null ? "$" + p.price.toLocaleString() : "—"}</td>
                 </tr>
               ))}

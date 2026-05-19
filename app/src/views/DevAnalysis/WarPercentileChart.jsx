@@ -1,18 +1,18 @@
-// Current-WAA percentile bands by age.
+// Current-WAR percentile bands by age.
 import { memo } from "react";
 import { ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, Legend, ReferenceLine, Area } from "recharts";
 import { Section } from "../../components/shared.jsx";
 import { BandwidthControl } from "./BandwidthControl.jsx";
 
-export const WaaPercentileChart = memo(function WaaPercentileChart({
-  waaPercentileData, minAge, maxAge,
+export const WarPercentileChart = memo(function WarPercentileChart({
+  warPercentileData, minAge, maxAge,
   localBandwidth, handleBandwidthChange, savedBandwidth,
   bandwidthDirty, saveBandwidth, resetBandwidth,
 }) {
   return (
-    <Section title="DevPercentile Distribution (Current WAA by Age)">
+    <Section title="DevPercentile Distribution (Current WAR by Age)">
       <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-        Current WAA percentile bands by age. Shows what WAA a player at each dev percentile has at each age. Inner band = 25th-75th, outer = 10th-90th. Dashed lines = 95th and 99th.
+        Current WAR percentile bands by age. Shows what WAR a player at each dev percentile has at each age. Inner band = 25th-75th, outer = 10th-90th. Dashed lines = 95th and 99th.
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <BandwidthControl
@@ -26,12 +26,12 @@ export const WaaPercentileChart = memo(function WaaPercentileChart({
           useNumInput
         />
       </div>
-      {waaPercentileData.length > 0 ? (
+      {warPercentileData.length > 0 ? (
         <ResponsiveContainer width="100%" height={400}>
-          <ComposedChart data={waaPercentileData} margin={{ top: 10, right: 20, bottom: 30, left: 10 }}>
+          <ComposedChart data={warPercentileData} margin={{ top: 10, right: 20, bottom: 30, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
             <XAxis dataKey="age" type="number" domain={[minAge, maxAge]} ticks={Array.from({ length: Math.ceil((maxAge - minAge) / 2) + 1 }, (_, i) => minAge + i * 2).filter(t => t <= maxAge)} tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "Age", position: "insideBottom", offset: -5, fill: "#64748b", fontSize: 11 }} />
-            <YAxis tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "Current WAA", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }} />
+            <YAxis tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "Current WAR", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }} />
             <Tooltip
               content={({ active, payload }) => {
                 if (!active || !payload || !payload.length) return null;

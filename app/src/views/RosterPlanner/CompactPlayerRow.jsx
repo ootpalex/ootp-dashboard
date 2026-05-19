@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { posColor, waaStyle, devPctColor } from "../../theme.js";
+import { posColor, warStyle, devPctColor } from "../../theme.js";
 import { fmt, fmtAge, fmtSalary } from "../../utils/helpers.js";
 import { isEligible, isCurrentlyEligible } from "../../utils/accessors.js";
 
@@ -17,7 +17,7 @@ export function CompactRowHeader() {
       <span style={th}>POS</span>
       <span style={th}>NAME</span>
       <span style={th}>AGE</span>
-      <span style={{ ...th, textAlign: "right" }}>WAA</span>
+      <span style={{ ...th, textAlign: "right" }}>WAR</span>
       <span style={{ ...th, textAlign: "right" }}>POT</span>
       <span style={{ ...th, textAlign: "right" }}>DEV%</span>
       <span style={{ ...th, textAlign: "right" }}>FV</span>
@@ -91,12 +91,12 @@ export const CompactPlayerRow = memo(function CompactPlayerRow({ player, onSelec
         {meta.name || "?"}
       </span>
       <span style={{ color: "#94a3b8" }}>{fmtAge(player._age)}</span>
-      <span style={{ textAlign: "right", ...waaStyle(player._waa) }}>{fmt(player._waa, 1)}</span>
-      <span style={{ textAlign: "right", ...waaStyle(player._waaP) }}>{fmt(player._waaP, 1)}</span>
+      <span style={{ textAlign: "right", ...warStyle(player._war) }}>{fmt(player._war, 1)}</span>
+      <span style={{ textAlign: "right", ...warStyle(player._warP) }}>{fmt(player._warP, 1)}</span>
       <span style={{ textAlign: "right", fontWeight: 600, color: devPctInt != null ? devPctColor(devPctInt) : "#475569" }}>
         {devPctInt != null ? `${devPctInt}` : "—"}
       </span>
-      <span style={{ textAlign: "right", ...waaStyle(player._fv) }}>{fmt(player._fv, 1)}</span>
+      <span style={{ textAlign: "right", ...warStyle(player._fv) }}>{fmt(player._fv, 1)}</span>
       <span style={{
         fontSize: 10, textAlign: "right", fontWeight: 600,
         color: salaryLabel ? (isNonGuaranteed ? "#fbbf24" : "#cbd5e1") : "#475569",

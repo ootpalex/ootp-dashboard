@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { gradeToColor, posColor, waaStyle } from "../../theme.js";
+import { gradeToColor, posColor, warStyle } from "../../theme.js";
 import { num, fmt } from "../../utils/helpers.js";
 import { isEligible, getPosRating, getPosPotential } from "../../utils/accessors.js";
 
@@ -64,7 +64,7 @@ function fmtRunVal(v) {
   return (v >= 0 ? "+" : "") + v.toFixed(1);
 }
 
-function fmtWaa(v) {
+function fmtWar(v) {
   if (v == null || isNaN(v)) return "—";
   return (v >= 0 ? "+" : "") + v.toFixed(2);
 }
@@ -82,15 +82,15 @@ function PositionCard({ player, pos, isBest, matured }) {
   const posKey = pos.toLowerCase();
   const posDict = player.positions?.[posKey] ?? {};
   const stats = posDict.stats ?? {};
-  const waaWtd = num(posDict.waa?.wtd);
-  const waaVR  = num(posDict.waa?.vR);
-  const waaVL  = num(posDict.waa?.vL);
-  const waaPot = num(player.prospect?.waa?.[posKey]);
+  const warWtd = num(posDict.war?.wtd);
+  const warVR  = num(posDict.war?.vR);
+  const warVL  = num(posDict.war?.vL);
+  const warPot = num(player.prospect?.war?.[posKey]);
   const ratingCur = num(getPosRating(player, pos));
   const ratingPot = num(getPosPotential(player, pos));
   const runsP = num(stats.runsP);
   const components = COMPONENT_DEFS[pos] ?? [];
-  const showWaaPot = !matured && waaPot != null && waaPot !== waaWtd;
+  const showWarPot = !matured && warPot != null && warPot !== warWtd;
   const showRatingPot = !matured && ratingPot != null && ratingPot !== ratingCur;
 
   return (
@@ -103,28 +103,28 @@ function PositionCard({ player, pos, isBest, matured }) {
       flexDirection: "column",
       gap: 6,
     }}>
-      {/* Header: position + WAA */}
+      {/* Header: position + WAR */}
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: posColor(pos), letterSpacing: 1 }}>
             {pos}{isBest ? " ★" : ""}
           </span>
           <span style={{ fontSize: 9, color: "#475569", letterSpacing: 1, textTransform: "uppercase" }}>
-            WAA wtd
+            WAR wtd
           </span>
-          <span style={{ fontSize: 15, fontWeight: 700, ...waaStyle(waaWtd) }}>{fmtWaa(waaWtd)}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, ...warStyle(warWtd) }}>{fmtWar(warWtd)}</span>
         </div>
-        {showWaaPot && <PotChip value={waaPot} valueFmt={fmtWaa} />}
+        {showWarPot && <PotChip value={warPot} valueFmt={fmtWar} />}
       </div>
 
       {/* Splits row */}
-      {(waaVL != null || waaVR != null) && (
+      {(warVL != null || warVR != null) && (
         <div style={{ display: "flex", gap: 14, fontSize: 12, color: "#cbd5e1", flexWrap: "wrap" }}>
-          {waaVL != null && (
-            <span><span style={{ color: "#64748b", fontSize: 10 }}>vL </span><span style={{ ...waaStyle(waaVL), fontWeight: 700 }}>{fmtWaa(waaVL)}</span></span>
+          {warVL != null && (
+            <span><span style={{ color: "#64748b", fontSize: 10 }}>vL </span><span style={{ ...warStyle(warVL), fontWeight: 700 }}>{fmtWar(warVL)}</span></span>
           )}
-          {waaVR != null && (
-            <span><span style={{ color: "#64748b", fontSize: 10 }}>vR </span><span style={{ ...waaStyle(waaVR), fontWeight: 700 }}>{fmtWaa(waaVR)}</span></span>
+          {warVR != null && (
+            <span><span style={{ color: "#64748b", fontSize: 10 }}>vR </span><span style={{ ...warStyle(warVR), fontWeight: 700 }}>{fmtWar(warVR)}</span></span>
           )}
         </div>
       )}
@@ -146,7 +146,7 @@ function PositionCard({ player, pos, isBest, matured }) {
             const display = c.fmt(num(v));
             const isRunVal = c.fmt === fmtRunVal;
             const numericVal = num(v);
-            const colorStyle = isRunVal ? waaStyle(numericVal) : { color: "#cbd5e1" };
+            const colorStyle = isRunVal ? warStyle(numericVal) : { color: "#cbd5e1" };
             return (
               <span key={c.key}>
                 <span style={{ color: "#64748b", fontSize: 10, marginRight: 3 }}>{c.label}</span>
@@ -157,7 +157,7 @@ function PositionCard({ player, pos, isBest, matured }) {
           {runsP != null && (
             <span style={{ marginLeft: "auto" }}>
               <span style={{ color: "#64748b", fontSize: 10, marginRight: 3 }}>RunsP</span>
-              <span style={{ ...waaStyle(runsP), fontWeight: 700 }}>{fmtRunVal(runsP)}</span>
+              <span style={{ ...warStyle(runsP), fontWeight: 700 }}>{fmtRunVal(runsP)}</span>
             </span>
           )}
         </div>

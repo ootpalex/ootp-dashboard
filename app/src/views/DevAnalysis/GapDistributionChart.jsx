@@ -16,7 +16,7 @@ export const GapDistributionChart = memo(function GapDistributionChart({
         Kernel-smoothed gap (Potential - Current, floored at 0) percentiles. Lower gap = more developed. Purple line = median. Inner band = 25th–75th. Outer band = 10th–90th.
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-        <label style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>Min Potential WAA:</label>
+        <label style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>Min Potential WAR:</label>
         <input type="number" step={0.5} value={gapMinPot} placeholder="All" onChange={(e) => setGapMinPot(e.target.value)}
           style={{ width: 64, background: "#0f172a", border: "1px solid #334155", borderRadius: 4, color: "#8b5cf6", fontSize: 12, fontWeight: 700, fontFamily: "inherit", textAlign: "center", padding: "2px 4px" }} />
         {gapShowingFiltered && <span style={{ fontSize: 10, color: "#8b5cf6" }}>showing {gapPlayerCount} players</span>}
@@ -35,7 +35,7 @@ export const GapDistributionChart = memo(function GapDistributionChart({
         <ComposedChart data={gapRegressionTrimmed} margin={{ top: 10, right: 20, bottom: 30, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
           <XAxis dataKey="age" type="number" domain={[minAge, gapChartMaxAge]} ticks={Array.from({ length: Math.ceil((gapChartMaxAge - minAge) / 2) + 1 }, (_, i) => minAge + i * 2).filter(t => t <= gapChartMaxAge)} tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "Age", position: "insideBottom", offset: -5, fill: "#64748b", fontSize: 11 }} />
-          <YAxis domain={[0, gapChartMaxY]} ticks={Array.from({ length: Math.floor(gapChartMaxY / 2) + 1 }, (_, i) => i * 2).filter(t => t <= gapChartMaxY)} tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "Gap (WAA)", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }} />
+          <YAxis domain={[0, gapChartMaxY]} ticks={Array.from({ length: Math.floor(gapChartMaxY / 2) + 1 }, (_, i) => i * 2).filter(t => t <= gapChartMaxY)} tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "Gap (WAR)", angle: -90, position: "insideLeft", fill: "#64748b", fontSize: 11 }} />
           <Tooltip
             content={({ active, payload }) => {
               if (!active || !payload || !payload.length) return null;

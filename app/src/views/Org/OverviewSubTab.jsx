@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { S, posColor, levelColor, proneColor, waaStyle, devPctColor, zToColor } from "../../theme.js";
+import { S, posColor, levelColor, proneColor, warStyle, devPctColor, zToColor } from "../../theme.js";
 import { fmt, fmtAge, paginateRows, toRosterRow, sortRosterRows, rankSuffix } from "../../utils/helpers.js";
 import { ALL_DISPLAY_POS, POT_DISPLAY_POS, DEPTH_N, DEPTH_N_POT, PER_PAGE } from "../../utils/constants.js";
 import { passesPositionFilter, passesLevelFilter } from "../../utils/accessors.js";
@@ -11,8 +11,8 @@ export default function OverviewSubTab({
   onSelectPlayer,
 }) {
   const [rosterLevel, setRosterLevel] = useState([]);
-  const [rosterSort, setRosterSort] = useState({ col: "waa", dir: "desc" });
-  const [prospectSort, setProspectSort] = useState({ col: "MAX WAA P", dir: "desc" });
+  const [rosterSort, setRosterSort] = useState({ col: "war", dir: "desc" });
+  const [prospectSort, setProspectSort] = useState({ col: "MAX WAR P", dir: "desc" });
   const [prospectPage, setProspectPage] = useState(0);
   const [posFilter, setPosFilter] = useState([]);
 
@@ -38,7 +38,7 @@ export default function OverviewSubTab({
     const h = teamHitters.filter((p) => p._age != null && p._age <= 25 && (p.meta?.lev ?? p.Lev) !== "MLB").map((p) => toRosterRow(p, "hitter"));
     const pi = teamPitchers.filter((p) => p._age != null && p._age <= 25 && (p.meta?.lev ?? p.Lev) !== "MLB").map((p) => toRosterRow(p, "pitcher"));
     let all = [...h, ...pi];
-    const PROSPECT_COL_MAP = { "MAX WAA P": (p) => p.waaP, "Max WAA wtd": (p) => p.waa, devPct: (p) => p.devPct, fv: (p) => p.fv };
+    const PROSPECT_COL_MAP = { "MAX WAR P": (p) => p.warP, "Max WAR wtd": (p) => p.war, devPct: (p) => p.devPct, fv: (p) => p.fv };
     sortRosterRows(all, prospectSort.col, prospectSort.dir, PROSPECT_COL_MAP);
     return all;
   }, [teamHitters, teamPitchers, prospectSort]);
@@ -73,7 +73,7 @@ export default function OverviewSubTab({
           <LevelFilter players={teamPlayersForFilter} value={rosterLevel} onChange={setRosterLevel} expandRookieTeams />
         </div>
         <div style={S.tableWrap}><table style={S.table}><thead><tr>
-          {[{ key: "name", label: "Name", w: 180 }, { key: "age", label: "Age", w: 50 }, { key: "pos", label: "POS", w: 50 }, { key: "bestPos", label: "Best", w: 50 }, { key: "bt", label: "B/T", w: 50 }, { key: "level", label: "Level", w: 55 }, { key: "on40", label: "40M", w: 45 }, { key: "fv", label: "FV", w: 60 }, { key: "waa", label: "WAA", w: 70 }, { key: "waaP", label: "WAA P", w: 70 }, { key: "devPct", label: "Dev%", w: 48 }, { key: "prone", label: "Prone", w: 70 }, { key: "price", label: "Salary", w: 90 }].map(({ key, label, w }) => <SortHeader key={key} label={label} width={w} sortCol={rosterSort.col} sortDir={rosterSort.dir} colKey={key} onClick={() => toggleSort(setRosterSort)(key)} />)}
+          {[{ key: "name", label: "Name", w: 180 }, { key: "age", label: "Age", w: 50 }, { key: "pos", label: "POS", w: 50 }, { key: "bestPos", label: "Best", w: 50 }, { key: "bt", label: "B/T", w: 50 }, { key: "level", label: "Level", w: 55 }, { key: "on40", label: "40M", w: 45 }, { key: "fv", label: "FV", w: 60 }, { key: "war", label: "WAR", w: 70 }, { key: "warP", label: "WAR P", w: 70 }, { key: "devPct", label: "Dev%", w: 48 }, { key: "prone", label: "Prone", w: 70 }, { key: "price", label: "Salary", w: 90 }].map(({ key, label, w }) => <SortHeader key={key} label={label} width={w} sortCol={rosterSort.col} sortDir={rosterSort.dir} colKey={key} onClick={() => toggleSort(setRosterSort)(key)} />)}
         </tr></thead><tbody>
           {roster.map((p, i) => (
             <tr key={p.id + "-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
@@ -83,9 +83,9 @@ export default function OverviewSubTab({
               <td style={{ ...S.td, color: posColor((p.bestPos || "").replace("*", "")) }}>{p.bestPos || "—"}</td>
               <td style={S.td}>{p.bt}</td><td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>
               <td style={S.td}>{p.on40 === "Yes" ? "✓" : ""}</td>
-              <td style={{ ...S.td, ...waaStyle(p.fv) }}>{fmt(p.fv)}</td>
-              <td style={{ ...S.td, ...waaStyle(p.waa) }}>{fmt(p.waa)}</td>
-              <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : waaStyle(p.waaP)) }}>{p.matured ? "—" : fmt(p.waaP)}</td>
+              <td style={{ ...S.td, ...warStyle(p.fv) }}>{fmt(p.fv)}</td>
+              <td style={{ ...S.td, ...warStyle(p.war) }}>{fmt(p.war)}</td>
+              <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : warStyle(p.warP)) }}>{p.matured ? "—" : fmt(p.warP)}</td>
               <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? Math.round(p.devPct * 100) + "th" : "—"}</td>
               <td style={{ ...S.td, color: proneColor(p.prone) }}>{p.prone}</td>
               <td style={{ ...S.td, color: "#94a3b8" }}>{p.price != null ? "$" + p.price.toLocaleString() : "—"}</td>
@@ -98,7 +98,7 @@ export default function OverviewSubTab({
 
       <Section title={`Prospect Watch (${prospects.length})`}>
         <div style={S.tableWrap}><table style={S.table}><thead><tr>
-          {[{ key: "name", label: "Name", w: 180 }, { key: "age", label: "Age", w: 50 }, { key: "devPct", label: "Dev%", w: 48 }, { key: "pos", label: "POS", w: 50 }, { key: "level", label: "Level", w: 55 }, { key: "fv", label: "FV", w: 60 }, { key: "Max WAA wtd", label: "Current", w: 80 }, { key: "MAX WAA P", label: "Potential", w: 80 }, { key: "prone", label: "Prone", w: 70 }].map(({ key, label, w }) => <SortHeader key={key} label={label} width={w} sortCol={prospectSort.col} sortDir={prospectSort.dir} colKey={key} onClick={() => toggleSort(setProspectSort)(key)} />)}
+          {[{ key: "name", label: "Name", w: 180 }, { key: "age", label: "Age", w: 50 }, { key: "devPct", label: "Dev%", w: 48 }, { key: "pos", label: "POS", w: 50 }, { key: "level", label: "Level", w: 55 }, { key: "fv", label: "FV", w: 60 }, { key: "Max WAR wtd", label: "Current", w: 80 }, { key: "MAX WAR P", label: "Potential", w: 80 }, { key: "prone", label: "Prone", w: 70 }].map(({ key, label, w }) => <SortHeader key={key} label={label} width={w} sortCol={prospectSort.col} sortDir={prospectSort.dir} colKey={key} onClick={() => toggleSort(setProspectSort)(key)} />)}
         </tr></thead><tbody>
           {paginateRows(prospects, prospectPage, PER_PAGE).paged.map((p, i) => (
             <tr key={p.id + "-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
@@ -108,9 +108,9 @@ export default function OverviewSubTab({
               <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? Math.round(p.devPct * 100) + "th" : "—"}</td>
               <td style={{ ...S.td, color: posColor(p.pos) }}>{p.pos}</td>
               <td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>
-              <td style={{ ...S.td, ...waaStyle(p.fv) }}>{fmt(p.fv)}</td>
-              <td style={{ ...S.td, ...waaStyle(p.waa) }}>{fmt(p.waa)}</td>
-              <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : waaStyle(p.waaP)) }}>{p.matured ? "—" : fmt(p.waaP)}</td>
+              <td style={{ ...S.td, ...warStyle(p.fv) }}>{fmt(p.fv)}</td>
+              <td style={{ ...S.td, ...warStyle(p.war) }}>{fmt(p.war)}</td>
+              <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : warStyle(p.warP)) }}>{p.matured ? "—" : fmt(p.warP)}</td>
               <td style={{ ...S.td, color: proneColor(p.prone) }}>{p.prone}</td>
             </tr>
           ))}

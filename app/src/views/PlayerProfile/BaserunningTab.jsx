@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { gradeToColor, waaStyle } from "../../theme.js";
+import { gradeToColor, warStyle } from "../../theme.js";
 import { num, fmt } from "../../utils/helpers.js";
 
 const tS = { background: "rgba(15,23,42,0.6)", borderRadius: 6, border: "1px solid #1e293b", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
@@ -44,9 +44,9 @@ function BsrValueTile({ label, vR, vL, wtd, pot, hidePotential }) {
         alignItems: "baseline",
       }}>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "baseline", fontSize: 14, color: "#cbd5e1" }}>
-          {vL != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>vL </span><span style={{ ...waaStyle(vL), fontSize: 14 }}>{fmt(vL, 1)}</span></span>)}
-          {vR != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>vR </span><span style={{ ...waaStyle(vR), fontSize: 14 }}>{fmt(vR, 1)}</span></span>)}
-          {wtd != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>wtd </span><span style={{ ...waaStyle(wtd), fontSize: 14, fontWeight: 700 }}>{fmt(wtd, 1)}</span></span>)}
+          {vL != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>vL </span><span style={{ ...warStyle(vL), fontSize: 14 }}>{fmt(vL, 1)}</span></span>)}
+          {vR != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>vR </span><span style={{ ...warStyle(vR), fontSize: 14 }}>{fmt(vR, 1)}</span></span>)}
+          {wtd != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>wtd </span><span style={{ ...warStyle(wtd), fontSize: 14, fontWeight: 700 }}>{fmt(wtd, 1)}</span></span>)}
         </div>
         {showPot && <PotChip value={pot} valueFmt={(v) => fmt(v, 1)} />}
       </div>

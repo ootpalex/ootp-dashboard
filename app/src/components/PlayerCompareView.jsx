@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef } from "react";
 import { S } from "../theme.js";
-import { posColor, levelColor, proneColor, waaStyle, intangibleColor, devPctColor, gradeStyle } from "../theme.js";
+import { posColor, levelColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle } from "../theme.js";
 import { fmt, fmtAge, fmtMLD, num, orgLabel } from "../utils/helpers.js";
-import { resolveKey, getMaxWaaP, getSpWaaP, getRpWaaP, getRunsP, isEligible } from "../utils/accessors.js";
+import { resolveKey, getMaxWarP, getSpWarP, getRpWarP, getRunsP, isEligible } from "../utils/accessors.js";
 import { HITTER_POS } from "../utils/constants.js";
 import { Section, PillBtn, TwoWayBadge } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
@@ -44,17 +44,17 @@ export default function PlayerCompareView({ data, curveSettings }) {
       { key: "POT", label: "Potential", fmt: (p) => p.meta?.pot ?? p.POT ?? "—", numeric: true },
     ]},
     { group: "Value (Hitters)", appliesTo: "hitter", stats: [
-      { key: "_fv", label: "Future Value", numeric: true, waa: true, fmt: (p) => fmt(p._fv) },
-      { key: "Max WAA wtd", label: "WAA", numeric: true, waa: true },
-      { key: "MAX WAA P", label: "WAA Potential", numeric: true, waa: true, fmt: (p) => p._matured ? "—" : fmt(getMaxWaaP(p)), color: (p) => p._matured ? "#475569" : undefined },
+      { key: "_fv", label: "Future Value", numeric: true, war: true, fmt: (p) => fmt(p._fv) },
+      { key: "Max WAR wtd", label: "WAR", numeric: true, war: true },
+      { key: "MAX WAR P", label: "WAR Potential", numeric: true, war: true, fmt: (p) => p._matured ? "—" : fmt(getMaxWarP(p)), color: (p) => p._matured ? "#475569" : undefined },
       { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
     ]},
     { group: "Value (Pitchers)", appliesTo: "pitcher", stats: [
-      { key: "_fv", label: "Future Value", numeric: true, waa: true, fmt: (p) => fmt(p._fv) },
-      { key: "WAA wtd", label: "SP WAA", numeric: true, waa: true, fmt: (p) => (p.starter || p.starterP) ? fmt(resolveKey(p, "WAA wtd")) : "—", color: (p) => (p.starter || p.starterP) ? undefined : "#475569" },
-      { key: "WAA wtd RP", label: "RP WAA", numeric: true, waa: true },
-      { key: "WAP", label: "SP Potential", numeric: true, waa: true, fmt: (p) => (!p.starter && !p.starterP) || p._matured ? "—" : fmt(getSpWaaP(p)), color: (p) => (!p.starter && !p.starterP) || p._matured ? "#475569" : undefined },
-      { key: "WAP RP", label: "RP Potential", numeric: true, waa: true, fmt: (p) => p._matured ? "—" : fmt(getRpWaaP(p)), color: (p) => p._matured ? "#475569" : undefined },
+      { key: "_fv", label: "Future Value", numeric: true, war: true, fmt: (p) => fmt(p._fv) },
+      { key: "WAR wtd", label: "SP WAR", numeric: true, war: true, fmt: (p) => (p.starter || p.starterP) ? fmt(resolveKey(p, "WAR wtd")) : "—", color: (p) => (p.starter || p.starterP) ? undefined : "#475569" },
+      { key: "WAR wtd RP", label: "RP WAR", numeric: true, war: true },
+      { key: "WARP", label: "SP Potential", numeric: true, war: true, fmt: (p) => (!p.starter && !p.starterP) || p._matured ? "—" : fmt(getSpWarP(p)), color: (p) => (!p.starter && !p.starterP) || p._matured ? "#475569" : undefined },
+      { key: "WARP RP", label: "RP Potential", numeric: true, war: true, fmt: (p) => p._matured ? "—" : fmt(getRpWarP(p)), color: (p) => p._matured ? "#475569" : undefined },
       { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
       { key: "STM", label: "Stamina", numeric: true },
       { key: "VELO", label: "Velocity", numeric: true },
@@ -201,7 +201,7 @@ export default function PlayerCompareView({ data, curveSettings }) {
                             const v = num(resolveKey(p, stat.key));
                             const precision = stat.precision ?? 2;
                             let style = { ...S.td, textAlign: "center" };
-                            if (stat.waa) Object.assign(style, waaStyle(v));
+                            if (stat.war) Object.assign(style, warStyle(v));
                             else if (i === bestIdx) style.color = "#4ade80";
                             else if (i === worstIdx) style.color = "#f87171";
                             else style.color = "#94a3b8";

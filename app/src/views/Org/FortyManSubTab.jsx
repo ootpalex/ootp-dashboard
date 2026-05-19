@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { S, posColor, levelColor, waaStyle, zToColor } from "../../theme.js";
+import { S, posColor, levelColor, warStyle, zToColor } from "../../theme.js";
 import { fmt, fmtAge, parseCSVBoolean, rankSuffix } from "../../utils/helpers.js";
-import { getWaa, getSpWaa, getRpWaa } from "../../utils/accessors.js";
+import { getWar, getSpWar, getRpWar } from "../../utils/accessors.js";
 import { ALL_DISPLAY_POS, DEF_SPECTRUM, ACTIVE_ROSTER_DEPTH } from "../../utils/constants.js";
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
 import { Section, TwoWayBadge } from "../../components/shared.jsx";
@@ -47,14 +47,14 @@ export default function FortyManSubTab({ data, team, strength, strengthMode, onS
       DEF_SPECTRUM.forEach((pos) => {
         const stillUnplaced = unplaced.filter((h) => !usedIds.has(h._uid || h.ID));
         const cands = stillUnplaced
-          .map((h) => ({ player: h, val: getWaa(h, pos) }))
+          .map((h) => ({ player: h, val: getWar(h, pos) }))
           .filter((c) => c.val !== null)
           .sort((a, b) => b.val - a.val);
         cands.forEach((c) => {
           if (usedIds.has(c.player._uid || c.player.ID)) return;
           let bestPos = pos, bestVal = c.val;
           DEF_SPECTRUM.forEach((otherPos) => {
-            const v = getWaa(c.player, otherPos);
+            const v = getWar(c.player, otherPos);
             if (v !== null && v > bestVal) { bestVal = v; bestPos = otherPos; }
           });
           if (bestPos === pos) {
@@ -68,7 +68,7 @@ export default function FortyManSubTab({ data, team, strength, strengthMode, onS
         unplaced.filter((h) => !usedIds.has(h._uid || h.ID)).forEach((h) => {
           let bestPos = "DH", bestVal = -Infinity;
           DEF_SPECTRUM.forEach((pos) => {
-            const v = getWaa(h, pos);
+            const v = getWar(h, pos);
             if (v !== null && v > bestVal) { bestVal = v; bestPos = pos; }
           });
           chart[bestPos].push({ ...h, _assignedPos: bestPos, _assignedVal: bestVal === -Infinity ? null : bestVal });
@@ -82,9 +82,9 @@ export default function FortyManSubTab({ data, team, strength, strengthMode, onS
     remainPitchers.forEach((p) => {
       const isSP = (p.starter ?? parseCSVBoolean(p.Starter)) || (p.meta?.pos ?? p.POS) === "SP";
       if (isSP) {
-        chart.SP.push({ ...p, _assignedPos: "SP", _assignedVal: getSpWaa(p) });
+        chart.SP.push({ ...p, _assignedPos: "SP", _assignedVal: getSpWar(p) });
       } else {
-        chart.RP.push({ ...p, _assignedPos: "RP", _assignedVal: getRpWaa(p) });
+        chart.RP.push({ ...p, _assignedPos: "RP", _assignedVal: getRpWar(p) });
       }
     });
 
@@ -127,7 +127,7 @@ export default function FortyManSubTab({ data, team, strength, strengthMode, onS
                     <div style={{ padding: "8px 10px", color: "#334155", fontSize: 11, fontStyle: "italic" }}>No players</div>
                   )}
                   {players.map((p, i) => {
-                    const waa = p._assignedVal;
+                    const war = p._assignedVal;
                     const isStarter = depthChart.starterUids.has(p._uid || p.ID);
                     return (
                       <div key={p.ID} style={{ padding: "4px 10px", borderBottom: i < players.length - 1 ? "1px solid #0f172a" : "none", display: "flex", justifyContent: "space-between", alignItems: "center", background: isStarter ? "rgba(59,130,246,0.06)" : "transparent" }}>
@@ -142,7 +142,7 @@ export default function FortyManSubTab({ data, team, strength, strengthMode, onS
                             </div>
                           </div>
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 700, ...waaStyle(waa) }}>{fmt(waa)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, ...warStyle(war) }}>{fmt(war)}</span>
                       </div>
                     );
                   })}

@@ -28,7 +28,7 @@ function HitterBars({ player, peerPools }) {
   const fielding = computePctPair(c.fielding, peerPools.fielding, opts);
   const baserunning = computePctPair(c.baserunning, peerPools.baserunning, opts);
 
-  const fmtWaa = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(1);
+  const fmtWar = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(1);
 
   return (
     <>
@@ -38,7 +38,7 @@ function HitterBars({ player, peerPools }) {
         potential={overall.potential}
         currentValue={c.overall.current}
         potentialValue={matured ? null : c.overall.potential}
-        valueFmt={fmtWaa}
+        valueFmt={fmtWar}
       />
       <PercentileBar
         label="Batting Value"
@@ -46,13 +46,13 @@ function HitterBars({ player, peerPools }) {
         potential={batting.potential}
         currentValue={c.batting.current}
         potentialValue={matured ? null : c.batting.potential}
-        valueFmt={fmtWaa}
+        valueFmt={fmtWar}
       />
       <PercentileBar
         label="Fielding Value"
         current={fielding.current}
         currentValue={c.fielding.current}
-        valueFmt={fmtWaa}
+        valueFmt={fmtWar}
       />
       <PercentileBar
         label="Baserunning"
@@ -60,7 +60,7 @@ function HitterBars({ player, peerPools }) {
         potential={baserunning.potential}
         currentValue={c.baserunning.current}
         potentialValue={matured ? null : c.baserunning.potential}
-        valueFmt={fmtWaa}
+        valueFmt={fmtWar}
       />
     </>
   );
@@ -81,17 +81,17 @@ function PitcherBars({ player, peerPools }) {
   const bf = ipsr * 4.18;
   const fmtPct = (count) => count == null ? "—" : `${(100 * count / bf).toFixed(1)}%`;
   const fmtBabip = (v) => v == null ? "—" : v.toFixed(3).replace(/^0/, "");
-  const fmtWaa = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(1);
+  const fmtWar = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(1);
 
   return (
     <>
       <PercentileBar
-        label="Overall WAA"
+        label="Overall WAR"
         current={overall.current}
         potential={overall.potential}
         currentValue={c.overall.current}
         potentialValue={matured ? null : c.overall.potential}
-        valueFmt={fmtWaa}
+        valueFmt={fmtWar}
       />
       <PercentileBar
         label="Strikeout %"

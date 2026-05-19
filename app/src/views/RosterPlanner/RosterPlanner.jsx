@@ -6,8 +6,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, KeyboardSensor, TouchSensor } from "@dnd-kit/core";
 import { S } from "../../theme.js";
 import { Section, PillBtn, TabGroup } from "../../components/shared.jsx";
-import { getBatR, getSpWaa, getRpWaa } from "../../utils/accessors.js";
-import { computeDevPercentile, calcFutureValue } from "../../utils/futureValue.js";
+import { calcFutureValue } from "../../utils/futureValue.js";
 import { isMatured } from "../../utils/dataProcessing.js";
 import {
   buildRosterProjection, analyzeCrunch, suggestActions,
@@ -201,36 +200,23 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
         const status = yd[ep._uid];
         return status?.status === "fa" && ep._contract?.type === "minors";
       })
-      .sort((a, b) => (b._fv ?? b._waaP ?? -999) - (a._fv ?? a._waaP ?? -999));
+      .sort((a, b) => (b._fv ?? b._warP ?? -999) - (a._fv ?? a._warP ?? -999));
   }, [projection, activePlanYear, planYearOffset]);
 
-  // League-wide age peers for dev percentile computation. Split pitchers by
-  // SP vs RP role (starter flag), not meta.pos — an RP-only pitcher listed
-  // as SP would otherwise get a null SP WAA and fall out of the pool.
-  const peers = useMemo(() => {
-    const hitPeers = data.hitters.map(p => ({ age: p._age, currentWAA: getBatR(p) }));
-    const spPeers = data.pitchers.filter(isSpRole).map(p => ({ age: p._age, currentWAA: getSpWaa(p) }));
-    const rpPeers = data.pitchers.filter(p => !isSpRole(p)).map(p => ({ age: p._age, currentWAA: getRpWaa(p) }));
-    return { hitPeers, spPeers, rpPeers };
-  }, [data]);
-
+  // v21: FV is purely (cur, pot, age, cs) — no devPct in the formula.
+  // Recompute FV against the current curveSettings (slider-responsive).
   const enrichedWithFV = useMemo(() => {
     const cs = curveSettings || {};
     const yearMap = projection.years[activePlanYear] || {};
     return projection.enriched.map(ep => {
-      const isPit = ep._type === "pitcher" || ep.meta?.isPitcher;
-      const sp = isPit && isSpRole(ep);
-      const peerPool = isPit ? (sp ? peers.spPeers : peers.rpPeers) : peers.hitPeers;
-      const devVal = isPit
-        ? (sp ? getSpWaa(ep) : getRpWaa(ep))
-        : getBatR(ep);
       const matured = isMatured(ep, cs);
-      const devPct = matured ? null : computeDevPercentile(devVal, ep._age, peerPool);
-      const fv = calcFutureValue(ep._waa, ep._waaP, ep._age, devPct, cs);
+      const fv = matured
+        ? ep._war
+        : calcFutureValue(ep._war, ep._warP, ep._age, cs);
       const yearStatus = yearMap[ep._uid] || null;
-      return { ...ep, _devPct: devPct, _fv: fv, _yearStatus: yearStatus };
+      return { ...ep, _fv: fv, _yearStatus: yearStatus };
     });
-  }, [projection, peers, curveSettings, activePlanYear]);
+  }, [projection, curveSettings, activePlanYear]);
 
   // For future year views, exclude FA players from depth chart so they don't occupy active/40-man slots
   const depthPlayers = useMemo(() => {

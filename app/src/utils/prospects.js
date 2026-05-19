@@ -2,8 +2,9 @@
 // PROSPECTS — Prospect pool building, tier assignment, farm rankings, scouting
 // ============================================================================
 import { num } from "./helpers.js";
-import { getMaxWaa, getMaxWaaP, pickPitcherRole } from "./accessors.js";
-import { FV_TIERS, FG_TIER_STATS } from "./constants.js";
+import { getMaxWar, getMaxWarP, pickPitcherRole } from "./accessors.js";
+import { FV_TIERS, FG_TIER_STATS, DEV_CURVE_DEFAULTS } from "./constants.js";
+import { calcFutureValue } from "./futureValue.js";
 
 export function isProspect(player) {
   const mld = player.meta?.mld ?? num(player.MLD);
@@ -19,28 +20,39 @@ export function isInOrg(player, iafaTag) {
   return true;
 }
 
-export function buildProspectPool(data, iafaTag) {
+export function buildProspectPool(data, iafaTag, curveSettings = null) {
+  const cs = curveSettings || DEV_CURVE_DEFAULTS;
   const hitPool = data.hitters.filter((h) => isProspect(h) && isInOrg(h, iafaTag)).map((h) => {
-    const maxWAAP = getMaxWaaP(h);
-    const maxWAA = getMaxWaa(h);
+    const maxWARP = getMaxWarP(h);
+    const maxWAR = getMaxWar(h);
+    const age = h._age ?? h.meta?.age ?? num(h.Age);
     return {
       ...h,
-      _baseVal: maxWAAP ?? 0, _currentVal: maxWAA,
-      _baseValDisplay: maxWAAP ?? 0, _currentValDisplay: maxWAA,
+      _baseVal: maxWARP ?? 0, _currentVal: maxWAR,
+      _baseValDisplay: maxWARP ?? 0, _currentValDisplay: maxWAR,
+      _fv: calcFutureValue(maxWAR, maxWARP, age, cs),
       _poolType: "hitter",
     };
   });
   const pitPool = data.pitchers.filter((p) => isProspect(p) && isInOrg(p, iafaTag)).map((p) => {
     const r = pickPitcherRole(p, null, null, 'best');
+    const age = p._age ?? p.meta?.age ?? num(p.Age);
     return {
       ...p,
-      _baseVal: r.waaPSort ?? 0, _currentVal: r.waaSort ?? r.waa ?? 0,
-      _baseValDisplay: r.waaP ?? 0, _currentValDisplay: r.waa ?? 0,
+      _baseVal: r.warPSort ?? 0, _currentVal: r.warSort ?? r.war ?? 0,
+      _baseValDisplay: r.warP ?? 0, _currentValDisplay: r.war ?? 0,
+      _fv: calcFutureValue(r.warSort ?? r.war ?? 0, r.warPSort ?? 0, age, cs),
       _role: r.role, _poolType: "pitcher",
     };
   });
   return [...hitPool, ...pitPool];
 }
+
+// Convex multipliers on the lower-tier step: 80/70/65 are extrapolated from
+// the slope between thresh50 and thresh60. The 1/2.5/6 weighting reflects
+// Fangraphs' real FV→WAA scale where the gap above 70 grows faster than the
+// gap between 55 and 60. See plan: smarter "Suggest Thresholds" for 65+.
+const UPPER_TIER_MULTIPLIERS = { "80": 6, "70": 2.5, "65": 1 };
 
 export function suggestThresholds(prospects, numTeams) {
   if (!prospects || prospects.length === 0) return {};
@@ -61,6 +73,21 @@ export function suggestThresholds(prospects, numTeams) {
     const fv = sorted[idx]._fv ?? sorted[idx]._baseVal ?? 0;
     thresholds[tier.id] = Math.round(fv * 100) / 100;
   }
+
+  // Overwrite 80/70/65 with convex extrapolation from the 50→60 slope. Top
+  // tiers are gated by absolute FV, not pool rank — a weak pool leaves them
+  // empty; a strong pool fills them.
+  const t50 = thresholds["50"];
+  const t60 = thresholds["60"];
+  if (t50 != null && t60 != null) {
+    const step = (t60 - t50) / 2;
+    if (step > 0) {
+      for (const [tierId, mult] of Object.entries(UPPER_TIER_MULTIPLIERS)) {
+        thresholds[tierId] = Math.round((t60 + mult * step) * 100) / 100;
+      }
+    }
+  }
+
   let prev = Infinity;
   for (const tier of FV_TIERS) {
     if (thresholds[tier.id] >= prev) thresholds[tier.id] = prev - 0.01;

@@ -3,7 +3,7 @@
 // ============================================================================
 import { num, parseCSVBoolean } from "./helpers.js";
 import { IP_SP, IP_RP, RP_SCALE_THRESHOLD } from "./constants.js";
-import { calcFutureValue } from "./futureValue.js";
+import { calcFutureValue, devPercentileRank } from "./futureValue.js";
 
 export const getWaa = (p, pos, split = "wtd") => {
   const v = p.positions?.[pos.toLowerCase()]?.waa?.[split];
@@ -13,6 +13,18 @@ export const getWaa = (p, pos, split = "wtd") => {
 export const getWaaP = (p, pos) => {
   const v = p.prospect?.waa?.[pos.toLowerCase()];
   return v != null ? v : num(p[`${pos} WAA P`]);
+};
+
+// WAR accessors — primary value metric for v0.2.0+. WAA accessors retained
+// above for a future toggle to display raw WAA alongside.
+export const getWar = (p, pos, split = "wtd") => {
+  const v = p.positions?.[pos.toLowerCase()]?.war?.[split];
+  return v != null ? v : num(p[`${pos} WAR ${split}`]);
+};
+
+export const getWarP = (p, pos) => {
+  const v = p.prospect?.war?.[pos.toLowerCase()];
+  return v != null ? v : num(p[`${pos} WAR P`]);
 };
 
 export const getRunsP = (p, pos) => {
@@ -43,26 +55,28 @@ const _expandFieldPositions = (posHint) => {
 };
 
 // For a specific field position, group ('INF' | 'OF'), or array of any of those,
-// return { waa, waaP, fv } using the best eligible matching position's values.
-// devPct + curveSettings optional — when provided, computes FV; otherwise fv = waa.
+// return { war, warP, fv } using the best eligible matching position's values.
+// curveSettings optional — when provided, computes FV via calcFutureValue;
+// otherwise fv = war.
 // Returns null if the player is not eligible at any matching position.
-export const pickFielderPos = (p, posHint, devPct = null, curveSettings = null) => {
+export const pickFielderPos = (p, posHint, hitDevCurve = null, curveSettings = null) => {
   if (!posHint) return null;
   const positions = _expandFieldPositions(posHint);
   if (!positions.length) return null;
   const eligible = positions.filter((pos) => isEligible(p, pos));
   if (!eligible.length) return null;
-  let bestWaa = null, bestWaaP = null;
+  let bestWar = null, bestWarP = null;
   for (const pos of eligible) {
-    const w = getWaa(p, pos);
-    const wp = getWaaP(p, pos);
-    if (w != null && (bestWaa == null || w > bestWaa)) bestWaa = w;
-    if (wp != null && (bestWaaP == null || wp > bestWaaP)) bestWaaP = wp;
+    const w = getWar(p, pos);
+    const wp = getWarP(p, pos);
+    if (w != null && (bestWar == null || w > bestWar)) bestWar = w;
+    if (wp != null && (bestWarP == null || wp > bestWarP)) bestWarP = wp;
   }
-  const fv = bestWaa != null && devPct != null && curveSettings != null
-    ? calcFutureValue(bestWaa, bestWaaP, p._age, devPct, curveSettings)
-    : bestWaa;
-  return { waa: bestWaa, waaP: bestWaaP, fv };
+  let fv = bestWar;
+  if (bestWar != null && curveSettings != null) {
+    fv = calcFutureValue(bestWar, bestWarP, p._age, curveSettings);
+  }
+  return { war: bestWar, warP: bestWarP, fv };
 };
 
 // Eligibility-based membership check for the unified position filter.
@@ -72,8 +86,8 @@ const _matchesSinglePosFilter = (p, posFilter) => {
   const isPitcher = p._type === "pitcher" || p._poolType === "pitcher";
   if (posFilter === "Pitchers") return isPitcher;
   if (posFilter === "Hitters") return !isPitcher;
-  if (posFilter === "SP") return isPitcher && getSpWaa(p) != null;
-  if (posFilter === "RP") return isPitcher && getSpWaa(p) == null;
+  if (posFilter === "SP") return isPitcher && getSpWar(p) != null;
+  if (posFilter === "RP") return isPitcher && getSpWar(p) == null;
   if (posFilter === "INF") return !isPitcher && INF_POSITIONS.some((pos) => isEligible(p, pos));
   if (posFilter === "OF") return !isPitcher && OF_POSITIONS.some((pos) => isEligible(p, pos));
   return !isPitcher && isEligible(p, posFilter);
@@ -167,6 +181,16 @@ export const getMaxWaaP = (p) => {
   return v != null ? v : num(p["MAX WAA P"]);
 };
 
+export const getMaxWar = (p, split = "wtd") => {
+  const v = p.maxWar?.[split];
+  return v != null ? v : num(p[split === "wtd" ? "Max WAR wtd" : `Max WAR ${split}`]);
+};
+
+export const getMaxWarP = (p) => {
+  const v = p.prospect?.war?.max;
+  return v != null ? v : num(p["MAX WAR P"]);
+};
+
 export const getBatR = (p, split = "wtd") => {
   const v = p.batting?.[split]?.batR;
   return v != null ? v : num(p[`BatR ${split}`]);
@@ -201,6 +225,43 @@ export const getRpWaaP = (p) => {
   return v != null ? v : num(p["WAP RP"]);
 };
 
+export const getSpWar = (p, split = "wtd") => {
+  const isSPEligible = (p.starter ?? parseCSVBoolean(p.Starter)) || (p.starterP ?? parseCSVBoolean(p["Starter P"]));
+  if (!isSPEligible) return null;
+  const v = p.sp?.[split]?.war;
+  return v != null ? v : num(p[split === "wtd" ? "WAR wtd" : `WAR ${split}`]);
+};
+
+export const getRpWar = (p, split = "wtd") => {
+  const v = p.rp?.[split]?.war;
+  return v != null ? v : num(p[split === "wtd" ? "WAR wtd RP" : `WAR ${split} RP`]);
+};
+
+export const getSpWarP = (p) => {
+  const isSPEligible = (p.starter ?? parseCSVBoolean(p.Starter)) || (p.starterP ?? parseCSVBoolean(p["Starter P"]));
+  if (!isSPEligible) return null;
+  const v = p.prospect?.sp?.war;
+  return v != null ? v : num(p["WARP"]);
+};
+
+export const getRpWarP = (p) => {
+  const v = p.prospect?.rp?.war;
+  return v != null ? v : num(p["WARP RP"]);
+};
+
+// v16 per-player floor — pipeline-computed via the floor pipeline (developable
+// ratings replaced with cohort min, full WAA recomputed). Floor reflects the
+// player's value if their bat / pitch tools never developed past minimum, with
+// non-developable skills (defense, baserunning, position) intact. Glove-first
+// SS naturally has a higher floor than a bat-first 1B at the same cur/pot.
+export const getFloorWaa = (p, split = "wtd") => p.floorWaa?.[split] ?? null;
+export const getSpFloor = (p) => p.floor?.sp?.waa ?? null;
+export const getRpFloor = (p) => p.floor?.rp?.waa ?? null;
+
+export const getFloorWar = (p, split = "wtd") => p.floorWar?.[split] ?? null;
+export const getSpFloorWar = (p) => p.floor?.sp?.war ?? null;
+export const getRpFloorWar = (p) => p.floor?.rp?.war ?? null;
+
 export const resolveKey = (p, key) => {
   switch (key) {
     case "Max WAA wtd": return getMaxWaa(p, "wtd");
@@ -211,6 +272,14 @@ export const resolveKey = (p, key) => {
     case "WAA wtd RP": return getRpWaa(p);
     case "WAP": return getSpWaaP(p);
     case "WAP RP": return getRpWaaP(p);
+    case "Max WAR wtd": return getMaxWar(p, "wtd");
+    case "Max WAR vR": return getMaxWar(p, "vR");
+    case "Max WAR vL": return getMaxWar(p, "vL");
+    case "MAX WAR P": return getMaxWarP(p);
+    case "WAR wtd": return getSpWar(p);
+    case "WAR wtd RP": return getRpWar(p);
+    case "WARP": return getSpWarP(p);
+    case "WARP RP": return getRpWarP(p);
     case "OBP vR": return p.batting?.vR?.obp ?? null;
     case "OBP vL": return p.batting?.vL?.obp ?? null;
     case "wOBA vR": return p.batting?.vR?.woba ?? null;
@@ -283,71 +352,92 @@ export const scaleRpWaaP = (v, threshold = RP_SCALE_THRESHOLD) => {
   return v * (1 + (ratio - 1) * t);
 };
 
+// WAR equivalent — identical scaling logic. Replacement-level WAR for RP
+// is still 0, so "negative WAR" still means "below replacement" — the same
+// negative-only ramp applies.
+export const scaleRpWarP = scaleRpWaaP;
+
 // Best-of-role decision for a pitcher. Returns:
-//   role     — 'sp' or 'rp'
-//   waa,waaP — RAW values for display (positive RP unscaled per scaleRpWaaP rule)
-//   waaSort  — scaled-to-SP WAA, used as sort key (rp -> scaled, sp -> raw)
-//   waaPSort — scaled-to-SP WAA P, used as sort key
-//   fv       — always on SP scale (RP FV is computed from scaled inputs)
-// roleHint: 'best' (default) | 'sp' | 'rp'.
-//   'sp' falls back to RP if the player has no SP eligibility data.
-export const pickPitcherRole = (p, devPct, curveSettings, roleHint = 'best') => {
-  const spWaa = getSpWaa(p);
-  const spWaaP = getSpWaaP(p);
-  const rpWaa = getRpWaa(p);
-  const rpWaaP = getRpWaaP(p);
-  const rpWaaScaled = scaleRpWaaP(rpWaa);
-  const rpWaaPScaled = scaleRpWaaP(rpWaaP);
+//   role        — 'sp' or 'rp'
+//   war,warP    — RAW WAR values for display (positive RP unscaled per scaleRpWarP rule)
+//   warSort     — scaled-to-SP WAR, used as sort key (rp -> scaled, sp -> raw)
+//   warPSort    — scaled-to-SP WAR P, used as sort key
+//   floorSort   — scaled-to-SP floor WAR (for the chosen role) — vestigial
+//   devPct      — pitcher's percentile of cur-WAR within age cohort (from devCurves[role])
+//   devCurve    — the cohort dev curve used for percentile lookup
+//   fv          — always on SP scale (RP FV is computed from scaled inputs)
+//
+// roleHint: 'best' (default) | 'sp' | 'rp'. 'sp' falls back to RP if the
+// player has no SP eligibility data.
+//
+// devCurves: optional `{sp, rp}` from `data.meta.devCurve` (now WAR-keyed,
+// see model/src/export.py). When supplied (with curveSettings), `devPct`
+// and `fv` are computed. Without them, `fv` falls back to `warSort`.
+//
+// Why WAR (not WAA): WAR's replacement-runs term gives SPs ~3× more credit
+// than RPs at full-time IP, which is the structural fix for SP-vs-RP value
+// comparisons. Best-role decision now uses WAR P, which means more SPs win
+// the SP-vs-RP race for their best role.
+export const pickPitcherRole = (p, devCurves = null, curveSettings = null, roleHint = 'best') => {
+  const spWar = getSpWar(p);
+  const spWarP = getSpWarP(p);
+  const rpWar = getRpWar(p);
+  const rpWarP = getRpWarP(p);
+  const rpWarScaled = scaleRpWarP(rpWar);
+  const rpWarPScaled = scaleRpWarP(rpWarP);
+  const spFloor = getSpFloorWar(p);
+  const rpFloorScaled = scaleRpWarP(getRpFloorWar(p));
 
   let useRp;
   if (roleHint === 'rp') {
     useRp = true;
   } else if (roleHint === 'sp') {
-    useRp = (spWaa == null && spWaaP == null);
+    useRp = (spWar == null && spWarP == null);
   } else {
-    useRp = (spWaaP == null) || (rpWaaPScaled != null && rpWaaPScaled > spWaaP);
+    useRp = (spWarP == null) || (rpWarPScaled != null && rpWarPScaled > spWarP);
   }
 
-  const fvFor = (cur, pot) => {
-    if (cur == null) return null;
-    if (devPct == null || curveSettings == null) return cur;
-    return calcFutureValue(cur, pot, p._age, devPct, curveSettings);
-  };
+  const role = useRp ? 'rp' : 'sp';
+  const cur = useRp ? rpWarScaled : spWar;
+  const pot = useRp ? rpWarPScaled : spWarP;
+  const floor = useRp ? rpFloorScaled : spFloor;
 
-  if (useRp) {
-    return {
-      role: 'rp',
-      waa: rpWaa,
-      waaP: rpWaaP,
-      waaSort: rpWaaScaled,
-      waaPSort: rpWaaPScaled,
-      fv: fvFor(rpWaaScaled, rpWaaPScaled),
-    };
+  const devCurve = devCurves ? (useRp ? devCurves.rp : devCurves.sp) : null;
+  // devPct kept as a metadata field for diagnostic display (Dev% column,
+  // FVIAT subtext) but no longer enters the FV formula in v21.
+  const devPct = (cur != null && devCurve != null) ? devPercentileRank(devCurve, p._age, cur) : null;
+  let fv = cur;
+  if (cur != null && curveSettings) {
+    fv = calcFutureValue(cur, pot, p._age, curveSettings);
   }
+
   return {
-    role: 'sp',
-    waa: spWaa,
-    waaP: spWaaP,
-    waaSort: spWaa,
-    waaPSort: spWaaP,
-    fv: fvFor(spWaa, spWaaP),
+    role,
+    war: useRp ? rpWar : spWar,
+    warP: useRp ? rpWarP : spWarP,
+    warSort: cur,
+    warPSort: pot,
+    floorSort: floor,
+    devPct,
+    devCurve,
+    fv,
   };
 };
 
-export const getBestPitcherWaa = (p) => pickPitcherRole(p).waa;
-export const getBestPitcherWaaP = (p) => pickPitcherRole(p).waaP;
-export const getBestPitcherFv = (p, devPct, cs) => pickPitcherRole(p, devPct, cs).fv;
+export const getBestPitcherWar = (p) => pickPitcherRole(p).war;
+export const getBestPitcherWarP = (p) => pickPitcherRole(p).warP;
+export const getBestPitcherFv = (p, progressCurves, cs) => pickPitcherRole(p, progressCurves, cs).fv;
 
-// Map *consolidated* WAA / WAA P column names to companion sort keys. When sorting
+// Map *consolidated* WAR / WAR P column names to companion sort keys. When sorting
 // one of these columns, helpers prefer the *Sort key (scaled-to-SP equivalent) so
 // RP-best rows sort by their SP-equivalent value even though the displayed cell is
-// the raw RP value. Role-specific column keys ("WAA wtd", "WAP", etc.) intentionally
+// the raw RP value. Role-specific column keys ("WAR wtd", "WARP", etc.) intentionally
 // sort by their own role and do NOT appear here.
 export const SORT_KEY_OVERRIDE = {
-  waa: "_waaSort",
-  waaP: "_waaPSort",
-  _waa: "_waaSort",
-  _waaP: "_waaPSort",
+  war: "_warSort",
+  warP: "_warPSort",
+  _war: "_warSort",
+  _warP: "_warPSort",
 };
 
 export const blendPlatoon = (vR, vL, hand, splits, type) => {

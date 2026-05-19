@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { S, posColor, proneColor, waaStyle } from "../../theme.js";
+import { S, posColor, proneColor, warStyle } from "../../theme.js";
 import { fmt, fmtAge, parseCSVBoolean } from "../../utils/helpers.js";
-import { getMaxWaa } from "../../utils/accessors.js";
+import { getMaxWar } from "../../utils/accessors.js";
 import { ACTIVE_ROSTER_DEPTH } from "../../utils/constants.js";
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
 import { Section, TwoWayBadge } from "../../components/shared.jsx";
@@ -35,7 +35,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
   }, [mlbHitters, mlbPitchers]);
 
   const renderPlayerRow = (p, i, showPos = true) => {
-    const waa = p._assignedVal ?? (p._type === "pitcher" ? p._waa : getMaxWaa(p));
+    const war = p._assignedVal ?? (p._type === "pitcher" ? p._war : getMaxWar(p));
     const isInjured = (p.meta?.inj != null ? p.meta.inj === "Yes" : parseCSVBoolean(p.INJ));
     return (
       <tr key={p.ID + "-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
@@ -47,7 +47,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
         {showPos && <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>}
         <td style={S.td}>{fmtAge(p._age)}</td>
         <td style={S.td}>{`${p.meta?.bats ?? p.B ?? ""}/${p.meta?.throws ?? p.T ?? ""}`}</td>
-        <td style={{ ...S.td, ...waaStyle(waa) }}>{fmt(waa)}</td>
+        <td style={{ ...S.td, ...warStyle(war) }}>{fmt(waa)}</td>
         <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
       </tr>
     );
@@ -66,7 +66,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
               <th style={{ ...S.th, width: 50 }}>Best</th>
               <th style={{ ...S.th, width: 45 }}>Age</th>
               <th style={{ ...S.th, width: 50 }}>B/T</th>
-              <th style={{ ...S.th, width: 65 }}>WAA</th>
+              <th style={{ ...S.th, width: 65 }}>WAR</th>
               <th style={{ ...S.th, width: 65 }}>Prone</th>
             </tr></thead>
             <tbody>
@@ -93,7 +93,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
                 <th style={{ ...S.th, width: 170 }}>Name</th>
                 <th style={{ ...S.th, width: 45 }}>Age</th>
                 <th style={{ ...S.th, width: 50 }}>B/T</th>
-                <th style={{ ...S.th, width: 65 }}>WAA</th>
+                <th style={{ ...S.th, width: 65 }}>WAR</th>
                 <th style={{ ...S.th, width: 65 }}>Prone</th>
               </tr></thead>
               <tbody>
@@ -112,7 +112,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
                 <th style={{ ...S.th, width: 170 }}>Name</th>
                 <th style={{ ...S.th, width: 45 }}>Age</th>
                 <th style={{ ...S.th, width: 50 }}>B/T</th>
-                <th style={{ ...S.th, width: 65 }}>WAA</th>
+                <th style={{ ...S.th, width: 65 }}>WAR</th>
                 <th style={{ ...S.th, width: 65 }}>Prone</th>
               </tr></thead>
               <tbody>
@@ -134,12 +134,12 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
                 <th style={{ ...S.th, width: 50 }}>POS</th>
                 <th style={{ ...S.th, width: 45 }}>Age</th>
                 <th style={{ ...S.th, width: 50 }}>B/T</th>
-                <th style={{ ...S.th, width: 65 }}>WAA</th>
+                <th style={{ ...S.th, width: 65 }}>WAR</th>
                 <th style={{ ...S.th, width: 65 }}>Prone</th>
               </tr></thead>
               <tbody>
                 {unassigned.map((p, i) => {
-                  const waa = p._type === "pitcher" ? p._waa : getMaxWaa(p);
+                  const war = p._type === "pitcher" ? p._war : getMaxWar(p);
                   const isInjured = (p.meta?.inj != null ? p.meta.inj === "Yes" : parseCSVBoolean(p.INJ));
                   return (
                     <tr key={p.ID + "-bench-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
@@ -149,7 +149,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
                       <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
                       <td style={S.td}>{fmtAge(p._age)}</td>
                       <td style={S.td}>{`${p.meta?.bats ?? p.B ?? ""}/${p.meta?.throws ?? p.T ?? ""}`}</td>
-                      <td style={{ ...S.td, ...waaStyle(waa) }}>{fmt(waa)}</td>
+                      <td style={{ ...S.td, ...warStyle(war) }}>{fmt(waa)}</td>
                       <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
                     </tr>
                   );

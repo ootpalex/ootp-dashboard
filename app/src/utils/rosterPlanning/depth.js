@@ -1,5 +1,5 @@
 // 26-man and inactive 40-man coverage analyzers + depth chart builder.
-import { getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, isEligible, isCurrentlyEligible } from "../accessors.js";
+import { getSpWar, getRpWar, getSpWarP, getRpWarP, isEligible, isCurrentlyEligible } from "../accessors.js";
 import { isSpEligible } from "./_shared.js";
 
 const COVERAGE_POSITIONS = ["C", "1B", "2B", "SS", "3B", "LF", "CF", "RF"];
@@ -8,28 +8,28 @@ function isPitcher(ep) {
   return ep._type === "pitcher" || ep.meta?.isPitcher;
 }
 
-// Classify pitchers into SP vs RP roles. Top N SP-eligible pitchers by SP WAA
+// Classify pitchers into SP vs RP roles. Top N SP-eligible pitchers by SP WAR
 // fill the rotation; every other pitcher fills the bullpen. Each returned row
-// has role-locked _waa / _waaP / _fv (raw display values) so the depth chart
+// has role-locked _war / _warP / _fv (raw display values) so the depth chart
 // panels show SP-only values in rotation slots and RP-only in bullpen slots.
 export function classifyPitchers(pitchers, spSlots) {
   const bySp = [...pitchers]
-    .filter(p => isSpEligible(p) && getSpWaa(p) != null)
-    .sort((a, b) => (getSpWaa(b) ?? -999) - (getSpWaa(a) ?? -999));
+    .filter(p => isSpEligible(p) && getSpWar(p) != null)
+    .sort((a, b) => (getSpWar(b) ?? -999) - (getSpWar(a) ?? -999));
   const sp = bySp.slice(0, spSlots).map(p => ({
     ...p,
-    _waa: p._sp?.waa ?? getSpWaa(p),
-    _waaP: p._sp?.waaP ?? getSpWaaP(p),
+    _war: p._sp?.war ?? getSpWar(p),
+    _warP: p._sp?.warP ?? getSpWarP(p),
     _fv: p._sp?.fv ?? p._fv,
   }));
   const taken = new Set(sp.map(p => p._uid));
   const rp = pitchers
     .filter(p => !taken.has(p._uid))
-    .sort((a, b) => (getRpWaa(b) ?? -999) - (getRpWaa(a) ?? -999))
+    .sort((a, b) => (getRpWar(b) ?? -999) - (getRpWar(a) ?? -999))
     .map(p => ({
       ...p,
-      _waa: p._rp?.waa ?? getRpWaa(p),
-      _waaP: p._rp?.waaP ?? getRpWaaP(p),
+      _war: p._rp?.war ?? getRpWar(p),
+      _warP: p._rp?.warP ?? getRpWarP(p),
       _fv: p._rp?.fv ?? p._fv,
     }));
   return { sp, rp };
@@ -177,26 +177,26 @@ export function buildDepthChart(enrichedPlayers) {
   const ilShort = enrichedPlayers.filter(ep => ep.meta?._ilShort === true);
   const ilLong = enrichedPlayers.filter(ep => ep.meta?._ilLong === true);
 
-  const sortByWaa = (a, b) => (b._waa ?? -999) - (a._waa ?? -999);
+  const sortByWar = (a, b) => (b._war ?? -999) - (a._war ?? -999);
 
   const coverage = analyzeActiveCoverage(active);
   const inactiveCoverage = analyzeInactiveCoverage(inactive40);
 
   const buildSlots = (players, coverageResult) => {
     const classifiedHit = new Set();
-    const C = players.filter(ep => !isPitcher(ep) && (ep.meta?.pos === "C" || isEligible(ep, "C"))).sort(sortByWaa);
+    const C = players.filter(ep => !isPitcher(ep) && (ep.meta?.pos === "C" || isEligible(ep, "C"))).sort(sortByWar);
     C.forEach(ep => classifiedHit.add(ep._uid));
-    const IF = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid) && ["1B","2B","3B","SS"].includes(ep.meta?.pos)).sort(sortByWaa);
+    const IF = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid) && ["1B","2B","3B","SS"].includes(ep.meta?.pos)).sort(sortByWar);
     IF.forEach(ep => classifiedHit.add(ep._uid));
-    const OF = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid) && ["LF","CF","RF"].includes(ep.meta?.pos)).sort(sortByWaa);
+    const OF = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid) && ["LF","CF","RF"].includes(ep.meta?.pos)).sort(sortByWar);
     OF.forEach(ep => classifiedHit.add(ep._uid));
-    const DH = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid) && ep.meta?.pos === "DH").sort(sortByWaa);
+    const DH = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid) && ep.meta?.pos === "DH").sort(sortByWar);
     DH.forEach(ep => classifiedHit.add(ep._uid));
-    const bench = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid)).sort(sortByWaa);
+    const bench = players.filter(ep => !isPitcher(ep) && !classifiedHit.has(ep._uid)).sort(sortByWar);
     return {
       C, IF, OF, DH, bench,
-      SP: [...coverageResult.spList].sort(sortByWaa),
-      RP: [...coverageResult.rpList].sort(sortByWaa),
+      SP: [...coverageResult.spList].sort(sortByWar),
+      RP: [...coverageResult.rpList].sort(sortByWar),
     };
   };
 

@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { S } from "../theme.js";
-import { posColor, levelColor, proneColor, waaStyle, devPctColor, gradeStyle } from "../theme.js";
+import { posColor, levelColor, proneColor, warStyle, devPctColor, gradeStyle } from "../theme.js";
 import { fmt, fmtAge, num, isTrueFA, parseCSVBoolean, searchFilter, paginateRows } from "../utils/helpers.js";
-import { resolveKey, genericSort, getMaxWaa, getMaxWaaP, pickFielderPos, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
+import { resolveKey, genericSort, getMaxWar, getMaxWarP, pickFielderPos, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
 import { PER_PAGE_LARGE, PLAYERS_HIT_COLS, PLAYERS_PIT_COLS, PLAYERS_MIXED_COLS } from "../utils/constants.js";
 import { SortHeader, PositionFilter, LevelFilter, MultiSelectDropdown, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
@@ -60,7 +60,7 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
   const useFieldOverride = fieldSel.length > 0 && !broadHitterSelected;
   const posValForRow = (r) => {
     if (r._type === "pitcher" || !useFieldOverride) return null;
-    return pickFielderPos(r, fieldSel, r._devPct, curveSettings);
+    return pickFielderPos(r, fieldSel, r._devCurve, curveSettings);
   };
   const fvForRow = (r) => {
     if (r._type === "pitcher") {
@@ -98,8 +98,8 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
     const { col, dir } = sort;
     genericSort(rows, col, dir, {
       _fv: fvForRow,
-      "Max WAA wtd": (r) => posValForRow(r)?.waa ?? getMaxWaa(r),
-      "MAX WAA P": (r) => posValForRow(r)?.waaP ?? getMaxWaaP(r),
+      "Max WAR wtd": (r) => posValForRow(r)?.war ?? getMaxWar(r),
+      "MAX WAR P": (r) => posValForRow(r)?.warP ?? getMaxWarP(r),
     });
     return rows;
   }, [source, debouncedSearch, posFilter, orgFilter, levelFilter, faOnly, proneFilter, on40Filter, ageMin, ageMax, sort, leagueSettings]);
@@ -144,16 +144,16 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
           <tr key={(r._uid || r.ID) + "-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
             {cols.map(({ key }) => {
               let val = resolveKey(r, key), style = { ...S.td };
-              // Position-specific override for WAA / WAA P columns when field pos filter active
+              // Position-specific override for WAR / WAR P columns when field pos filter active
               const posVal = posValForRow(r);
               if (posVal) {
-                if (key === "Max WAA wtd" || key === "Max WAA vR" || key === "Max WAA vL") val = posVal.waa;
-                else if (key === "MAX WAA P") val = posVal.waaP;
+                if (key === "Max WAR wtd" || key === "Max WAR vR" || key === "Max WAR vL") val = posVal.war;
+                else if (key === "MAX WAR P") val = posVal.warP;
               }
               if (key === "Name") { style.fontWeight = 600; style.color = "#e2e8f0"; style.minWidth = 170; style.cursor = "pointer"; return <td key={key} style={style} onClick={() => onSelectPlayer?.(r)}>{val}<TwoWayBadge player={r} /></td>; }
-              else if (key === "_fv") { const fvVal = fvForRow(r); Object.assign(style, waaStyle(fvVal)); val = fmt(fvVal); }
+              else if (key === "_fv") { const fvVal = fvForRow(r); Object.assign(style, warStyle(fvVal)); val = fmt(fvVal); }
               else if (key === "_devPct") { const m = r._ageMatured; style.color = !m && r._devPct != null ? devPctColor(r._devPct) : "#475569"; style.fontWeight = !m && r._devPct != null ? 600 : 400; val = !m && r._devPct != null ? Math.round(r._devPct * 100) + "th" : "—"; }
-              else if (key === "MAX WAA P" || key === "WAP" || key === "WAP RP") { if (r._matured) { val = "—"; style.color = "#475569"; } else { const n = num(val); Object.assign(style, waaStyle(n)); val = fmt(n); } }
+              else if (key === "MAX WAR P" || key === "WARP" || key === "WARP RP") { if (r._matured) { val = "—"; style.color = "#475569"; } else { const n = num(val); Object.assign(style, warStyle(n)); val = fmt(n); } }
               else if (key === "_age") { val = fmtAge(val); style.color = "#94a3b8"; }
               else if (key === "_bestPos") { style.color = posColor((val || "").replace("*", "")); val = val || "—"; }
               else if (key === "POS") style.color = posColor(val);
@@ -163,7 +163,7 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
               else if (key === "_intangibles") { Object.assign(style, gradeStyle(r._intangibles)); val = r._intangibles ?? "—"; }
               else if (key === "Price") { const n = num(val); val = n != null ? "$" + n.toLocaleString() : "—"; style.color = "#94a3b8"; }
               else if (key === "Starter") { val = parseCSVBoolean(val) ? "✓" : ""; }
-              else if (key.includes("WAA") || key.includes("WAP")) { const n = num(val); Object.assign(style, waaStyle(n)); val = fmt(n); }
+              else if (key.includes("WAR") || key.includes("WARP")) { const n = num(val); Object.assign(style, warStyle(n)); val = fmt(n); }
               else { const n = num(val); val = n != null ? (key === "STM" || key === "SPE" ? n.toFixed(0) : n.toFixed(3)) : val || "—"; style.color = "#94a3b8"; }
               return <td key={key} style={style}>{val ?? "—"}</td>;
             })}

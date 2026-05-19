@@ -72,10 +72,13 @@ class TestParseDemand:
         result = _parse_demand(s)
         assert pd.isna(result.iloc[0])
 
-    def test_impossible(self):
+    def test_impossible_becomes_nan(self):
+        # Impossible used to parse as $4M; that poisoned the share-of-budget
+        # signability formula. Now meta.sign === 'Impossible' is the signal
+        # consumed downstream, and demSort stays NaN.
         s = pd.Series(["Impossible"])
         result = _parse_demand(s)
-        assert result.iloc[0] == 4_000_000
+        assert pd.isna(result.iloc[0])
 
 
 class TestComputePrice:
@@ -342,6 +345,58 @@ class TestBuildDashboard:
         assert "playerCount" in meta
         assert meta["playerCount"]["hitters"] > 0
         assert meta["playerCount"]["pitchers"] > 0
+
+    def test_gap_dist_present(self, dashboard):
+        """v21: gapDist embedded for all three cohorts."""
+        gap_dist = dashboard["meta"].get("gapDist")
+        assert gap_dist is not None, "meta.gapDist missing"
+        assert "hit" in gap_dist
+        assert "sp" in gap_dist
+        assert "rp" in gap_dist
+
+    def test_gap_dist_shape(self, dashboard):
+        """Each cohort row has age + the nine gap percentile keys.
+
+        Convention: smaller gap = higher percentile. So within a row, values
+        should be MONOTONE NON-INCREASING when read in descending percentile
+        order p99, p95, ..., p1.
+        """
+        ORDERED_DESC = ("p99", "p95", "p90", "p75", "p50", "p25", "p10", "p5", "p1")
+        for cohort in ("hit", "sp", "rp"):
+            rows = dashboard["meta"]["gapDist"][cohort]
+            assert isinstance(rows, list) and rows, f"gapDist.{cohort} empty"
+            for row in rows:
+                assert "age" in row
+                for pk in ORDERED_DESC:
+                    assert pk in row, f"gapDist.{cohort} age={row['age']} missing {pk}"
+                vals = [row[pk] for pk in ORDERED_DESC]
+                assert vals == sorted(vals), (
+                    f"gapDist.{cohort} age={row['age']} percentiles not non-decreasing in p99..p1 order: {vals}"
+                )
+
+    def test_gap_dist_narrows_with_age(self, dashboard):
+        """Age-14 p1 ≥ age-22 p1: largest gaps narrow as players mature.
+
+        Under the inverted convention, p1 is the "bottom 1% of prospect quality"
+        which corresponds to the largest 1% of gaps. So age-14 p1 (biggest gap
+        among 14yos) should still be ≥ age-22 p1 (biggest gap among 22yos).
+        """
+        rows = dashboard["meta"]["gapDist"]["hit"]
+        by_age = {r["age"]: r for r in rows}
+        if 14 in by_age and 22 in by_age:
+            assert by_age[14]["p1"] >= by_age[22]["p1"], (
+                f"age-14 p1={by_age[14]['p1']} should be >= age-22 p1={by_age[22]['p1']}"
+            )
+        if 16 in by_age and 24 in by_age:
+            assert by_age[16]["p1"] >= by_age[24]["p1"]
+
+    def test_gap_dist_non_negative(self, dashboard):
+        """gap = max(0, pot − cur) is non-negative by construction."""
+        ALL_PCTS = ("p99", "p95", "p90", "p75", "p50", "p25", "p10", "p5", "p1")
+        for cohort in ("hit", "sp", "rp"):
+            for row in dashboard["meta"]["gapDist"][cohort]:
+                for pk in ALL_PCTS:
+                    assert row[pk] >= 0, f"gapDist.{cohort} age={row['age']} {pk}={row[pk]} < 0"
 
     def test_platoon_splits(self, dashboard):
         splits = dashboard["platoonSplits"]

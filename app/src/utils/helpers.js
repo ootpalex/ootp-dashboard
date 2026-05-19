@@ -1,7 +1,7 @@
 // ============================================================================
 // HELPERS — Formatting, search, pagination, roster row utilities
 // ============================================================================
-import { getMaxWaa, getMaxWaaP, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, POS_SORT_ORDER, pickPitcherRole, SORT_KEY_OVERRIDE } from "./accessors.js";
+import { getMaxWar, getMaxWarP, POS_SORT_ORDER, pickPitcherRole, SORT_KEY_OVERRIDE } from "./accessors.js";
 import { LEVELS_ORDER } from "./constants.js";
 
 export const num = (v) => {
@@ -55,25 +55,25 @@ export function paginateRows(rows, page, perPage) {
 }
 
 // roleHint: 'best' (default — use enrichment fields), 'sp', or 'rp'.
-// curveSettings only required when roleHint forces a non-default role
-// (e.g. SP-only / RP-only filters) so FV gets recomputed for that role.
-export const toRosterRow = (p, type, extras = {}, roleHint = 'best', curveSettings = null) => {
+// progressCurves + curveSettings only required when roleHint forces a non-default
+// role (e.g. SP-only / RP-only filters) so FV gets recomputed for that role.
+export const toRosterRow = (p, type, extras = {}, roleHint = 'best', curveSettings = null, progressCurves = null) => {
   const pos = p.meta?.pos ?? p.POS;
   const isPitcher = type === "pitcher";
   const r = (isPitcher && roleHint && roleHint !== 'best')
-    ? pickPitcherRole(p, p._devPct, curveSettings, roleHint)
+    ? pickPitcherRole(p, progressCurves, curveSettings, roleHint)
     : null;
-  const hitWaa = type === "hitter" ? getMaxWaa(p) : null;
-  const hitWaaP = type === "hitter" ? getMaxWaaP(p) : null;
+  const hitWar = type === "hitter" ? getMaxWar(p) : null;
+  const hitWarP = type === "hitter" ? getMaxWarP(p) : null;
   return {
     id: p._uid, name: p.meta?.name ?? p.Name, age: p._age,
     pos, bestPos: p._bestPos,
     bt: `${p.meta?.bats ?? p.B ?? ""}/${p.meta?.throws ?? p.T ?? ""}`,
     level: p.meta?.lev ?? p.Lev, prone: p.meta?.prone ?? p.Prone,
-    waa: type === "hitter" ? hitWaa : (r?.waa ?? p._waa),
-    waaP: type === "hitter" ? hitWaaP : (r?.waaP ?? p._waaP),
-    _waaSort: type === "hitter" ? hitWaa : (r?.waaSort ?? p._waaSort),
-    _waaPSort: type === "hitter" ? hitWaaP : (r?.waaPSort ?? p._waaPSort),
+    war: type === "hitter" ? hitWar : (r?.war ?? p._war),
+    warP: type === "hitter" ? hitWarP : (r?.warP ?? p._warP),
+    _warSort: type === "hitter" ? hitWar : (r?.warSort ?? p._warSort),
+    _warPSort: type === "hitter" ? hitWarP : (r?.warPSort ?? p._warPSort),
     _role: isPitcher ? (r?.role ?? p._role) : null,
     fv: r?.fv ?? p._fv,
     devPct: p._devPct, matured: p._matured,

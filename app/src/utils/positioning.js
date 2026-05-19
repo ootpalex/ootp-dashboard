@@ -1,7 +1,7 @@
 // ============================================================================
 // POSITIONING — Defensive position optimization and player assignment cascade
 // ============================================================================
-import { isEligible, getRunsP, getWaa, getWaaP, getSpWaa, getRpWaa } from "./accessors.js";
+import { isEligible, getRunsP, getWar, getWarP, getSpWar, getRpWar } from "./accessors.js";
 import { num, parseCSVBoolean } from "./helpers.js";
 import { DEF_SPECTRUM, DEF_SPECTRUM_POT } from "./constants.js";
 
@@ -58,7 +58,7 @@ export function optimizeDefensivePositions(starters, positions) {
   return positions.map((pos) => result[pos]).filter(Boolean);
 }
 
-export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "current", waaColFn = null) {
+export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "current", warColFn = null) {
   const spectrum = mode === "potential" ? DEF_SPECTRUM_POT : DEF_SPECTRUM;
   const usedIds = new Set();
   const assigned = {};
@@ -67,9 +67,9 @@ export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "cu
   assigned.RP = [];
 
   const getVal = (h, pos) => {
-    if (waaColFn) return num(h[waaColFn(pos)]);
-    let val = mode === "current" ? getWaa(h, pos) : getWaaP(h, pos);
-    if (mode === "potential" && val === null) val = getWaa(h, pos);
+    if (warColFn) return num(h[warColFn(pos)]);
+    let val = mode === "current" ? getWar(h, pos) : getWarP(h, pos);
+    if (mode === "potential" && val === null) val = getWar(h, pos);
     return val;
   };
 
@@ -115,7 +115,7 @@ export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "cu
   const rpDepth = depthMap.RP || 0;
   const spElig = pitchers.filter((p) => (p.starter ?? parseCSVBoolean(p.Starter)) || (p.meta?.pos ?? p.POS) === "SP");
   const spCands = spElig
-    .map((p) => ({ player: p, val: getSpWaa(p) }))
+    .map((p) => ({ player: p, val: getSpWar(p) }))
     .filter((c) => c.val !== null)
     .sort((a, b) => b.val - a.val);
   const spClaimedIds = new Set();
@@ -124,7 +124,7 @@ export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "cu
     spClaimedIds.add(c.player.ID);
   });
   const rpCands = pitchers.filter((p) => !spClaimedIds.has(p.ID))
-    .map((p) => ({ player: p, val: getRpWaa(p) }))
+    .map((p) => ({ player: p, val: getRpWar(p) }))
     .filter((c) => c.val !== null)
     .sort((a, b) => b.val - a.val);
   rpCands.slice(0, rpDepth).forEach((c) => {

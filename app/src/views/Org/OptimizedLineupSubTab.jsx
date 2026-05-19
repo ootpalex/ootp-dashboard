@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { S, posColor, waaStyle } from "../../theme.js";
+import { S, posColor, warStyle } from "../../theme.js";
 import { fmt, num, parseCSVBoolean } from "../../utils/helpers.js";
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
 import { Section, TwoWayBadge } from "../../components/shared.jsx";
@@ -7,8 +7,8 @@ import { Section, TwoWayBadge } from "../../components/shared.jsx";
 const LINEUP_DEPTH = { C: 1, "1B": 1, "2B": 1, "3B": 1, SS: 1, LF: 1, CF: 1, RF: 1, DH: 1 };
 
 function buildPlatoonLineup(hitters, hand) {
-  const waaCol = (pos) => `${pos} WAA ${hand}`;
-  const { assigned } = assignPlayersToPositions(hitters, [], LINEUP_DEPTH, "current", waaCol);
+  const warCol = (pos) => `${pos} WAR ${hand}`;
+  const { assigned } = assignPlayersToPositions(hitters, [], LINEUP_DEPTH, "current", warCol);
 
   const rawStarters = [];
   const positions = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];
@@ -56,14 +56,14 @@ export default function OptimizedLineupSubTab({ data, team, onSelectPlayer }) {
             <th style={{ ...S.th, width: 48 }}>POS</th>
             <th style={{ ...S.th, width: 48 }}>Best</th>
             <th style={{ ...S.th, width: 50 }}>B/T</th>
-            <th style={{ ...S.th, width: 65 }}>WAA</th>
+            <th style={{ ...S.th, width: 65 }}>WAR</th>
             <th style={{ ...S.th, width: 60 }}>DEF</th>
             <th style={{ ...S.th, width: 60 }}>OBP</th>
             <th style={{ ...S.th, width: 60 }}>wOBA</th>
           </tr></thead>
           <tbody>
             {lineup.map((p, i) => {
-              const waa = p._assignedVal;
+              const war = p._assignedVal;
               const defR = p._defRunsP;
               return (
                 <tr key={p.ID} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
@@ -73,8 +73,8 @@ export default function OptimizedLineupSubTab({ data, team, onSelectPlayer }) {
                   <td style={{ ...S.td, color: posColor(p._assignedPos) }}>{p._assignedPos}</td>
                   <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
                   <td style={S.td}>{`${p.meta?.bats ?? p.B ?? ""}/${p.meta?.throws ?? p.T ?? ""}`}</td>
-                  <td style={{ ...S.td, ...waaStyle(waa) }}>{fmt(waa)}</td>
-                  <td style={{ ...S.td, ...waaStyle(defR) }}>{p._assignedPos === "DH" ? "—" : fmt(defR)}</td>
+                  <td style={{ ...S.td, ...warStyle(war) }}>{fmt(war)}</td>
+                  <td style={{ ...S.td, ...warStyle(defR) }}>{p._assignedPos === "DH" ? "—" : fmt(defR)}</td>
                   <td style={{ ...S.td, color: p._obp != null ? "#e2e8f0" : "#475569" }}>{p._obp != null ? p._obp.toFixed(3) : "—"}</td>
                   <td style={{ ...S.td, color: p._woba != null ? "#e2e8f0" : "#475569" }}>{p._woba != null ? p._woba.toFixed(3) : "—"}</td>
                 </tr>
@@ -99,7 +99,7 @@ export default function OptimizedLineupSubTab({ data, team, onSelectPlayer }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ fontSize: 12, color: "#94a3b8" }}>
         {diffCount > 0
-          ? <>{diffCount} player{diffCount > 1 ? "s" : ""} differ between platoon lineups. Positions assigned via defensive spectrum cascade using split WAA values.</>
+          ? <>{diffCount} player{diffCount > 1 ? "s" : ""} differ between platoon lineups. Positions assigned via defensive spectrum cascade using split WAR values.</>
           : <>Same 9 starters in both lineups. Position values and batting order may differ.</>
         }
       </div>

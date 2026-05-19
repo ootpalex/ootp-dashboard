@@ -1,30 +1,30 @@
 // Roster projection orchestrator: enrichment, year-by-year status, bucket builder.
-import { getMaxWaa, getMaxWaaP, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, scaleRpWaaP } from "../accessors.js";
+import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, scaleRpWarP } from "../accessors.js";
 import { fmtSalary } from "../helpers.js";
 import { isSpEligible } from "./_shared.js";
 import { resolveContractYear } from "./contracts.js";
 import { detectSeasonDay, detectLimbo, detectArbSigned, projectSuperTwo } from "./service.js";
 import { parseContractStatus, calcR5Projection, calcMLFA, getOptionsInfo } from "./eligibility.js";
 
-// Pitcher _waa for roster planning uses the SCALED best-of-role value so that
+// Pitcher _war for roster planning uses the SCALED best-of-role value so that
 // downstream sort / FV calc / crunch decisions are on a single comparable
 // scale. Display surfaces (CompactPlayerRow rotation/bullpen panels) override
 // this with role-locked raw values via depth.js. Falls back to legacy
 // SP-eligibility logic if Dashboard enrichment is missing (e.g. unit tests).
-function getPlayerWaa(p) {
+function getPlayerWar(p) {
   if (p._type === "pitcher" || p.meta?.isPitcher) {
-    if (p._waaSort != null) return p._waaSort;
-    return isSpEligible(p) ? getSpWaa(p) : scaleRpWaaP(getRpWaa(p));
+    if (p._warSort != null) return p._warSort;
+    return isSpEligible(p) ? getSpWar(p) : scaleRpWarP(getRpWar(p));
   }
-  return getMaxWaa(p);
+  return getMaxWar(p);
 }
 
-function getPlayerWaaP(p) {
+function getPlayerWarP(p) {
   if (p._type === "pitcher" || p.meta?.isPitcher) {
-    if (p._waaPSort != null) return p._waaPSort;
-    return isSpEligible(p) ? getSpWaaP(p) : scaleRpWaaP(getRpWaaP(p));
+    if (p._warPSort != null) return p._warPSort;
+    return isSpEligible(p) ? getSpWarP(p) : scaleRpWarP(getRpWarP(p));
   }
-  return getMaxWaaP(p);
+  return getMaxWarP(p);
 }
 
 function enrichPlayer(p, gameYear, superTwoIds, draftDateMap) {
@@ -32,8 +32,8 @@ function enrichPlayer(p, gameYear, superTwoIds, draftDateMap) {
   const r5 = calcR5Projection(p, gameYear, draftDateMap);
   const mlfa = calcMLFA(p, gameYear);
   const options = getOptionsInfo(p);
-  const waa = getPlayerWaa(p);
-  const waaP = getPlayerWaaP(p);
+  const war = getPlayerWar(p);
+  const warP = getPlayerWarP(p);
 
   return {
     ...p,
@@ -41,8 +41,8 @@ function enrichPlayer(p, gameYear, superTwoIds, draftDateMap) {
     _r5: r5,
     _mlfa: mlfa,
     _options: options,
-    _waa: waa,
-    _waaP: waaP,
+    _war: war,
+    _warP: warP,
   };
 }
 
@@ -317,7 +317,7 @@ export function buildRosterProjection(teamPlayers, gameYear, userMoves = {}, all
   const buckets = { active: [], fortyMan: [], ilShort: [], ilLong: [], r5Risk: [], prospects: [], departing: [] };
   active.forEach(ep => { buckets[categorizeToBucket(ep)].push(ep); });
 
-  const sortByVal = (a, b) => (b._fv ?? b._waa ?? -999) - (a._fv ?? a._waa ?? -999);
+  const sortByVal = (a, b) => (b._fv ?? b._war ?? -999) - (a._fv ?? a._war ?? -999);
   Object.values(buckets).forEach(arr => arr.sort(sortByVal));
 
   const years = {};

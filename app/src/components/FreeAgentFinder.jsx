@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { S } from "../theme.js";
-import { posColor, proneColor, waaStyle, devPctColor, zToColor } from "../theme.js";
+import { posColor, proneColor, warStyle, devPctColor, zToColor } from "../theme.js";
 import { fmt, fmtAge, num, isTrueFA, rankSuffix, searchFilter, paginateRows } from "../utils/helpers.js";
-import { getMaxWaa, getMaxWaaP, genericSort, pickPitcherRole, pickFielderPos, passesPositionFilter, INF_POSITIONS, OF_POSITIONS } from "../utils/accessors.js";
+import { getMaxWar, getMaxWarP, genericSort, pickPitcherRole, pickFielderPos, passesPositionFilter, INF_POSITIONS, OF_POSITIONS } from "../utils/accessors.js";
 import { ALL_DISPLAY_POS, POT_DISPLAY_POS, PER_PAGE } from "../utils/constants.js";
 import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
@@ -47,32 +47,33 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
   const pitcherRoleHint = (pitcherSel.length === 1 && pitcherSel[0] === "SP") ? "sp"
     : (pitcherSel.length === 1 && pitcherSel[0] === "RP") ? "rp"
     : "best";
+  const devCurves = data.meta?.devCurve ?? null;
   const faPool = useMemo(() => {
     const hitters = data.hitters.filter((p) => isTrueFA(p, iafaTag)).map((h) => {
-      let waa, waaP, fv;
+      let war, warP, fv;
       if (useFieldOverride) {
-        const pv = pickFielderPos(h, fieldSel, h._devPct, curveSettings);
-        waa = pv?.waa ?? null; waaP = pv?.waaP ?? null; fv = pv?.fv ?? null;
+        const pv = pickFielderPos(h, fieldSel, devCurves?.hit, curveSettings);
+        war = pv?.war ?? null; warP = pv?.warP ?? null; fv = pv?.fv ?? null;
       } else {
-        waa = getMaxWaa(h); waaP = getMaxWaaP(h); fv = h._fv;
+        war = getMaxWar(h); warP = getMaxWarP(h); fv = h._fv;
       }
-      return { ...h, _waa: waa, _waaP: waaP, _fv: fv, _waaSort: waa, _waaPSort: waaP };
+      return { ...h, _war: war, _warP: warP, _fv: fv, _warSort: war, _warPSort: warP };
     });
     const pitchers = data.pitchers.filter((p) => isTrueFA(p, iafaTag)).map((p) => {
       const role = pitcherRoleHint === "best"
-        ? { waa: p._waa, waaP: p._waaP, fv: p._fv, waaSort: p._waaSort, waaPSort: p._waaPSort, role: p._role }
-        : pickPitcherRole(p, p._devPct, curveSettings, pitcherRoleHint);
+        ? { war: p._war, warP: p._warP, fv: p._fv, warSort: p._warSort, warPSort: p._warPSort, role: p._role }
+        : pickPitcherRole(p, devCurves, curveSettings, pitcherRoleHint);
       return {
         ...p,
-        _waa: role.waa, _waaP: role.waaP, _fv: role.fv,
-        _waaSort: role.waaSort ?? role.waa ?? null,
-        _waaPSort: role.waaPSort ?? role.waaP ?? null,
+        _war: role.war, _warP: role.warP, _fv: role.fv,
+        _warSort: role.warSort ?? role.war ?? null,
+        _warPSort: role.warPSort ?? role.warP ?? null,
         _role: role.role,
       };
     });
     return [...hitters, ...pitchers];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, iafaTag, curveSettings, posFilter]);
+  }, [data, iafaTag, curveSettings, posFilter, devCurves]);
 
   const filtered = useMemo(() => {
     const mn = ageMin !== "" ? parseFloat(ageMin) : null;
@@ -108,7 +109,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
       return true;
     });
     const { col, dir } = sort;
-    genericSort(rows, col, dir, { _waa: (p) => p._waaSort ?? p._waa, _waaP: (p) => p._waaPSort ?? p._waaP, _fv: (p) => p._fv, _devPct: (p) => p._devPct });
+    genericSort(rows, col, dir, { _war: (p) => p._warSort ?? p._war, _warP: (p) => p._warPSort ?? p._warP, _fv: (p) => p._fv, _devPct: (p) => p._devPct });
     return rows;
   }, [faPool, debouncedFASearch, posFilter, gapOnly, sort, weakPositions, ageMin, ageMax, proyMin, proyMax]);
 
@@ -170,8 +171,8 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
                 { key: "POS", label: "POS", w: 48 },
                 { key: "_bestPos", label: "Best", w: 48 },
                 { key: "_fv", label: "FV", w: 60 },
-                { key: "_waa", label: "WAA", w: 65 },
-                { key: "_waaP", label: "WAA P", w: 65 },
+                { key: "_war", label: "WAR", w: 65 },
+                { key: "_warP", label: "WAR P", w: 65 },
                 { key: "_devPct", label: "Dev%", w: 48 },
                 { key: "PROY", label: "Pro Yrs", w: 55 },
                 { key: "Prone", label: "Prone", w: 65 },
@@ -193,9 +194,9 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
                       {isWeak && <span style={{ color: "#f87171", marginLeft: 4, fontSize: 9 }}>NEED</span>}
                     </td>
                     <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
-                    <td style={{ ...S.td, ...waaStyle(p._fv) }}>{fmt(p._fv)}</td>
-                    <td style={{ ...S.td, ...waaStyle(p._waa) }}>{fmt(p._waa)}</td>
-                    <td style={{ ...S.td, ...(p._matured ? { color: "#475569" } : waaStyle(p._waaP)) }}>{p._matured ? "—" : fmt(p._waaP)}</td>
+                    <td style={{ ...S.td, ...warStyle(p._fv) }}>{fmt(p._fv)}</td>
+                    <td style={{ ...S.td, ...warStyle(p._war) }}>{fmt(p._war)}</td>
+                    <td style={{ ...S.td, ...(p._matured ? { color: "#475569" } : warStyle(p._warP)) }}>{p._matured ? "—" : fmt(p._warP)}</td>
                     <td style={{ ...S.td, color: !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: !p._ageMatured && p._devPct != null ? 600 : 400 }}>{!p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}</td>
                     <td style={{ ...S.td, color: "#94a3b8" }}>{(p.meta?.proy ?? p.PROY) || "—"}</td>
                     <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>

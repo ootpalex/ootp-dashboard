@@ -2,7 +2,7 @@
 // DATA PROCESSING — processData, age calculation, best position, maturity
 // ============================================================================
 import { num, parseCSVBoolean } from "./helpers.js";
-import { getMaxWaa, getMaxWaaP, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, getRunsP, isEligible } from "./accessors.js";
+import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, getRunsP, isEligible } from "./accessors.js";
 import { UNAFFILIATED, SP_REPLACEMENT_WAP, RP_ADVANTAGE_THRESHOLD, DEF_TIERS, TIER_RUNSP_MIN, TIER_DROP_ADVANTAGE } from "./constants.js";
 
 export function isMatured(player, cs) {
@@ -10,14 +10,14 @@ export function isMatured(player, cs) {
   if (age == null) return true;
   if (age >= cs.maxCurrentAge) return true;
   if (player._type === "hitter") {
-    const cur = getMaxWaa(player);
-    const pot = getMaxWaaP(player);
+    const cur = getMaxWar(player);
+    const pot = getMaxWarP(player);
     if (cur != null && pot != null && cur > pot) return true;
   } else {
-    const spCur = getSpWaa(player);
-    const spPot = getSpWaaP(player);
-    const rpCur = getRpWaa(player);
-    const rpPot = getRpWaaP(player);
+    const spCur = getSpWar(player);
+    const spPot = getSpWarP(player);
+    const rpCur = getRpWar(player);
+    const rpPot = getRpWarP(player);
     const cur = spCur ?? rpCur;
     const pot = spPot ?? rpPot;
     if (cur != null && pot != null && cur > pot) return true;
@@ -61,8 +61,8 @@ export function calcBestPos(player, type, matured) {
   // Pitcher
   const isSPEligible = (player.starter ?? parseCSVBoolean(player.Starter)) || (player.starterP ?? parseCSVBoolean(player["Starter P"]));
   if (!isSPEligible) return "RP";
-  const spVal = matured ? getSpWaa(player) : getSpWaaP(player);
-  const rpVal = matured ? getRpWaa(player) : getRpWaaP(player);
+  const spVal = matured ? getSpWar(player) : getSpWarP(player);
+  const rpVal = matured ? getRpWar(player) : getRpWarP(player);
   if (spVal != null || rpVal != null) {
     const sp = spVal ?? -Infinity;
     const rp = rpVal ?? -Infinity;

@@ -58,7 +58,7 @@ export function suggestActions(projection, curveSettings) {
     .sort((a, b) => {
       if (a._options.outOfOptions && !b._options.outOfOptions) return -1;
       if (!a._options.outOfOptions && b._options.outOfOptions) return 1;
-      return (a._fv ?? a._waa ?? 0) - (b._fv ?? b._waa ?? 0);
+      return (a._fv ?? a._war ?? 0) - (b._fv ?? b._war ?? 0);
     })
     .slice(0, 5);
 
@@ -77,15 +77,18 @@ export function suggestActions(projection, curveSettings) {
     });
   });
 
+  // WAR > 1.5 ≈ "above league-average full-time MLB player" (avg hitter ~2.0,
+  // avg SP ~1.5, avg RP ~0.5). Mirrors the old "above-average" semantic that
+  // a WAA > 0 filter implied pre-WAR shift.
   const promoteCandidates = (buckets.fortyMan || [])
-    .filter(ep => !ep.meta?.act && (ep._waa ?? -999) > 0)
-    .sort((a, b) => (b._waa ?? 0) - (a._waa ?? 0))
+    .filter(ep => !ep.meta?.act && (ep._war ?? -999) > 1.5)
+    .sort((a, b) => (b._war ?? 0) - (a._war ?? 0))
     .slice(0, 3);
 
   promoteCandidates.forEach(ep => {
     suggestions.push({
       type: "promote", playerId: ep._uid, player: ep,
-      reason: `WAA ${ep._waa != null ? ep._waa.toFixed(1) : "N/A"} — ready for active roster`,
+      reason: `WAR ${ep._war != null ? ep._war.toFixed(1) : "N/A"} — ready for active roster`,
       action: "promote",
     });
   });
@@ -96,7 +99,7 @@ export function suggestActions(projection, curveSettings) {
       ep._mlfa.mlfaYear <= projection.gameYear + 2 &&
       !ep._mlfa.eligible
     )
-    .sort((a, b) => (b._fv ?? b._waa ?? 0) - (a._fv ?? a._waa ?? 0))
+    .sort((a, b) => (b._fv ?? b._war ?? 0) - (a._fv ?? a._war ?? 0))
     .slice(0, 5);
 
   mlfaCandidates.forEach(ep => {

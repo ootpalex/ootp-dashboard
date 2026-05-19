@@ -1,4 +1,4 @@
-// Memo'd Age vs WAA scatter — only re-renders when scatter/trend props change.
+// Memo'd Age vs WAR scatter — only re-renders when scatter/trend props change.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { niceScale } from "./_shared.js";
 
@@ -74,8 +74,8 @@ export const DevScatterChart = memo(function DevScatterChart({ scatterCurrent, s
       return;
     }
     const age = xInv(px);
-    const waa = yInv(py);
-    setCrosshair({ px, py, age, waa });
+    const war = yInv(py);
+    setCrosshair({ px, py, age, war });
     let bestDist = 25;
     let bestDot = null;
     const check = (data, color) => {
@@ -119,22 +119,22 @@ export const DevScatterChart = memo(function DevScatterChart({ scatterCurrent, s
 
   const crosshairStats = useMemo(() => {
     if (!crosshair || trendLocked) return null;
-    const { age, waa } = crosshair;
+    const { age, war } = crosshair;
     const totalCur = scatterCurrent.length;
     const totalPot = scatterPotential.length;
     if (totalCur + totalPot === 0) return null;
     let youngerCur = 0, aboveCur = 0, bothCur = 0;
     for (const p of scatterCurrent) {
-      const young = p.age <= age; const above = p.y >= waa;
+      const young = p.age <= age; const above = p.y >= war;
       if (young) youngerCur++; if (above) aboveCur++; if (young && above) bothCur++;
     }
     let youngerPot = 0, abovePot = 0, bothPot = 0;
     for (const p of scatterPotential) {
-      const young = p.age <= age; const above = p.y >= waa;
+      const young = p.age <= age; const above = p.y >= war;
       if (young) youngerPot++; if (above) abovePot++; if (young && above) bothPot++;
     }
     return {
-      age: Math.round(age * 10) / 10, waa: Math.round(waa * 100) / 100,
+      age: Math.round(age * 10) / 10, war: Math.round(war * 100) / 100,
       cur: { younger: youngerCur, above: aboveCur, both: bothCur, total: totalCur },
       pot: { younger: youngerPot, above: abovePot, both: bothPot, total: totalPot },
     };
@@ -145,7 +145,7 @@ export const DevScatterChart = memo(function DevScatterChart({ scatterCurrent, s
   return (
     <>
       <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-        {playerCount} players. Blue = Current WAA, Green = Potential WAA. Hover for crosshair stats. Click a trend line to lock and slide along it.
+        {playerCount} players. Blue = Current WAR, Green = Potential WAR. Hover for crosshair stats. Click a trend line to lock and slide along it.
       </div>
       <div ref={containerRef} style={{ position: "relative" }}>
         <svg width={width} height={height} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}
@@ -155,7 +155,7 @@ export const DevScatterChart = memo(function DevScatterChart({ scatterCurrent, s
           {xScale.ticks.map((t) => <text key={`xt${t}`} x={xFn(t)} y={margin.top + plotH + 16} fill="#64748b" fontSize={11} textAnchor="middle">{t}</text>)}
           {yScale.ticks.map((t) => <text key={`yt${t}`} x={margin.left - 8} y={yFn(t) + 4} fill="#64748b" fontSize={11} textAnchor="end">{t}</text>)}
           <text x={margin.left + plotW / 2} y={height - 2} fill="#64748b" fontSize={11} textAnchor="middle">Age</text>
-          <text x={14} y={margin.top + plotH / 2} fill="#64748b" fontSize={11} textAnchor="middle" transform={`rotate(-90,14,${margin.top + plotH / 2})`}>WAA</text>
+          <text x={14} y={margin.top + plotH / 2} fill="#64748b" fontSize={11} textAnchor="middle" transform={`rotate(-90,14,${margin.top + plotH / 2})`}>WAR</text>
           {scatterCurrent.map((p, i) => <circle key={`c${i}`} cx={xFn(p.age)} cy={yFn(p.y)} r={1.5} fill="#3b82f6" opacity={0.2} />)}
           {scatterPotential.map((p, i) => <circle key={`p${i}`} cx={xFn(p.age)} cy={yFn(p.y)} r={1.5} fill="#22c55e" opacity={0.2} />)}
           {avgTrendData.length > 1 && (() => {
@@ -179,8 +179,8 @@ export const DevScatterChart = memo(function DevScatterChart({ scatterCurrent, s
           <rect x={margin.left} y={margin.top} width={plotW} height={plotH} fill="transparent" />
         </svg>
         <div style={{ display: "flex", gap: 16, justifyContent: "center", fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-          <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#3b82f6", marginRight: 4, verticalAlign: "middle" }} />Current WAA</span>
-          <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#22c55e", marginRight: 4, verticalAlign: "middle" }} />Potential WAA</span>
+          <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#3b82f6", marginRight: 4, verticalAlign: "middle" }} />Current WAR</span>
+          <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#22c55e", marginRight: 4, verticalAlign: "middle" }} />Potential WAR</span>
           <span><span style={{ display: "inline-block", width: 16, height: 3, background: "#3b82f6", marginRight: 4, verticalAlign: "middle", borderRadius: 1 }} />Avg Current</span>
           <span><span style={{ display: "inline-block", width: 16, height: 3, background: "#22c55e", marginRight: 4, verticalAlign: "middle", borderRadius: 1 }} />Avg Potential</span>
         </div>
@@ -193,7 +193,7 @@ export const DevScatterChart = memo(function DevScatterChart({ scatterCurrent, s
           }}>
             <div style={{ display: "flex", gap: 16, marginBottom: 6, fontWeight: 700, color: "#e2e8f0" }}>
               <span>Age ≤ {crosshairStats.age.toFixed(1)}</span>
-              <span>WAA ≥ {crosshairStats.waa.toFixed(2)}</span>
+              <span>WAR ≥ {crosshairStats.war.toFixed(2)}</span>
             </div>
             {hovered && (
               <div style={{ marginBottom: 6, color: hovered.color, fontWeight: 600 }}>
@@ -207,7 +207,7 @@ export const DevScatterChart = memo(function DevScatterChart({ scatterCurrent, s
               <thead>
                 <tr style={{ borderBottom: "1px solid #1e293b" }}>
                   <th style={{ textAlign: "left", padding: "2px 4px", color: "#64748b", fontWeight: 600 }}></th>
-                  <th style={{ textAlign: "right", padding: "2px 4px", color: "#64748b", fontWeight: 600 }}>WAA ≥</th>
+                  <th style={{ textAlign: "right", padding: "2px 4px", color: "#64748b", fontWeight: 600 }}>WAR ≥</th>
                   <th style={{ textAlign: "right", padding: "2px 4px", color: "#64748b", fontWeight: 600 }}>Both</th>
                 </tr>
               </thead>

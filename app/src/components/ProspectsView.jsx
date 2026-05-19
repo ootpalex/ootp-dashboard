@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { S, FV_TIER_COLORS } from "../theme.js";
-import { posColor, levelColor, waaStyle, devPctColor, scoutingRatingColor } from "../theme.js";
+import { posColor, levelColor, warStyle, devPctColor, scoutingRatingColor } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows, searchFilter, orgLabel } from "../utils/helpers.js";
-import { genericSort, getMaxWaa, getSpWaa, getRpWaa, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
+import { genericSort, getMaxWar, getSpWar, getRpWar, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
 import { FV_TIERS, PER_PAGE, PROSPECT_SUB_TABS } from "../utils/constants.js";
 import { loadProspectSettings, saveProspectSettings } from "../utils/settings.js";
 import { buildProspectPool, suggestThresholds, assignFVTier, getDollarValue, calcFarmRankings } from "../utils/prospects.js";
@@ -14,7 +14,7 @@ function ProspectsView({ data, curveSettings, leagueSettings, onSelectPlayer }) 
   const [subTab, setSubTab] = useState("board");
 
   const iafaTag = leagueSettings?.iafaTag || "IAFA";
-  const prospectPool = useMemo(() => buildProspectPool(data, iafaTag), [data, iafaTag]);
+  const prospectPool = useMemo(() => buildProspectPool(data, iafaTag, curveSettings), [data, iafaTag, curveSettings]);
 
   // Initialize thresholds on first load
   const [thresholds, setThresholds] = useState(() => {
@@ -97,17 +97,17 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
   const mlbBenchmarks = useMemo(() => {
     const mlbH = data.hitters.filter((h) => (h.meta?.lev ?? h.Lev) === "MLB");
     const mlbP = data.pitchers.filter((p) => (p.meta?.lev ?? p.Lev) === "MLB");
-    const hWAA = mlbH.map((h) => getMaxWaa(h)).filter((v) => v != null).sort((a, b) => b - a);
-    const pWAA = mlbP.map((p) => getSpWaa(p) ?? getRpWaa(p)).filter((v) => v != null).sort((a, b) => b - a);
-    const allWAA = [...hWAA, ...pWAA].sort((a, b) => b - a);
+    const hWAR = mlbH.map((h) => getMaxWar(h)).filter((v) => v != null).sort((a, b) => b - a);
+    const pWAR = mlbP.map((p) => getSpWar(p) ?? getRpWar(p)).filter((v) => v != null).sort((a, b) => b - a);
+    const allWAR = [...hWAR, ...pWAR].sort((a, b) => b - a);
     const pctAt = (arr, pct) => arr.length > 0 ? arr[Math.floor(arr.length * pct)] ?? arr[arr.length - 1] : 0;
     return {
-      mlbTop5: allWAA[4] ?? 0,     // ~MVP level
-      mlbTop20: allWAA[19] ?? 0,   // ~All-Star
-      mlbTop50: allWAA[49] ?? 0,   // ~Quality starter
-      mlbMedian: pctAt(allWAA, 0.5),
-      mlbP25: pctAt(allWAA, 0.75), // bottom quartile
-      total: allWAA.length,
+      mlbTop5: allWAR[4] ?? 0,     // ~MVP level
+      mlbTop20: allWAR[19] ?? 0,   // ~All-Star
+      mlbTop50: allWAR[49] ?? 0,   // ~Quality starter
+      mlbMedian: pctAt(allWAR, 0.5),
+      mlbP25: pctAt(allWAR, 0.75), // bottom quartile
+      total: allWAR.length,
     };
   }, [data]);
 
@@ -209,7 +209,7 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* MLB Reference Bar */}
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", padding: "10px 12px", background: "rgba(30,41,59,0.5)", borderRadius: 6, border: "1px solid #1e293b" }}>
-              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>MLB WAA Benchmarks</span>
+              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>MLB WAR Benchmarks</span>
               <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Top 5 (MVP):</span> <span style={{ color: "#22c55e", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbTop5)}</span></span>
               <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Top 20 (All-Star):</span> <span style={{ color: "#4ade80", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbTop20)}</span></span>
               <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Top 50 (Starter):</span> <span style={{ color: "#86efac", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbTop50)}</span></span>
@@ -330,8 +330,8 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                 { key: "ORG", label: "Team", w: 110 },
                 { key: "Lev", label: "Lvl", w: 40 },
                 { key: "_fv", label: "FV", w: 60 },
-                { key: "_currentVal", label: "WAA", w: 55 },
-                { key: "_baseVal", label: "WAA P", w: 55 },
+                { key: "_currentVal", label: "WAR", w: 55 },
+                { key: "_baseVal", label: "WAR P", w: 55 },
                 { key: "_dollarVal", label: "$ Val", w: 55 },
               ].map(({ key, label, w }) => (
                 <SortHeader key={key} label={label} width={w} sortCol={sort.col} sortDir={sort.dir} colKey={key}
@@ -359,9 +359,9 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                     <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
                     <td style={S.td}>{orgLabel(p)}</td>
                     <td style={{ ...S.td, color: levelColor(p.meta?.lev ?? p.Lev) }}>{p.meta?.lev ?? p.Lev ?? "—"}</td>
-                    <td style={{ ...S.td, ...waaStyle(p._fv ?? p._baseVal) }}>{fmt(p._fv ?? p._baseVal)}</td>
-                    <td style={{ ...S.td, ...waaStyle(p._currentVal) }}>{fmt(p._currentValDisplay ?? p._currentVal)}</td>
-                    <td style={{ ...S.td, ...waaStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>
+                    <td style={{ ...S.td, ...warStyle(p._fv ?? p._baseVal) }}>{fmt(p._fv ?? p._baseVal)}</td>
+                    <td style={{ ...S.td, ...warStyle(p._currentVal) }}>{fmt(p._currentValDisplay ?? p._currentVal)}</td>
+                    <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>
                     <td style={{ ...S.td, color: "#fbbf24", fontWeight: 600 }}>{p._dollarVal > 0 ? `$${fmt(p._dollarVal, 1)}M` : "—"}</td>
                   </tr>
               ))}

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { gradeToColor, posColor, waaStyle } from "../../theme.js";
+import { gradeToColor, posColor, warStyle } from "../../theme.js";
 import { num, fmt } from "../../utils/helpers.js";
 
 const tS = { background: "rgba(15,23,42,0.6)", borderRadius: 6, border: "1px solid #1e293b", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
@@ -185,16 +185,16 @@ function PitchingTab({ player, role }) {
         <div style={sectionLabel}>MODEL PROJECTIONS</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
           <div style={tS}>
-            <span style={tL}>WAA (wtd)</span>
+            <span style={tL}>WAR (wtd)</span>
             <div style={{
               display: "grid",
-              gridTemplateColumns: !matured && num(pro?.waa) != null && num(pro.waa) !== num(wtd?.waa) ? "1fr auto" : "1fr",
+              gridTemplateColumns: !matured && num(pro?.war) != null && num(pro.war) !== num(wtd?.war) ? "1fr auto" : "1fr",
               gap: 14,
               alignItems: "baseline",
             }}>
-              <span style={{ fontSize: 15, fontWeight: 700, ...waaStyle(num(wtd?.waa)) }}>{fmt(num(wtd?.waa), 2)}</span>
-              {!matured && num(pro?.waa) != null && num(pro.waa) !== num(wtd?.waa) && (
-                <PotChip value={num(pro.waa)} valueFmt={(v) => fmt(v, 2)} />
+              <span style={{ fontSize: 15, fontWeight: 700, ...warStyle(num(wtd?.war)) }}>{fmt(num(wtd?.war), 2)}</span>
+              {!matured && num(pro?.war) != null && num(pro.war) !== num(wtd?.war) && (
+                <PotChip value={num(pro.war)} valueFmt={(v) => fmt(v, 2)} />
               )}
             </div>
           </div>

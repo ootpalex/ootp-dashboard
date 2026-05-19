@@ -1,7 +1,7 @@
 import { memo } from "react";
-import { S, posColor, waaStyle } from "../../theme.js";
+import { S, posColor, warStyle } from "../../theme.js";
 import { fmt } from "../../utils/helpers.js";
-import { getWaa, getWaaP, getRunsP } from "../../utils/accessors.js";
+import { getWar, getWarP, getRunsP } from "../../utils/accessors.js";
 
 function EligiblePositionsTable({ player, eligiblePositions, bestRunsPPos }) {
   if (!eligiblePositions || eligiblePositions.length === 0) return null;
@@ -11,7 +11,7 @@ function EligiblePositionsTable({ player, eligiblePositions, bestRunsPPos }) {
       <div style={S.tableWrap}>
         <table style={S.table}>
           <thead><tr>
-            {["Pos", "WAA", "WAA P", "vs LHP", "vs RHP", "RunsP"].map(h => <th key={h} style={{ ...S.th, padding: "4px 8px" }}>{h}</th>)}
+            {["Pos", "WAR", "WAR P", "vs LHP", "vs RHP", "RunsP"].map(h => <th key={h} style={{ ...S.th, padding: "4px 8px" }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {eligiblePositions.map(pos => {
@@ -19,11 +19,11 @@ function EligiblePositionsTable({ player, eligiblePositions, bestRunsPPos }) {
               return (
                 <tr key={pos} style={{ background: isBest ? "rgba(34,197,94,0.06)" : "transparent" }}>
                   <td style={{ ...S.td, color: posColor(pos), fontWeight: 700 }}>{pos}{isBest ? " ★" : ""}</td>
-                  <td style={{ ...S.td, ...waaStyle(getWaa(player, pos)) }}>{fmt(getWaa(player, pos))}</td>
-                  <td style={{ ...S.td, ...waaStyle(getWaaP(player, pos)) }}>{fmt(getWaaP(player, pos))}</td>
-                  <td style={{ ...S.td, ...waaStyle(getWaa(player, pos, "vL")) }}>{fmt(getWaa(player, pos, "vL"))}</td>
-                  <td style={{ ...S.td, ...waaStyle(getWaa(player, pos, "vR")) }}>{fmt(getWaa(player, pos, "vR"))}</td>
-                  <td style={{ ...S.td, ...waaStyle(getRunsP(player, pos)) }}>{fmt(getRunsP(player, pos))}</td>
+                  <td style={{ ...S.td, ...warStyle(getWar(player, pos)) }}>{fmt(getWar(player, pos))}</td>
+                  <td style={{ ...S.td, ...warStyle(getWarP(player, pos)) }}>{fmt(getWarP(player, pos))}</td>
+                  <td style={{ ...S.td, ...warStyle(getWar(player, pos, "vL")) }}>{fmt(getWar(player, pos, "vL"))}</td>
+                  <td style={{ ...S.td, ...warStyle(getWar(player, pos, "vR")) }}>{fmt(getWar(player, pos, "vR"))}</td>
+                  <td style={{ ...S.td, ...warStyle(getRunsP(player, pos)) }}>{fmt(getRunsP(player, pos))}</td>
                 </tr>
               );
             })}

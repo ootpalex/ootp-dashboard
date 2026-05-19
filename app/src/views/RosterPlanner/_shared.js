@@ -24,7 +24,7 @@ export const SEVERITY_STYLES = {
 };
 
 // Pitcher is "SP-role" if the starter flag is set, regardless of meta.pos.
-// Avoids the getSpWaa eligibility gate returning null for meta.pos="SP"
+// Avoids the getSpWar eligibility gate returning null for meta.pos="SP"
 // pitchers that are actually RP-only.
 export const isSpRole = (p) =>
   (p.starter ?? parseCSVBoolean(p.Starter)) ||

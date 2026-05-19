@@ -139,19 +139,22 @@ export function getOptionsInfo(player, additionalBurned = 0) {
   };
 }
 
-export const R5_DEFAULT_THRESHOLD = -1.0;
+// Default WAR threshold for R5 risk = ~+1.0 (≈ −1.0 WAA pre-shift).
+// User-tunable via the Roster Planner "R5 risk threshold" slider.
+export const R5_DEFAULT_THRESHOLD = 1.0;
 export const R5_PROTECT_BUFFER = 0.2;
 
-const scoreOf = (ep) => ep._fv ?? ep._waaP ?? ep._waa ?? -Infinity;
+const scoreOf = (ep) => ep._fv ?? ep._warP ?? ep._war ?? -Infinity;
 
 // A 40-man player is "displaceable" if it's realistic that the user would
 // DFA / waive them to make room for a protect. Stars, no-trade contracts,
 // and big guaranteed deals are excluded — those slots aren't actually open.
+// Threshold 2.5 WAR ≈ "above league-average MLB regular" (~+1 WAA pre-shift).
 function isDisplaceable40Man(ep) {
   const meta = ep.meta || {};
   if (meta.on40 !== true) return false;
   if (ep.contract?.noTrade === true) return false;
-  if (meta.act === true && (ep._waa ?? 0) >= 1.0) return false;
+  if (meta.act === true && (ep._war ?? 0) >= 2.5) return false;
   const yearsLeft = ep._contract?.yearsLeft ?? 0;
   const cv = meta.cv ?? 0;
   if (yearsLeft >= 2 && cv >= 20_000_000) return false;

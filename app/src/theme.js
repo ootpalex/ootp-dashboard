@@ -31,6 +31,17 @@ export const proneColor = (p) => ({ "Iron Man":"#22c55e",Durable:"#4ade80",Norma
 // 80=blue, 70=cyan, 60=teal, 50=green, 40=yellow, 30=orange, 20=red
 const WAA_MEAN = -0.25;
 const WAA_STD = 1.49;
+
+// WAR equivalents — empirically calibrated 2026-05-18 from the MLB-level pool
+// across all five OOTP leagues (default + BLM-ATL/COL/MIA/NYM): n=4582 players.
+//   mean=+0.95, std=2.22
+//   percentiles: p5=-3.66, p25=+0.54, p50=+1.09, p75=+2.04, p95=+3.55
+// FG-canonical benchmarks place avg full-time players at +2 hitter / +1.5 SP /
+// +0.5 RP. OOTP MLB pool mean comes in lower (~+0.95) because rosters carry
+// more mop-up and long-relief WAR-negative arms than real MLB. Not a bug.
+// Recompute as the league talent distribution shifts.
+const WAR_MEAN = 0.95;
+const WAR_STD = 2.22;
 const GRADE_COLORS = [
   [20, [239, 68, 68]],   // red
   [30, [249, 115, 22]],  // orange
@@ -58,6 +69,13 @@ export function gradeToColor(grade) {
 export const waaStyle = (v) => {
   if (v == null || isNaN(v)) return { color: "#475569" };
   const grade = 50 + 10 * (v - WAA_MEAN) / WAA_STD;
+  const bold = grade >= 70 || grade <= 30;
+  return { color: gradeToColor(grade), ...(bold ? { fontWeight: 700 } : {}) };
+};
+
+export const warStyle = (v) => {
+  if (v == null || isNaN(v)) return { color: "#475569" };
+  const grade = 50 + 10 * (v - WAR_MEAN) / WAR_STD;
   const bold = grade >= 70 || grade <= 30;
   return { color: gradeToColor(grade), ...(bold ? { fontWeight: 700 } : {}) };
 };

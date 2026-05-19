@@ -1,19 +1,19 @@
 // Shared helpers for the redesigned PlayerProfile modal:
 // - leaguePercentile: rank-based (sorted-array) percentile, 0–100
 // - peer-pool builders for hitters and pitchers
-// - value-component getters that centralize the BatR / BSR / RunsP / WAA reads
+// - value-component getters that centralize the BatR / BSR / RunsP / WAR reads
 // - fmtSalary: re-exported from utils/helpers.js for tab use
 import { num } from "../../utils/helpers.js";
 import {
-  getMaxWaa,
-  getMaxWaaP,
+  getMaxWar,
+  getMaxWarP,
   getBatR,
   getBsr,
   getRunsP,
-  getSpWaa,
-  getSpWaaP,
-  getRpWaa,
-  getRpWaaP,
+  getSpWar,
+  getSpWarP,
+  getRpWar,
+  getRpWarP,
   isEligible,
 } from "../../utils/accessors.js";
 import { POS_DEF_ADJ } from "../../utils/constants.js";
@@ -72,8 +72,8 @@ export function buildHitterPeerPools(hitters) {
   const mlb = (hitters || []).filter((h) => (h.meta?.lev ?? h.Lev) === "MLB");
   return {
     overall: {
-      current: sortPool(mlb.map((h) => getMaxWaa(h))),
-      potential: sortPool(mlb.map((h) => getMaxWaaP(h))),
+      current: sortPool(mlb.map((h) => getMaxWar(h))),
+      potential: sortPool(mlb.map((h) => getMaxWarP(h))),
     },
     batting: {
       current: sortPool(mlb.map((h) => getBatR(h))),
@@ -97,7 +97,7 @@ export function buildHitterPeerPools(hitters) {
 // equals percentile-by-rate.
 export function buildPitcherPeerPools(pitchers, role) {
   const mlb = (pitchers || []).filter((p) => (p.meta?.lev ?? p.Lev) === "MLB");
-  const pool = role === "sp" ? mlb.filter((p) => getSpWaa(p) != null) : mlb;
+  const pool = role === "sp" ? mlb.filter((p) => getSpWar(p) != null) : mlb;
 
   const cur = (p) => p?.[role]?.wtd ?? null;
   const pot = (p) => p?.prospect?.[role] ?? null;
@@ -125,8 +125,8 @@ export function buildPitcherPeerPools(pitchers, role) {
 
   return {
     overall: {
-      current: sortPool(pool.map((p) => num(cur(p)?.waa))),
-      potential: sortPool(pool.map((p) => num(pot(p)?.waa))),
+      current: sortPool(pool.map((p) => num(cur(p)?.war))),
+      potential: sortPool(pool.map((p) => num(pot(p)?.war))),
     },
     k: {
       current: sortPool(pool.map((p) => num(cur(p)?.so))),
@@ -150,8 +150,8 @@ export function buildPitcherPeerPools(pitchers, role) {
 export function getHitterValueComponents(player) {
   return {
     overall: {
-      current: getMaxWaa(player),
-      potential: getMaxWaaP(player),
+      current: getMaxWar(player),
+      potential: getMaxWarP(player),
     },
     batting: {
       current: getBatR(player),
@@ -172,8 +172,8 @@ export function getHitterValueComponents(player) {
 export function getPitcherValueComponents(player, role) {
   const cur = player?.[role]?.wtd ?? null;
   const pot = player?.prospect?.[role] ?? null;
-  const overallCur = role === "sp" ? getSpWaa(player) : getRpWaa(player);
-  const overallPot = role === "sp" ? getSpWaaP(player) : getRpWaaP(player);
+  const overallCur = role === "sp" ? getSpWar(player) : getRpWar(player);
+  const overallPot = role === "sp" ? getSpWarP(player) : getRpWarP(player);
 
   // BABIP-against — current only (prospects don't ship 1B/2B/3B counts).
   let babipCur = null;

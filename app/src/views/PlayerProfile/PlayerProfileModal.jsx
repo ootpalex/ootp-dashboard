@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { posColor, levelColor, proneColor, gradeToColor, devPctColor, waaStyle } from "../../theme.js";
+import { posColor, levelColor, proneColor, gradeToColor, devPctColor, warStyle } from "../../theme.js";
 import { fmtAge, fmt, num, parseCSVBoolean, orgLabel } from "../../utils/helpers.js";
-import { getMaxWaa, getMaxWaaP, getSpWaa, getRpWaa, getSpWaaP, getRpWaaP, isEligible } from "../../utils/accessors.js";
+import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, isEligible } from "../../utils/accessors.js";
 import { HITTER_POS } from "../../utils/constants.js";
 import { TwoWayBadge, PillBtn, TabGroup } from "../../components/shared.jsx";
 
@@ -76,7 +76,7 @@ function HeaderTiles({ player }) {
       <div style={{ display: "grid", gridTemplateColumns: cols, gap: 6 }}>
         <Tile label="OVR" value={ovr ?? "—"} valueColor={ovr != null ? gradeToColor(ovr) : undefined} />
         <Tile label="POT" value={pot ?? "—"} valueColor={pot != null ? gradeToColor(pot) : undefined} />
-        <Tile label="FV" value={fv != null ? fmt(fv, 2) : "—"} valueColor={fv != null ? waaStyle(fv).color : undefined} />
+        <Tile label="FV" value={fv != null ? fmt(fv, 2) : "—"} valueColor={fv != null ? warStyle(fv).color : undefined} />
         <Tile label="Dev%" value={devPct != null ? `${Math.round(devPct * 100)}th` : "—"}
               valueColor={devPct != null ? devPctColor(devPct) : undefined} />
       </div>
@@ -106,14 +106,14 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
   const tabs = isHitter ? HITTER_TABS : PITCHER_TABS;
 
   // FV projection chart inputs (kept verbatim from prior implementation).
-  const currentWAA = isHitter
-    ? getMaxWaa(player)
-    : (role === "sp" ? getSpWaa(player) : getRpWaa(player)) ?? (player._sp?.waa ?? player._rp?.waa);
-  const potentialWAA = isHitter
-    ? getMaxWaaP(player)
-    : (role === "sp" ? getSpWaaP(player) : getRpWaaP(player)) ?? (player._sp?.waaP ?? player._rp?.waaP);
-  const effectivePotWAA = potentialWAA ?? currentWAA;
-  const showFVChart = currentWAA != null && player._age != null;
+  const currentWAR = isHitter
+    ? getMaxWar(player)
+    : (role === "sp" ? getSpWar(player) : getRpWar(player)) ?? (player._sp?.war ?? player._rp?.war);
+  const potentialWAR = isHitter
+    ? getMaxWarP(player)
+    : (role === "sp" ? getSpWarP(player) : getRpWarP(player)) ?? (player._sp?.warP ?? player._rp?.warP);
+  const effectivePotWAR = potentialWAR ?? currentWAR;
+  const showFVChart = currentWAR != null && player._age != null;
 
   const devGapCurve = useMemo(() => {
     if (!showFVChart) return new Map();
@@ -125,11 +125,11 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
     for (const p of pool) {
       const age = p._age;
       const cur = isHitter
-        ? getMaxWaa(p)
-        : (getSpWaa(p) ?? getRpWaa(p));
+        ? getMaxWar(p)
+        : (getSpWar(p) ?? getRpWar(p));
       const pot = isHitter
-        ? getMaxWaaP(p)
-        : (getSpWaaP(p) ?? getRpWaaP(p));
+        ? getMaxWarP(p)
+        : (getSpWarP(p) ?? getRpWarP(p));
       if (age != null && cur != null && pot != null)
         gapData.push({ age, gap: Math.max(0, pot - cur) });
     }
@@ -169,7 +169,7 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
     if (!showFVChart) return [];
     const maturityAge  = curveSettings?.maxCurrentAge ?? 27;
     const playerDevPct = player._devPct ?? 0.5;
-    const gap = Math.max(0, (effectivePotWAA ?? currentWAA) - currentWAA);
+    const gap = Math.max(0, (effectivePotWAR ?? currentWAR) - currentWAR);
     const startAge = Math.floor(player._age);
     const endAge   = maturityAge + 6;
     if (startAge > endAge) return [];
@@ -198,12 +198,12 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
 
     let matureCeiling, matureCenter, matureFloor;
     if (startAge >= maturityAge) {
-      matureCeiling = matureCenter = matureFloor = currentWAA;
+      matureCeiling = matureCenter = matureFloor = currentWAR;
     } else {
       const fcCeil  = fracRealized(maturityAge, 'p10', baseP10);
       const fcFloor = fracRealized(maturityAge, 'p90', baseP90, FLOOR_DEV_CAP);
-      matureCeiling = currentWAA + gap * fcCeil;
-      matureFloor   = currentWAA + gap * fcFloor;
+      matureCeiling = currentWAR + gap * fcCeil;
+      matureFloor   = currentWAR + gap * fcFloor;
       matureCenter  = matureFloor + (matureCeiling - matureFloor) * playerDevPct;
     }
 
@@ -215,9 +215,9 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
         const fcCenter = fcFloor + (fcCeil - fcFloor) * playerDevPct;
         rows.push({
           age,
-          ceiling: Math.round((currentWAA + gap * fcCeil)   * 100) / 100,
-          center:  Math.round((currentWAA + gap * fcCenter) * 100) / 100,
-          floor:   Math.round((currentWAA + gap * fcFloor)  * 100) / 100,
+          ceiling: Math.round((currentWAR + gap * fcCeil)   * 100) / 100,
+          center:  Math.round((currentWAR + gap * fcCenter) * 100) / 100,
+          floor:   Math.round((currentWAR + gap * fcFloor)  * 100) / 100,
         });
       } else {
         const yp = age - maturityAge;
@@ -230,7 +230,7 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
       }
     }
     return rows;
-  }, [showFVChart, devGapCurve, player._age, player._devPct, currentWAA, effectivePotWAA, curveSettings]);
+  }, [showFVChart, devGapCurve, player._age, player._devPct, currentWAR, effectivePotWAR, curveSettings]);
 
   // Peer pools for the percentile header. Recomputed when role changes (pitchers).
   const peerPools = useMemo(() => {
@@ -323,7 +323,7 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
           player={player}
           fvChartData={fvChartData}
           showFVChart={showFVChart}
-          potentialWAA={potentialWAA}
+          potentialWAR={potentialWAR}
           curveSettings={curveSettings}
         />
 

@@ -61,21 +61,23 @@ def _parse_salary(slr_series: pd.Series) -> pd.Series:
 def _parse_demand(dem_series: pd.Series) -> pd.Series:
     """Parse OOTP demand strings to numeric.
 
-    Handles formats like '$1.1m' → 1100000, '$860k' → 860000,
-    'Impossible' → 4000000. Non-parseable (including '-') become NaN.
+    Handles formats like '$1.1m' → 1100000, '$860k' → 860000.
+    'Impossible' becomes NaN — the categorical Sign column is the better
+    signal for unsignable players, and parsing Impossible as a fixed dollar
+    amount poisoned the share-of-budget signability formula downstream
+    (a $4M-tagged player against a $20M budget = 20% share = no penalty,
+    completely missing that they're literally unsignable). Smart-rank now
+    consumes meta.sign === 'Impossible' directly and applies the max
+    penalty regardless of demSort.
 
-    Matches Excel: =IFERROR(VALUE(SUBSTITUTE(SUBSTITUTE(DEM,"k","E3"),"m","E6")),
-                    IF(DEM="Impossible",4000000,0))
+    Non-parseable values (including '-' and 'Impossible') become NaN.
     """
     s = dem_series.astype(str).str.strip()
-    # Handle 'Impossible' first
-    result = pd.Series(np.nan, index=dem_series.index, dtype=float)
     impossible = s.str.lower() == "impossible"
-    result[impossible] = 4_000_000.0
+    result = pd.Series(np.nan, index=dem_series.index, dtype=float)
 
-    # Strip $ and handle k/m suffixes
+    # Strip $ and handle k/m suffixes (Impossible stays NaN by skipping it)
     cleaned = s.str.replace(r"[$,]", "", regex=True)
-    # Convert 'm' suffix to ×1e6
     m_mask = cleaned.str.lower().str.endswith("m") & ~impossible
     k_mask = cleaned.str.lower().str.endswith("k") & ~impossible
     plain_mask = ~m_mask & ~k_mask & ~impossible
@@ -170,6 +172,379 @@ def _prepare_prospect_pitchers(players: pd.DataFrame) -> pd.DataFrame:
         if pot_col in prospect.columns:
             prospect[current_col] = _safe_numeric(prospect[pot_col])
     return prospect
+
+
+# Reliever WAA scaling — mirrors app/src/utils/accessors.js:scaleRpWaaP.
+# IP_SP / IP_RP from app/src/utils/constants.js. Single source of truth in JS;
+# replicated here so the empirical progressCurve uses the same metric the
+# frontend formula will use at runtime. If those constants change, update both.
+_IP_SP = 185.47
+_IP_RP = 69.55
+_RP_SCALE_THRESHOLD = -0.50
+
+
+def _scale_rp_waa(v: float | None) -> float | None:
+    """Map raw one-inning RP WAA to SP-equivalent units (negative-only ramp)."""
+    if v is None:
+        return None
+    if v >= 0:
+        return v
+    ratio = _IP_SP / _IP_RP  # ~2.667
+    if v <= _RP_SCALE_THRESHOLD:
+        return v * ratio
+    t = v / _RP_SCALE_THRESHOLD
+    return v * (1 + (ratio - 1) * t)
+
+
+# v21: p99 included. The original concern (selection effect at older ages
+# dominating with low-pot players whose cur ≈ pot) applied to the v19 batR-pct
+# convention. Under v21's cur-WAA-pct convention, p99 cur-WAA at age 27 is the
+# top 1% of mature cur-WAA — the genuine elite — and that's exactly what we
+# want to show in the FVIAT top row.
+_PERCENTILE_KEYS = (("p10", 0.10), ("p25", 0.25), ("p50", 0.50),
+                    ("p75", 0.75), ("p90", 0.90), ("p95", 0.95), ("p99", 0.99))
+
+# Gap distribution percentiles — used by v21B FV formula's per-age κ lookup
+# (gapPenalty = 1 / (1 + (gap / κ(age))^γ) where κ(age) = gapDist[age].pXX).
+#
+# Convention: percentile rank reflects PROSPECT QUALITY, not gap size.
+# Smaller gap = closer to potential = higher percentile.
+#   p99 = top 1% of prospects at this age = smallest 1% of gaps
+#   p1  = bottom 1% of prospects = largest 1% of gaps (least-developed)
+# This matches the standard "high percentile = elite" reading and inverts the
+# raw-gap-magnitude convention. Implementation: cumulative-weight targets are
+# inverted (p99 → 0.01, p1 → 0.99).
+_GAP_PERCENTILE_KEYS = (("p99", 0.01), ("p95", 0.05), ("p90", 0.10),
+                        ("p75", 0.25), ("p50", 0.50), ("p25", 0.75),
+                        ("p10", 0.90), ("p5",  0.95), ("p1",  0.99))
+
+# Match the bandwidth default in app/src/utils/constants.js (DEV_CURVE_DEFAULTS.bandwidth).
+# The frontend's Dev Analysis bandwidth slider drives the live recomputation;
+# this constant is the embedded-curve baseline.
+_PROGRESS_CURVE_BANDWIDTH_DEFAULT = 0.5
+
+
+def _kernel_percentiles_by_age(
+    points: list[tuple[float, float]],
+    ages: list[int],
+    bandwidth: float = _PROGRESS_CURVE_BANDWIDTH_DEFAULT,
+    keys: tuple[tuple[str, float], ...] = _PERCENTILE_KEYS,
+) -> list[dict]:
+    """Kernel-smoothed weighted percentiles over age windows.
+
+    For each integer age in `ages`, weight every point by a Gaussian kernel on
+    age distance (same shape as DevAnalysisView.jsx's gap-distribution chart),
+    then compute the weighted percentiles in one pass. The p50 doubles as the
+    formula's midpoint(age). The percentile array drives the v16 FVIAT — cells
+    need actual age-relative progress values (a 16yo cannot have progress=0.99,
+    a 24yo cannot have progress=0.25).
+
+    `keys` defaults to `_PERCENTILE_KEYS` (devCurve / progressCurve cohort —
+    no p99). Pass `_GAP_PERCENTILE_KEYS` for gap distributions (includes p99).
+
+    Returns: [{age, <each percentile label>...}, ...]. Always includes the
+    midpoint percentile (p50) — rows missing p50 are dropped.
+    """
+    import math
+
+    out: list[dict] = []
+    if not points:
+        return out
+    for age in ages:
+        weights: list[float] = []
+        vals: list[float] = []
+        for a, p in points:
+            d = (a - age) / bandwidth
+            if abs(d) > 3:
+                continue
+            w = math.exp(-0.5 * d * d)
+            if w > 0.001:
+                weights.append(w)
+                vals.append(p)
+        total_w = sum(weights)
+        if total_w < 1.0:
+            continue
+        # Sort once, sweep cumulative weight to extract every percentile in order.
+        paired = sorted(zip(vals, weights))
+        targets = [(label, q * total_w) for label, q in keys]
+        results: dict[str, float] = {}
+        cum = 0.0
+        ti = 0
+        for v, w in paired:
+            cum += w
+            while ti < len(targets) and cum >= targets[ti][1]:
+                results[targets[ti][0]] = v
+                ti += 1
+            if ti >= len(targets):
+                break
+        # Fill any unhit percentile (only happens with degenerate weights) with the max value.
+        if paired and ti < len(targets):
+            last_v = paired[-1][0]
+            for label, _ in targets[ti:]:
+                results[label] = last_v
+        if "p50" in results:
+            row = {"age": age}
+            for label, _ in keys:
+                row[label] = round(results[label], 4)
+            out.append(row)
+    return out
+
+
+def _pav_monotone_increasing(values: list[float]) -> list[float]:
+    """Pool Adjacent Violators — enforce monotone non-decreasing on a sequence.
+
+    Used to clean noise in the empirical dev curve (typical(15) > typical(14)
+    by chance in pre-development ages). Returns a same-length list where each
+    value is non-decreasing relative to its predecessor.
+    """
+    if not values:
+        return []
+    n = len(values)
+    vals = [float(v) for v in values]
+    weights = [1.0] * n
+    i = 0
+    while i < n - 1:
+        if vals[i] > vals[i + 1] + 1e-9:
+            new_w = weights[i] + weights[i + 1]
+            new_v = (vals[i] * weights[i] + vals[i + 1] * weights[i + 1]) / new_w
+            vals[i] = new_v
+            vals[i + 1] = new_v
+            weights[i] = new_w
+            weights[i + 1] = new_w
+            # Backwards pass — re-merge if previous pool now violates
+            k = i - 1
+            while k >= 0 and vals[k] > vals[k + 1] + 1e-9:
+                ww = weights[k] + weights[k + 1]
+                vv = (vals[k] * weights[k] + vals[k + 1] * weights[k + 1]) / ww
+                vals[k] = vv
+                vals[k + 1] = vv
+                weights[k] = ww
+                weights[k + 1] = ww
+                k -= 1
+            i += 1
+        else:
+            i += 1
+    return vals
+
+
+def _compute_dev_curve_from_dicts(
+    dicts: list[dict],
+    dev_path: tuple[str, ...],
+    scale: bool = False,
+    role_filter: str | None = None,  # 'sp', 'rp', or None
+) -> list[dict]:
+    """Build empirical dev-signal-by-age percentile curve for one cohort.
+
+    For hitters: dev signal is batR.wtd. For pitchers: cur-WAA.wtd (sp.wtd.waa
+    for SP, rp.wtd.waa for RP — RP scaled via _scale_rp_waa).
+
+    Walks the already-built JSON player dicts, extracts (age, devSignal),
+    kernel-smoothed percentiles by age 14–27, then PAV-smoothes each percentile
+    to enforce monotone non-decreasing (cleans pre-development age noise).
+
+    Returns: [{age, p10, p25, p50, p75, p90, p95}, ...]. Used by the v19 FV
+    formula's empirical credit_age and devPct anchor.
+    """
+    points: list[tuple[float, float]] = []
+
+    def _dig(d: dict, path: tuple[str, ...]):
+        cur = d
+        for k in path:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(k)
+            if cur is None:
+                return None
+        return cur
+
+    for p in dicts:
+        meta = p.get("meta") or {}
+        age = meta.get("age")
+        if age is None:
+            continue
+        # Role filter for pitchers (split into SP / RP cohorts)
+        if role_filter == "sp" and not p.get("starter"):
+            continue
+        if role_filter == "rp" and p.get("starter"):
+            continue
+        dev = _dig(p, dev_path)
+        if dev is None:
+            continue
+        if scale:
+            dev = _scale_rp_waa(dev)
+            if dev is None:
+                continue
+        points.append((float(age), float(dev)))
+
+    raw_rows = _kernel_percentiles_by_age(points, ages=list(range(14, 28)))
+    if not raw_rows:
+        return []
+
+    # PAV-smooth each percentile column to enforce monotone non-decreasing.
+    pct_keys = [k for k, _ in _PERCENTILE_KEYS]
+    smoothed_cols: dict[str, list[float]] = {
+        pk: _pav_monotone_increasing([row[pk] for row in raw_rows]) for pk in pct_keys
+    }
+    out: list[dict] = []
+    for i, row in enumerate(raw_rows):
+        new_row = {"age": row["age"]}
+        for pk in pct_keys:
+            new_row[pk] = round(smoothed_cols[pk][i], 4)
+        out.append(new_row)
+    return out
+
+
+def _compute_progress_curve_from_dicts(
+    dicts: list[dict],
+    cur_path: tuple[str, ...],
+    pot_path: tuple[str, ...],
+    floor_path: tuple[str, ...],
+    scale: bool = False,
+    role_filter: str | None = None,  # 'sp', 'rp', or None
+) -> list[dict]:
+    """Build empirical median-progress-by-age curve for one cohort.
+
+    Walks the already-built JSON player dicts, extracts (age, cur, pot, floor),
+    computes per-player progress (with optional RP scaling), then kernel-medians
+    by age 14–27. Used to embed `progressCurve.{hit,sp,rp}` in JSON meta so the
+    frontend can read midpoint(age) directly without recomputing.
+    """
+    points: list[tuple[float, float]] = []
+
+    def _dig(d: dict, path: tuple[str, ...]):
+        cur = d
+        for k in path:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(k)
+            if cur is None:
+                return None
+        return cur
+
+    for p in dicts:
+        meta = p.get("meta") or {}
+        age = meta.get("age")
+        if age is None:
+            continue
+        # Role filter for pitchers (split into SP / RP cohorts)
+        if role_filter == "sp" and not p.get("starter"):
+            continue
+        if role_filter == "rp" and p.get("starter"):
+            continue
+        cur = _dig(p, cur_path)
+        pot = _dig(p, pot_path)
+        floor = _dig(p, floor_path)
+        if cur is None or pot is None or floor is None:
+            continue
+        if scale:
+            cur = _scale_rp_waa(cur)
+            pot = _scale_rp_waa(pot)
+            floor = _scale_rp_waa(floor)
+        denom = pot - floor
+        if denom <= 0:
+            continue
+        progress = max(0.0, min(1.0, (cur - floor) / denom))
+        points.append((float(age), progress))
+
+    return _kernel_percentiles_by_age(points, ages=list(range(14, 28)))
+
+
+def _compute_gap_dist_from_dicts(
+    dicts: list[dict],
+    cur_path: tuple[str, ...],
+    pot_path: tuple[str, ...],
+    scale: bool = False,
+    role_filter: str | None = None,  # 'sp', 'rp', or None
+) -> list[dict]:
+    """Build empirical gap-by-age percentile curve for one cohort.
+
+    gap = max(0, pot − cur). Used by the v21B FV formula's per-age κ lookup:
+    `gapPenalty = 1 / (1 + (gap / κ(age))^γ)` where `κ(age) = gapDist[age].pXX`
+    selects which percentile drives the penalty threshold (e.g. p75, p90, p95).
+
+    No PAV smoothing — gap distributions naturally narrow with age (p99 at
+    age 14 >> p99 at age 26) and we want to preserve that structure. Includes
+    p99 (unlike devCurve / progressCurve) because the wide-gap tail at older
+    ages IS the implausibility signal we care about.
+
+    Returns: [{age, p25, p50, p75, p90, p95, p99}, ...].
+    """
+    points: list[tuple[float, float]] = []
+
+    def _dig(d: dict, path: tuple[str, ...]):
+        cur = d
+        for k in path:
+            if not isinstance(cur, dict):
+                return None
+            cur = cur.get(k)
+            if cur is None:
+                return None
+        return cur
+
+    for p in dicts:
+        meta = p.get("meta") or {}
+        age = meta.get("age")
+        if age is None:
+            continue
+        if role_filter == "sp" and not p.get("starter"):
+            continue
+        if role_filter == "rp" and p.get("starter"):
+            continue
+        cur = _dig(p, cur_path)
+        pot = _dig(p, pot_path)
+        if cur is None or pot is None:
+            continue
+        if scale:
+            cur = _scale_rp_waa(cur)
+            pot = _scale_rp_waa(pot)
+            if cur is None or pot is None:
+                continue
+        gap = max(0.0, float(pot) - float(cur))
+        points.append((float(age), gap))
+
+    return _kernel_percentiles_by_age(
+        points, ages=list(range(14, 28)), keys=_GAP_PERCENTILE_KEYS
+    )
+
+
+def _compute_floor_mins(players: pd.DataFrame, potential_map: dict) -> dict:
+    """Global min for each developable rating column (across all players).
+
+    For each developable current-rating column (LHS of POTENTIAL_MAP), take the
+    min observed value. These are the substitution values for the per-player
+    floor calc — modeling 'all bat tools at scouted minimum.' Typically lands
+    at OOTP's 20-scale floor.
+    """
+    mins: dict[str, float] = {}
+    for current_col in potential_map.keys():
+        if current_col in players.columns:
+            mins[current_col] = float(_safe_numeric(players[current_col]).min())
+    return mins
+
+
+def _prepare_floor_hitters(players: pd.DataFrame, mins: dict) -> pd.DataFrame:
+    """Copy players, substitute global-min for developable rating cols.
+
+    Mirrors _prepare_prospect_hitters but substitutes the cohort minimum
+    instead of each player's potential. Used to compute a per-player floor
+    WAA — the player's value if their developable bat ratings were as low
+    as scouting allows, with non-developable skills (defense, baserunning)
+    unchanged.
+    """
+    floored = players.copy()
+    for current_col in _HITTER_POTENTIAL_MAP.keys():
+        if current_col in floored.columns and current_col in mins:
+            floored[current_col] = mins[current_col]
+    return floored
+
+
+def _prepare_floor_pitchers(players: pd.DataFrame, mins: dict) -> pd.DataFrame:
+    """Copy players, substitute global-min for developable pitcher rating cols."""
+    floored = players.copy()
+    for current_col in _PITCHER_POTENTIAL_MAP.keys():
+        if current_col in floored.columns and current_col in mins:
+            floored[current_col] = mins[current_col]
+    return floored
 
 
 # ---------------------------------------------------------------------------
@@ -310,8 +685,9 @@ _MAPPED_COLS: set[str] = {
     "SP", "SPP", "CT", "CTP", "FO", "FOP", "CC", "CCP", "SC", "SCP",
     "KC", "KCP", "KN", "KNP",
     "VELO", "VT", "G/F", "STM", "HLD",
-    # DEM is used by _compute_price
+    # DEM is used by _compute_price; Sign drives signability smart-rank
     "DEM",
+    "Sign",
 }
 
 
@@ -401,6 +777,7 @@ def _build_hitter_meta(row: pd.Series, ht_cm_val: float, salary_val, price_val, 
         "rook": _safe_bool(_row_val(row, "ROOK", False)),
         "dem": _safe_str(_row_val(row, "DEM")),
         "demSort": _v(demand_val),
+        "sign": _safe_str(_row_val(row, "Sign")),
     }
 
 
@@ -589,6 +966,12 @@ _WAA_MAP = {
     "dh": "DH WAA",
 }
 
+_WAR_MAP = {
+    "c": "C WAR", "1b": "1B WAR", "2b": "2B WAR", "3b": "3B WAR",
+    "ss": "SS WAR", "lf": "LF WAR", "cf": "CF WAR", "rf": "RF WAR",
+    "dh": "DH WAR",
+}
+
 
 def _build_positions(
     idx: int,
@@ -617,10 +1000,16 @@ def _build_positions(
 
         if eligible and waa_row is not None:
             waa_prefix = _WAA_MAP[pos_key]
+            war_prefix = _WAR_MAP[pos_key]
             pos_dict["waa"] = {
                 "vR": _v(waa_row.get(f"{waa_prefix} vR")),
                 "vL": _v(waa_row.get(f"{waa_prefix} vL")),
                 "wtd": _v(waa_row.get(f"{waa_prefix} wtd")),
+            }
+            pos_dict["war"] = {
+                "vR": _v(waa_row.get(f"{war_prefix} vR")),
+                "vL": _v(waa_row.get(f"{war_prefix} vL")),
+                "wtd": _v(waa_row.get(f"{war_prefix} wtd")),
             }
 
         positions[pos_key] = pos_dict
@@ -628,30 +1017,79 @@ def _build_positions(
     return positions
 
 
-def _build_max_waa(idx: int, waa_df: pd.DataFrame, eligibility: pd.DataFrame) -> dict:
-    """Build maxWaa sub-dict with best position."""
+def _build_max_value(
+    idx: int,
+    waa_df: pd.DataFrame,
+    eligibility: pd.DataFrame,
+    metric: str,
+) -> dict:
+    """Build maxWaa or maxWar sub-dict with best position.
+
+    metric: "WAA" or "WAR". Uses _WAA_MAP/_WAR_MAP for the column-name prefix.
+    """
     waa_row = waa_df.loc[idx] if idx in waa_df.index else None
     if waa_row is None:
         return {"vR": None, "vL": None, "wtd": None, "bestPos": None}
 
-    max_vr = _v(waa_row.get("Max WAA vR"))
-    max_vl = _v(waa_row.get("Max WAA vL"))
-    max_wtd = _v(waa_row.get("Max WAA wtd"))
+    prefix_map = _WAA_MAP if metric == "WAA" else _WAR_MAP
+    max_vr = _v(waa_row.get(f"Max {metric} vR"))
+    max_vl = _v(waa_row.get(f"Max {metric} vL"))
+    max_wtd = _v(waa_row.get(f"Max {metric} wtd"))
 
-    # Find best position by wtd WAA
+    # Find best position by wtd metric value
     best_pos = None
     best_val = None
-    for pos_key, waa_prefix in _WAA_MAP.items():
+    for pos_key, prefix in prefix_map.items():
         elig_col = _ELIG_MAP[pos_key]
         if not bool(eligibility.loc[idx].get(elig_col, False)):
             continue
-        wtd = waa_row.get(f"{waa_prefix} wtd")
+        wtd = waa_row.get(f"{prefix} wtd")
         if wtd is not None and not (isinstance(wtd, float) and np.isnan(wtd)):
             if best_val is None or wtd > best_val:
                 best_val = wtd
                 best_pos = pos_key
 
     return {"vR": max_vr, "vL": max_vl, "wtd": max_wtd, "bestPos": best_pos}
+
+
+def _build_max_waa(idx: int, waa_df: pd.DataFrame, eligibility: pd.DataFrame) -> dict:
+    """Build maxWaa sub-dict with best position (kept for back-compat)."""
+    return _build_max_value(idx, waa_df, eligibility, "WAA")
+
+
+def _build_max_war(idx: int, waa_df: pd.DataFrame, eligibility: pd.DataFrame) -> dict:
+    """Build maxWar sub-dict with best position."""
+    return _build_max_value(idx, waa_df, eligibility, "WAR")
+
+
+def _build_floor_hitter(idx: int, floor_waa: pd.DataFrame | None) -> dict:
+    """Build floorWaa sub-dict for a hitter.
+
+    Floor = WAA when developable bat ratings are at the cohort min, with
+    non-developable skills (defense, baserunning, position eligibility)
+    unchanged. Used as the lower bound for the progress metric:
+        progress = (cur - floor) / (pot - floor)
+    """
+    if floor_waa is None or idx not in floor_waa.index:
+        return {"vR": None, "vL": None, "wtd": None}
+    fw_row = floor_waa.loc[idx]
+    return {
+        "vR": _v(fw_row.get("Max WAA vR")),
+        "vL": _v(fw_row.get("Max WAA vL")),
+        "wtd": _v(fw_row.get("Max WAA wtd")),
+    }
+
+
+def _build_floor_hitter_war(idx: int, floor_waa: pd.DataFrame | None) -> dict:
+    """Build floorWar sub-dict for a hitter (parallel to _build_floor_hitter)."""
+    if floor_waa is None or idx not in floor_waa.index:
+        return {"vR": None, "vL": None, "wtd": None}
+    fw_row = floor_waa.loc[idx]
+    return {
+        "vR": _v(fw_row.get("Max WAR vR")),
+        "vL": _v(fw_row.get("Max WAR vL")),
+        "wtd": _v(fw_row.get("Max WAR wtd")),
+    }
 
 
 def _build_prospect_hitter(
@@ -683,14 +1121,17 @@ def _build_prospect_hitter(
     }
 
     waa = {}
+    war = {}
     if prospect_waa is not None and idx in prospect_waa.index:
         pw_row = prospect_waa.loc[idx]
         for pos_key, waa_prefix in _WAA_MAP.items():
-            val = pw_row.get(f"{waa_prefix} wtd")
-            waa[pos_key] = _v(val)
+            waa[pos_key] = _v(pw_row.get(f"{waa_prefix} wtd"))
         waa["max"] = _v(pw_row.get("Max WAA wtd"))
+        for pos_key, war_prefix in _WAR_MAP.items():
+            war[pos_key] = _v(pw_row.get(f"{war_prefix} wtd"))
+        war["max"] = _v(pw_row.get("Max WAR wtd"))
 
-    return {"batting": batting, "baserunning": baserunning, "waa": waa}
+    return {"batting": batting, "baserunning": baserunning, "waa": waa, "war": war}
 
 
 def _build_hitter_dict(
@@ -705,6 +1146,7 @@ def _build_hitter_dict(
     waa_df: pd.DataFrame,
     prospect_batting: pd.DataFrame,
     prospect_waa: pd.DataFrame | None,
+    floor_waa: pd.DataFrame | None = None,
     sp_contract: dict | None = None,
     demand: pd.Series | None = None,
     game_year: int | None = None,
@@ -724,6 +1166,9 @@ def _build_hitter_dict(
         "baserunning": _build_baserunning(bat_row),
         "positions": _build_positions(idx, eligibility, fielding, waa_df),
         "maxWaa": _build_max_waa(idx, waa_df, eligibility),
+        "maxWar": _build_max_war(idx, waa_df, eligibility),
+        "floorWaa": _build_floor_hitter(idx, floor_waa),
+        "floorWar": _build_floor_hitter_war(idx, floor_waa),
         "prospect": _build_prospect_hitter(idx, prospect_batting, prospect_waa),
         "extra": _collect_extra(row),
     }
@@ -790,6 +1235,7 @@ def _build_pitcher_meta(row: pd.Series, salary_val, price_val, demand_val=None) 
         "rook": _safe_bool(_row_val(row, "ROOK", False)),
         "dem": _safe_str(_row_val(row, "DEM")),
         "demSort": _v(demand_val),
+        "sign": _safe_str(_row_val(row, "Sign")),
         "velo": _safe_str(_row_val(row, "VELO")),
         "vt": _safe_str(_row_val(row, "VT")),
     }
@@ -853,6 +1299,7 @@ def _pitcher_split_dict(stats_row: pd.Series, suffix: str, include_waa: bool = T
     }
     if include_waa:
         d["waa"] = _v(stats_row.get(f"WAA{suffix}"))
+        d["war"] = _v(stats_row.get(f"WAR{suffix}"))
     return d
 
 
@@ -887,6 +1334,7 @@ def _build_prospect_pitcher(
         "woba": _v(stats_row.get("wOBA wtd")),
         "ra9": _v(stats_row.get("RA9 wtd")),
         "waa": _v(stats_row.get("WAA wtd")),
+        "war": _v(stats_row.get("WAR wtd")),
     }
     rp = {
         "so": _v(stats_row.get("SO wtd RP")),
@@ -896,9 +1344,31 @@ def _build_prospect_pitcher(
         "woba": _v(stats_row.get("wOBA wtd RP")),
         "ra9": _v(stats_row.get("RA9 wtd RP")),
         "waa": _v(stats_row.get("WAA wtd RP")),
+        "war": _v(stats_row.get("WAR wtd RP")),
     }
 
     return {"sp": sp, "rp": rp}
+
+
+def _build_floor_pitcher(idx: int, floor_stats: pd.DataFrame | None) -> dict:
+    """Build floor sub-dict for a pitcher (raw WAA/WAR, unscaled).
+
+    Frontend applies scaleRpWaaP / scaleRpWarP to RP values consistently with
+    cur and pot.
+    """
+    if floor_stats is None or idx not in floor_stats.index:
+        return {"sp": {"waa": None, "war": None}, "rp": {"waa": None, "war": None}}
+    stats_row = floor_stats.loc[idx]
+    return {
+        "sp": {
+            "waa": _v(stats_row.get("WAA wtd")),
+            "war": _v(stats_row.get("WAR wtd")),
+        },
+        "rp": {
+            "waa": _v(stats_row.get("WAA wtd RP")),
+            "war": _v(stats_row.get("WAR wtd RP")),
+        },
+    }
 
 
 def _build_pitcher_dict(
@@ -911,6 +1381,7 @@ def _build_pitcher_dict(
     price: pd.Series,
     stats: pd.DataFrame,
     prospect_stats: pd.DataFrame,
+    floor_stats: pd.DataFrame | None = None,
     sp_contract: dict | None = None,
     demand: pd.Series | None = None,
     game_year: int | None = None,
@@ -937,6 +1408,7 @@ def _build_pitcher_dict(
         "sp": _build_pitcher_role_stats(stats_row, "SP"),
         "rp": _build_pitcher_role_stats(stats_row, "RP"),
         "prospect": _build_prospect_pitcher(idx, prospect_stats),
+        "floor": _build_floor_pitcher(idx, floor_stats),
         "extra": _collect_extra(row),
     }
     if sp_contract is not None:
@@ -994,13 +1466,15 @@ def _detect_csv_presence(player_dir: Path) -> dict:
     """Report which player-source CSVs exist in `player_dir`.
 
     Returned flags drive view visibility on the frontend (e.g. hide the IAFA
-    Board when there's no iafa.csv). `hasOrganization` is informational only —
-    the pipeline already requires it via validation.
+    Board when there's no iafa.csv). `hasOrg` is informational only — the
+    pipeline already requires `org.csv` via validation. `hasIntl` flags the
+    optional IntlComplex split file used when the OOTP export paginates.
     """
     files = {p.name.lower() for p in player_dir.iterdir() if p.is_file() and p.suffix.lower() == ".csv"}
     has_draft = any(re.match(r"^draft\d{4}\.csv$", f) for f in files)
     return {
-        "hasOrganization": "organization.csv" in files,
+        "hasOrg": "org.csv" in files,
+        "hasIntl": "intl.csv" in files,
         "hasFreeAgents": "freeagents.csv" in files,
         "hasIAFA": "iafa.csv" in files,
         "hasDraft": has_draft,
@@ -1114,6 +1588,21 @@ def build_dashboard(
         park_deltas, home_fraction, dp_h
     )
 
+    # 5b. Compute hitter floor stats (developable bat ratings → cohort min,
+    # non-developable defense/baserunning unchanged). Eligibility is reused
+    # from cur — eligibility is non-developable.
+    print("Computing hitter floor stats...")
+    hitter_mins = _compute_floor_mins(hitter_players, _HITTER_POTENTIAL_MAP)
+    floor_hitters = _prepare_floor_hitters(hitter_players, hitter_mins)
+    floor_batting = compute_hitter_batting(
+        floor_hitters, park_deltas, park_adj, home_fraction, dp_h
+    )
+    floor_fielding = compute_fielding(floor_hitters, eligibility, dp_h)
+    floor_waa = compute_waa(
+        floor_batting, floor_fielding, eligibility,
+        park_deltas, home_fraction, dp_h
+    )
+
     # 6. Compute pitcher current stats
     print(f"Computing pitcher stats ({len(pitcher_players)} players)...")
     pitch_counts = compute_pitch_counts(pitcher_players)
@@ -1129,6 +1618,32 @@ def build_dashboard(
     prospect_pitcher_stats = compute_pitcher_batting(
         prospect_pitchers, park_adj, home_fraction, dp_p, woba_ratio
     )
+
+    # 7b. Compute pitcher floor stats (developable pitch ratings → cohort min).
+    print("Computing pitcher floor stats...")
+    pitcher_mins = _compute_floor_mins(pitcher_players, _PITCHER_POTENTIAL_MAP)
+    floor_pitchers = _prepare_floor_pitchers(pitcher_players, pitcher_mins)
+    floor_pitcher_stats = compute_pitcher_batting(
+        floor_pitchers, park_adj, home_fraction, dp_p, woba_ratio
+    )
+
+    # Sanity-print floor distribution stats so we can eyeball magnitudes
+    # against L3 proxies (~−10.6 hitters, ~−11.5 SP, ~−4.2 RP raw).
+    def _floor_stats(series: pd.Series, label: str) -> None:
+        s = pd.to_numeric(series, errors="coerce").dropna()
+        if len(s) == 0:
+            print(f"  {label}: (empty)")
+            return
+        qs = s.quantile([0.0, 0.01, 0.5, 0.99]).to_dict()
+        print(
+            f"  {label}: n={len(s)} min={qs[0.0]:.2f} p1={qs[0.01]:.2f} "
+            f"p50={qs[0.5]:.2f} p99={qs[0.99]:.2f}"
+        )
+
+    print("Floor WAA distribution:")
+    _floor_stats(floor_waa.get("Max WAA wtd", pd.Series(dtype=float)), "hit (wtd)")
+    _floor_stats(floor_pitcher_stats.get("WAA wtd", pd.Series(dtype=float)), "sp  (raw)")
+    _floor_stats(floor_pitcher_stats.get("WAA wtd RP", pd.Series(dtype=float)), "rp  (raw)")
 
     # Salary and price for pitchers
     p_slr = _parse_salary(pitcher_players["SLR"]) if "SLR" in pitcher_players.columns else pd.Series(np.nan, index=pitcher_players.index)
@@ -1204,7 +1719,8 @@ def build_dashboard(
         d = _build_hitter_dict(
             idx, hitter_players, ht_cm, h_slr, h_price, batting, eligibility,
             fielding_stats, waa_stats, prospect_batting, prospect_waa,
-            sp_contract, demand=h_dem,
+            floor_waa=floor_waa,
+            sp_contract=sp_contract, demand=h_dem,
             game_year=game_year, super_two_ids=super_two_ids,
             salary_report_entry=sr_entry,
         )
@@ -1224,7 +1740,8 @@ def build_dashboard(
             idx, pitcher_players, pitch_counts, starter, starter_p,
             p_slr, p_price,
             pitcher_stats, prospect_pitcher_stats,
-            sp_contract, demand=p_dem,
+            floor_stats=floor_pitcher_stats,
+            sp_contract=sp_contract, demand=p_dem,
             game_year=game_year, super_two_ids=super_two_ids,
             salary_report_entry=sr_entry,
         )
@@ -1235,6 +1752,80 @@ def build_dashboard(
     # 9. Assemble top-level structure
     lp_h = dp_h.league
     lp_p = dp_p.league
+
+    # Empirical median-progress-by-age curves per cohort (hit / sp / rp). Used by
+    # the FV formula as midpoint(age). RP cohort uses scaled WAA so the curve
+    # matches the metric the frontend computes from scaled cur/pot/floor.
+    # Progress curves use WAR paths. Mathematically identical to WAA paths
+    # (the replacement-runs constant cancels in (cur - floor) / (pot - floor)),
+    # but consistent with the WAR-based frontend lookup.
+    progress_curve_hit = _compute_progress_curve_from_dicts(
+        hitter_dicts,
+        cur_path=("maxWar", "wtd"),
+        pot_path=("prospect", "war", "max"),
+        floor_path=("floorWar", "wtd"),
+    )
+    progress_curve_sp = _compute_progress_curve_from_dicts(
+        pitcher_dicts,
+        cur_path=("sp", "wtd", "war"),
+        pot_path=("prospect", "sp", "war"),
+        floor_path=("floor", "sp", "war"),
+        role_filter="sp",
+    )
+    progress_curve_rp = _compute_progress_curve_from_dicts(
+        pitcher_dicts,
+        cur_path=("rp", "wtd", "war"),
+        pot_path=("prospect", "rp", "war"),
+        floor_path=("floor", "rp", "war"),
+        scale=True,
+        role_filter="rp",
+    )
+
+    # v21 empirical dev curves — cohort-percentile distribution of cur-WAR
+    # by age. Used purely for the Dev% display column on tables (not in the
+    # FV formula). Unified on cur-WAR across all three cohorts: hitters use
+    # `maxWar.wtd` (their cur-WAR across positions), pitchers use role-specific
+    # cur-WAR (sp.wtd.war for SP, scaled rp.wtd.war for RP).
+    dev_curve_hit = _compute_dev_curve_from_dicts(
+        hitter_dicts,
+        dev_path=("maxWar", "wtd"),
+    )
+    dev_curve_sp = _compute_dev_curve_from_dicts(
+        pitcher_dicts,
+        dev_path=("sp", "wtd", "war"),
+        role_filter="sp",
+    )
+    dev_curve_rp = _compute_dev_curve_from_dicts(
+        pitcher_dicts,
+        dev_path=("rp", "wtd", "war"),
+        scale=True,
+        role_filter="rp",
+    )
+
+    # v21 empirical gap distributions — gap = max(0, pot − cur) percentiles
+    # by age, per cohort. Drives v21B's per-age κ lookup so gapPenalty thresholds
+    # auto-scale: at age 14 p90 ≈ 8 WAR, at age 26 p90 ≈ 1 WAR. Same percentile
+    # at different ages produces different absolute κ → "time-adjusting risk."
+    # Computed from WAR paths (mathematically identical to WAA since gap
+    # cancels the replacement constant; switched for consistency with frontend).
+    gap_dist_hit = _compute_gap_dist_from_dicts(
+        hitter_dicts,
+        cur_path=("maxWar", "wtd"),
+        pot_path=("prospect", "war", "max"),
+    )
+    gap_dist_sp = _compute_gap_dist_from_dicts(
+        pitcher_dicts,
+        cur_path=("sp", "wtd", "war"),
+        pot_path=("prospect", "sp", "war"),
+        role_filter="sp",
+    )
+    gap_dist_rp = _compute_gap_dist_from_dicts(
+        pitcher_dicts,
+        cur_path=("rp", "wtd", "war"),
+        pot_path=("prospect", "rp", "war"),
+        scale=True,
+        role_filter="rp",
+    )
 
     result = {
         "meta_projection": {
@@ -1258,6 +1849,21 @@ def build_dashboard(
                 "pitchers": len(pitcher_dicts),
             },
             "csvPresence": _detect_csv_presence(player_dir),
+            "progressCurve": {
+                "hit": progress_curve_hit,
+                "sp": progress_curve_sp,
+                "rp": progress_curve_rp,
+            },
+            "devCurve": {
+                "hit": dev_curve_hit,
+                "sp": dev_curve_sp,
+                "rp": dev_curve_rp,
+            },
+            "gapDist": {
+                "hit": gap_dist_hit,
+                "sp": gap_dist_sp,
+                "rp": gap_dist_rp,
+            },
         },
         "platoonSplits": {
             "hitters": {
