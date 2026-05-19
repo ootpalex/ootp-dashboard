@@ -37,7 +37,7 @@ _REQUIRED_REGRESSION_CSVS = [
 ]
 
 # Player CSVs that, if present, must contain at least these columns.
-# We don't require every player CSV — only `organization.csv` is mandatory.
+# We don't require every player CSV — only `org.csv` is mandatory.
 _PLAYER_CSV_REQUIRED_COLS = ("ID", "POS", "Name", "ORG", "OVR", "POT")
 
 
@@ -51,7 +51,7 @@ def validate_league(
     paths = league_paths(config.slug)
     _check_regressions_dir(config.ootp_version)
     _check_player_csvs(paths["player_dir"])
-    org_teams = _load_org_teams(paths["player_dir"] / "organization.csv")
+    org_teams = _load_org_teams(paths["player_dir"] / "org.csv")
     park_teams = _check_ballparks_csv(paths["ballpark_csv"])
     _check_team_consistency(org_teams, park_teams, paths["ballpark_csv"])
     _check_my_team_in_ballparks(config.team, park_teams, paths["ballpark_csv"])
@@ -104,15 +104,25 @@ def _check_player_csvs(player_dir: Path) -> None:
             f"Player CSV directory not found: {player_dir}\n"
             f"   Drop OOTP exports into this folder. See docs/OOTP_EXPORT_GUIDE.md."
         )
-    org_path = player_dir / "organization.csv"
+    org_path = player_dir / "org.csv"
     if not org_path.is_file():
+        legacy_path = player_dir / "organization.csv"
+        if legacy_path.is_file():
+            raise PipelineValidationError(
+                f"Found legacy {legacy_path.name} in {player_dir}.\n"
+                f"   The pipeline now expects 'org.csv'. Rename your file:\n"
+                f"     mv {legacy_path} {org_path}\n"
+                f"   If your league is large enough that OOTP paginates the org export,\n"
+                f"   you can also split IntlComplex players into a separate 'intl.csv'.\n"
+                f"   See docs/OOTP_EXPORT_GUIDE.md for details."
+            )
         raise PipelineValidationError(
             f"Required file missing: {org_path}\n"
-            f"   organization.csv is the player-list export from OOTP and is required.\n"
+            f"   org.csv is the MLB+MiLB player-list export from OOTP and is required.\n"
             f"   See docs/OOTP_EXPORT_GUIDE.md for export instructions."
         )
 
-    # Spot-check organization.csv has the columns the loaders rely on.
+    # Spot-check org.csv has the columns the loaders rely on.
     try:
         with org_path.open(newline="") as f:
             reader = csv.reader(f)
@@ -135,7 +145,7 @@ def _check_player_csvs(player_dir: Path) -> None:
 
 
 def _load_org_teams(org_path: Path) -> set[str]:
-    """Distinct, non-empty values from the ORG column of organization.csv."""
+    """Distinct, non-empty values from the ORG column of org.csv."""
     teams: set[str] = set()
     with org_path.open(newline="") as f:
         reader = csv.DictReader(f)
@@ -184,7 +194,7 @@ def _check_team_consistency(
     park_teams: set[str],
     ballpark_path: Path,
 ) -> None:
-    """Headline check: ballparks.csv team list must match the orgs in organization.csv."""
+    """Headline check: ballparks.csv team list must match the orgs in org.csv."""
     if org_teams == park_teams:
         return
     missing_in_parks = sorted(org_teams - park_teams)

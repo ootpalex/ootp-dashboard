@@ -403,3 +403,96 @@ class TestWAA:
         # DH WAA should be the max (and only non-NaN) WAA since all field
         # positions are ineligible
         assert waa["Max WAA wtd"].iloc[0] == pytest.approx(dh_waa, rel=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# compute_waa — WAR columns (FG-standard replacement-runs adjustment)
+# ---------------------------------------------------------------------------
+
+
+class TestWAR:
+    """Test WAR columns: replacement scaling, position differences, Max WAR."""
+
+    def _run_pipeline(self, player):
+        deltas = neutral_park_deltas()
+        adj = neutral_adjustments()
+        batting = compute_hitter_batting(player, deltas, adj, HOME_FRACTION)
+        elig = compute_position_eligibility(player)
+        field = compute_fielding(player, elig)
+        waa = compute_waa(batting, field, elig, deltas, HOME_FRACTION)
+        return waa, elig
+
+    def test_war_minus_waa_is_repl_credit(self):
+        """For any eligible non-C position, WAR − WAA equals the fixed
+        replacement credit (repl_runs_per_pa * pa / waa_const ≈ 1.9856).
+        """
+        lg = dp.league
+        expected_credit = lg.repl_runs_per_pa * lg.pa / lg.waa_const
+
+        p = make_player(**{"OF RNG": 65})
+        waa, _ = self._run_pipeline(p)
+
+        for pos in ["LF", "CF", "RF", "DH"]:
+            wtd_waa = waa[f"{pos} WAA wtd"].iloc[0]
+            wtd_war = waa[f"{pos} WAR wtd"].iloc[0]
+            if np.isnan(wtd_waa):
+                continue
+            assert wtd_war - wtd_waa == pytest.approx(expected_credit, rel=1e-10), (
+                f"{pos}: WAR − WAA should be {expected_credit:.6f}, got {wtd_war - wtd_waa:.6f}"
+            )
+
+    def test_catcher_war_credit_smaller_than_other_positions(self):
+        """Catcher WAR − WAA uses pa_c=500, smaller than non-C credit (which uses pa=600)."""
+        lg = dp.league
+        c_credit = lg.repl_runs_per_pa * lg.pa_c / lg.waa_const
+        non_c_credit = lg.repl_runs_per_pa * lg.pa / lg.waa_const
+
+        # Sanity: catcher gets ~5/6 of non-C credit
+        assert c_credit < non_c_credit
+        assert c_credit == pytest.approx(non_c_credit * (500 / 600), rel=1e-10)
+
+        p = make_player(**{"C FRM": 60, "OF RNG": 65})
+        waa, _ = self._run_pipeline(p)
+
+        c_diff = waa["C WAR wtd"].iloc[0] - waa["C WAA wtd"].iloc[0]
+        lf_diff = waa["LF WAR wtd"].iloc[0] - waa["LF WAA wtd"].iloc[0]
+
+        assert c_diff == pytest.approx(c_credit, rel=1e-10)
+        assert lf_diff == pytest.approx(non_c_credit, rel=1e-10)
+        assert c_diff < lf_diff
+
+    def test_max_war_picks_highest(self):
+        """Max WAR should be >= every eligible position's WAR."""
+        p = make_player(**{"C FRM": 60, "OF RNG": 65, "IF RNG": 50})
+        waa, _ = self._run_pipeline(p)
+
+        max_war = waa["Max WAR wtd"].iloc[0]
+        for col in waa.columns:
+            if col.endswith(" WAR wtd") and col != "Max WAR wtd":
+                val = waa[col].iloc[0]
+                if not np.isnan(val):
+                    assert max_war >= val - 1e-10
+
+    def test_ineligible_position_war_is_nan(self):
+        """WAR for ineligible positions should be NaN (same as WAA)."""
+        p = make_player(**{"C FRM": 20})
+        waa, _ = self._run_pipeline(p)
+        assert np.isnan(waa["C WAR wtd"].iloc[0])
+
+    def test_dh_war_for_avg_player_is_positive_around_one(self):
+        """An average player at DH has WAR ≈ +1.16 (= −0.82 WAA + 1.99 repl credit).
+
+        Sanity check that the replacement adjustment lifts the DH for an
+        average player out of the negative.
+        """
+        p = make_player(**{"C FRM": 10, "IF RNG": 10, "OF RNG": 10})
+        waa, _ = self._run_pipeline(p)
+
+        dh_waa = waa["DH WAA wtd"].iloc[0]
+        dh_war = waa["DH WAR wtd"].iloc[0]
+        lg = dp.league
+        expected_credit = lg.repl_runs_per_pa * lg.pa / lg.waa_const
+
+        assert dh_waa < 0  # WAA negative for average DH (pos_dh penalty dominates)
+        assert dh_war == pytest.approx(dh_waa + expected_credit, rel=1e-10)
+        assert dh_war > 0, f"Average DH should clear replacement (got {dh_war:.3f})"

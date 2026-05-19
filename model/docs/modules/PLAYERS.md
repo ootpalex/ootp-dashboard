@@ -8,8 +8,8 @@ Loads OOTP CSV player exports from a directory, merges them into a single DataFr
 
 | Input | Source | Description |
 |-------|--------|-------------|
-| `leagues/<slug>/csv/players/*.csv` | OOTP export (Report → Write Report to CSV) | Up to 4 base CSVs: `organization.csv` (required), `freeagents.csv`, `iafa.csv`, `draftYYYY.csv` (any 4-digit year) |
-| `leagues/<slug>/csv/players/*_osa.csv` (optional) | OOTP export (OSA scouting view) | Paired OSA files for blending: `organization_osa.csv`, `freeagents_osa.csv`, etc. |
+| `leagues/<slug>/csv/players/*.csv` | OOTP export (Report → Write Report to CSV) | Up to 5 base CSVs: `org.csv` (required, MLB + MiLB), `intl.csv` (optional IntlComplex split for paginated leagues), `freeagents.csv`, `iafa.csv`, `draftYYYY.csv` (any 4-digit year) |
+| `leagues/<slug>/csv/players/*_osa.csv` (optional) | OOTP export (OSA scouting view) | Paired OSA files for blending: `org_osa.csv`, `intl_osa.csv`, `freeagents_osa.csv`, etc. |
 | `leagues/<slug>/csv/players/*_aaa.csv` (optional) | OOTP export (AAA relative view) | AAA relative exports for finer rating granularity |
 | `leagues/<slug>/csv/players/*_aa.csv` (optional) | OOTP export (AA relative view) | AA relative exports for even finer granularity (requires AAA) |
 

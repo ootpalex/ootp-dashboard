@@ -90,8 +90,8 @@ class TestPitcherPipeline:
 
     def test_pitcher_batting_shape(self, pitcher_batting, pitchers):
         assert len(pitcher_batting) == len(pitchers)
-        # 86 output columns expected
-        assert pitcher_batting.shape[1] == 86
+        # 86 base columns + 6 WAR columns (vR/vL/wtd × SP/RP) = 92
+        assert pitcher_batting.shape[1] == 92
 
     def test_no_all_nan_pitcher_cols(self, pitcher_batting):
         for col in pitcher_batting.columns:

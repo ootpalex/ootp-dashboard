@@ -9,9 +9,14 @@ year-by-year salaries, option flags, and extensions.
 from __future__ import annotations
 
 import csv
+import gzip
 import io
+import json
+import sys
 import urllib.request
 import urllib.error
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 
@@ -214,6 +219,123 @@ def fetch_players(statsplus_url: str) -> dict[str, dict[str, Any]]:
         out[pid] = record
     print(f"  Parsed {len(out)} player service rows")
     return out
+
+
+def fetch_game_date(statsplus_url: str, timeout: int = 10) -> str | None:
+    """Fetch the current in-game date from the StatsPlus `/date` endpoint.
+
+    StatsPlus exposes the league's current game date as a small CSV/text
+    response. We normalize the body (strip whitespace) and return it as a
+    single string so it can be used directly as a cache key. Returns ``None``
+    on any network or parse error.
+    """
+    base = normalize_api_base(statsplus_url)
+    if not base:
+        return None
+    url = f"{base}/date"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
+        print(f"  Warning: could not fetch {url} — {e}")
+        return None
+
+    text = text.strip()
+    if not text:
+        return None
+
+    # Common shapes:
+    #   "2026-05-19"
+    #   "current_date\n2026-05-19"
+    #   "date,year\n2026-05-19,2026"
+    # Use csv.DictReader when there's a header row; otherwise return the raw
+    # body. Either way the result is a stable string we can compare across runs.
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        rows = list(reader)
+        if rows:
+            row = rows[0]
+            for key in ("current_date", "date", "game_date", "today"):
+                if key in row and row[key]:
+                    return str(row[key]).strip()
+            # Header present but no recognized column — fall through to raw text.
+    except Exception:  # noqa: BLE001 — parsing is best-effort
+        pass
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Per-league fetch cache
+# ---------------------------------------------------------------------------
+
+_CACHE_VERSION = 1
+
+
+def load_statsplus_cache(
+    cache_path: Path | str,
+    current_date: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
+    """Return cached (contracts, players, salary_reports) if the game date matches.
+
+    Returns ``None`` on any of: missing file, version mismatch, date mismatch,
+    or read/decode error. ``current_date=None`` always misses (we can't know
+    whether the cache is fresh without a date to compare against).
+    """
+    if not current_date:
+        return None
+    path = Path(cache_path)
+    if not path.is_file():
+        return None
+    try:
+        with gzip.open(path, "rb") as f:
+            data = json.loads(f.read().decode("utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"  Warning: could not read StatsPlus cache ({path}) — {e}", file=sys.stderr)
+        return None
+    if data.get("version") != _CACHE_VERSION:
+        return None
+    if data.get("game_date") != current_date:
+        return None
+    contracts = data.get("contracts") or {}
+    players = data.get("players") or {}
+    salary_reports = data.get("salary_reports") or {}
+    if not isinstance(contracts, dict) or not isinstance(players, dict) or not isinstance(salary_reports, dict):
+        return None
+    return contracts, players, salary_reports
+
+
+def save_statsplus_cache(
+    cache_path: Path | str,
+    current_date: str | None,
+    contracts: dict[str, Any] | None,
+    players: dict[str, Any] | None,
+    salary_reports: dict[str, Any] | None,
+) -> None:
+    """Write a gzipped JSON cache of the StatsPlus fetches keyed by game date."""
+    if not current_date:
+        return
+    path = Path(cache_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": _CACHE_VERSION,
+        "game_date": current_date,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "contracts": contracts or {},
+        "players": players or {},
+        "salary_reports": salary_reports or {},
+    }
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with gzip.open(tmp, "wb") as f:
+            f.write(json.dumps(payload).encode("utf-8"))
+        tmp.replace(path)
+    except OSError as e:
+        print(f"  Warning: could not write StatsPlus cache ({path}) — {e}", file=sys.stderr)
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def contract_to_json(contract: dict[str, Any] | None) -> dict[str, Any] | None:

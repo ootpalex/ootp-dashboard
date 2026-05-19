@@ -383,11 +383,17 @@ def _compute_performance(
     wt_cs: float,
     woba_norm: float,
     ra9_base: float,
+    ra9_repl: float,
     ip: float,
     waa_const: float,
     role: str,
 ) -> None:
-    """Compute wOBA, RA/9, WAA per split + weighted and write into result."""
+    """Compute wOBA, RA/9, WAA, WAR per split + weighted and write into result.
+
+    WAA uses ra9_base (league-average baseline); WAR uses ra9_repl
+    (replacement-level baseline). WAR exceeds WAA by a constant per role
+    (~1.5 wins for SP, ~0.5 wins for RP at full-time IP).
+    """
     is_sp = role == "SP"
 
     woba_splits = {}
@@ -411,21 +417,25 @@ def _compute_performance(
         woba = numerator / bf / woba_ratio
         ra9 = (woba / woba_norm) ** 2 * ra9_base
         waa = (ra9_base - ra9) * (ip / 9.0) / waa_const
+        war = (ra9_repl - ra9) * (ip / 9.0) / waa_const
 
         result[f"wOBA{suffix}"] = woba
         result[f"RA9{suffix}"] = ra9
         result[f"WAA{suffix}"] = waa
+        result[f"WAR{suffix}"] = war
         woba_splits[split] = woba
 
-    # Weighted wOBA → RA/9 → WAA (computed from weighted wOBA, not averaged)
+    # Weighted wOBA → RA/9 → WAA/WAR (computed from weighted wOBA, not averaged)
     woba_wtd = woba_splits["vL"] * vl_frac + woba_splits["vR"] * vr_frac
     ra9_wtd = (woba_wtd / woba_norm) ** 2 * ra9_base
     waa_wtd = (ra9_base - ra9_wtd) * (ip / 9.0) / waa_const
+    war_wtd = (ra9_repl - ra9_wtd) * (ip / 9.0) / waa_const
 
     suffix_wtd = " wtd" if is_sp else " wtd RP"
     result[f"wOBA{suffix_wtd}"] = woba_wtd
     result[f"RA9{suffix_wtd}"] = ra9_wtd
     result[f"WAA{suffix_wtd}"] = waa_wtd
+    result[f"WAR{suffix_wtd}"] = war_wtd
 
 
 def compute_pitcher_batting(
@@ -440,7 +450,7 @@ def compute_pitcher_batting(
     For each role (SP/RP) and split (vR/vL), computes:
         Phase 2: 9 batting-against stats (HBP, uBB, SO, HR, H-HR, XBH-HR, 3B, 2B, 1B)
         Phase 3: Stolen base stats (SB%, SBAT, SB, CS)
-        Phase 4: wOBA, RA/9, WAA
+        Phase 4: wOBA, RA/9, WAA, WAR
 
     Weighted stats are computed by pitcher throwing hand (T column) using
     pitcher-side matchup splits (rvr/lvr/svr).
@@ -493,6 +503,7 @@ def compute_pitcher_batting(
             wt_1b, wt_2b, wt_3b = lp.sp_wt_1b, lp.sp_wt_2b, lp.sp_wt_3b
             wt_hr, wt_sb, wt_cs = lp.sp_wt_hr, lp.sp_wt_sb, lp.sp_wt_cs
             woba_norm, ra9_base, ip = lp.woba_norm_sp, lp.ra9_sp, lp.ip_sp
+            ra9_repl = lp.ra9_repl_sp
         else:
             con_coeffs, hrr_coeffs = reg.rp_con, reg.rp_hrr
             stu_coeffs, babip_coeffs = reg.rp_stu, reg.rp_babip
@@ -509,6 +520,7 @@ def compute_pitcher_batting(
             wt_1b, wt_2b, wt_3b = lp.rp_wt_1b, lp.rp_wt_2b, lp.rp_wt_3b
             wt_hr, wt_sb, wt_cs = lp.rp_wt_hr, lp.rp_wt_sb, lp.rp_wt_cs
             woba_norm, ra9_base, ip = lp.woba_norm_rp, lp.ra9_rp, lp.ip_rp
+            ra9_repl = lp.ra9_repl_rp
 
         # Phase 2: Core batting-against stats per split
         splits = {}
@@ -548,12 +560,12 @@ def compute_pitcher_batting(
             avg_hld, lg_sb_pct, lg_sba_rate, role,
         )
 
-        # Phase 4: wOBA, RA/9, WAA
+        # Phase 4: wOBA, RA/9, WAA, WAR
         _compute_performance(
             result, splits, vr_frac, vl_frac,
             bf, woba_ratio_adj,
             wt_hbp, wt_bb, wt_1b, wt_2b, wt_3b, wt_hr, wt_sb, wt_cs,
-            woba_norm, ra9_base, ip, lp.waa_const, role,
+            woba_norm, ra9_base, ra9_repl, ip, lp.waa_const, role,
         )
 
     return result

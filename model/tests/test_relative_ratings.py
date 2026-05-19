@@ -18,9 +18,9 @@ from src.relative_ratings import (
 # Test data paths
 # ---------------------------------------------------------------------------
 _RELATIVE_DIR = Path(__file__).resolve().parent.parent / "data" / "relative"
-_MLB_PATH = _RELATIVE_DIR / "organization.csv"
-_AAA_PATH = _RELATIVE_DIR / "organization_aaa.csv"
-_AA_PATH = _RELATIVE_DIR / "organization_aa.csv"
+_MLB_PATH = _RELATIVE_DIR / "org.csv"
+_AAA_PATH = _RELATIVE_DIR / "org_aaa.csv"
+_AA_PATH = _RELATIVE_DIR / "org_aa.csv"
 
 # Skip all tests if relative data files are not present
 pytestmark = pytest.mark.skipif(

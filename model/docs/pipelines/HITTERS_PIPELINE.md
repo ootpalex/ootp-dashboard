@@ -37,7 +37,8 @@ All raw CSV columns are retained in the DataFrame; computed columns are appended
 leagues/<slug>/csv/        # OOTP CSV exports (per league)
   ballparks.csv            # park factor data (28 teams)
   players/
-    organization.csv       # players in any team's organization
+    org.csv                # MLB + MiLB players (required)
+    intl.csv               # IntlComplex players (optional split, for paginated leagues)
     freeagents.csv         # free agents (optional)
     iafa.csv               # international amateur free agents (optional)
     draftYYYY.csv          # draft class files, any 4-digit year (optional)
@@ -62,7 +63,8 @@ src/
 ### Input Files
 
 Load from `leagues/<slug>/csv/players/` containing OOTP CSV exports:
-- `organization.csv` — players in any team's organization (~7,926 rows)
+- `org.csv` — MLB + MiLB players (~7,926 rows; required)
+- `intl.csv` — IntlComplex players (optional split for paginated leagues; tagged `Organization` like `org.csv`)
 - `freeagents.csv` — free agents (~784 rows, optional)
 - `iafa.csv` — international amateur free agents (~90 rows, optional)
 - `draftYYYY.csv` — draft class files (~1,647 rows total across multiple years, optional)
@@ -101,7 +103,8 @@ Returns a merged DataFrame with 184 raw columns + 3 added columns = 187 total:
 
 | Filename pattern | Source tag |
 |-----------------|-----------|
-| `organization.csv` | `'Organization'` |
+| `org.csv` | `'Organization'` |
+| `intl.csv` | `'Organization'` (shared bucket — IntlComplex split file) |
 | `freeagents.csv` | `'Free Agent'` |
 | `iafa.csv` | `'IAFA'` |
 | `draftXXXX.csv` | `'Draft XXXX'` |

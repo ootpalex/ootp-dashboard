@@ -23,11 +23,12 @@ pip install -r requirements-dev.txt
 
 ### 1. Player Exports (Required)
 
-Drop CSV exports from OOTP into `leagues/<your-slug>/csv/players/`. Only `organization.csv` is strictly required; the rest unlock additional dashboard views:
+Drop CSV exports from OOTP into `leagues/<your-slug>/csv/players/`. Only `org.csv` is strictly required; the rest unlock additional dashboard views:
 
 | File | Description | Required? |
 |------|-------------|-----------|
-| `organization.csv` | Every player in your league | **Yes** |
+| `org.csv` | Every MLB + MiLB player in your league | **Yes** |
+| `intl.csv` | IntlComplex players — needed only when OOTP paginates the org export | Optional |
 | `freeagents.csv` | Free agents | Optional — enables Free Agent Finder |
 | `iafa.csv` | International amateur free agents | Optional — enables IAFA Board |
 | `draftYYYY.csv` | One per draft year (any 4-digit year) | Optional — enables Draft Board |
@@ -37,7 +38,7 @@ For the full step-by-step OOTP UI walkthrough (screens, Filters & Views, column 
 #### Optional: OSA Blending
 
 For each file above, you can export a matching OSA (scouting) version:
-- `organization_osa.csv`, `freeagents_osa.csv`, etc.
+- `org_osa.csv`, `intl_osa.csv`, `freeagents_osa.csv`, etc.
 
 OSA ratings are blended with scout ratings (default 80/20 weight) for more accurate evaluations.
 
@@ -45,16 +46,17 @@ OSA ratings are blended with scout ratings (default 80/20 weight) for more accur
 
 OOTP ratings are quantized to 5-point increments (20, 25, 30, ..., 80). Exporting at AAA and AA relative levels reveals finer distinctions within each tier:
 
-- `organization_aaa.csv` — AAA-level relative export
-- `organization_aa.csv` — AA-level relative export (optional, requires AAA)
-- `organization_osa_aaa.csv` — AAA-level relative export for OSA ratings (if using OSA blending)
-- `organization_osa_aa.csv` — AA-level relative export for OSA ratings (optional)
+- `org_aaa.csv` — AAA-level relative export
+- `org_aa.csv` — AA-level relative export (optional, requires AAA)
+- `org_osa_aaa.csv` — AAA-level relative export for OSA ratings (if using OSA blending)
+- `org_osa_aa.csv` — AA-level relative export for OSA ratings (optional)
+- (`intl.csv` follows the same pairing — `intl_aaa.csv`, `intl_aa.csv`, etc.)
 
 The blending algorithm subdivides each 5-point MLB tier using the AAA and AA rankings to produce continuous ratings (e.g., a player at MLB 55 might resolve to 54.58 or 55.42). When both relative and OSA blending are enabled, each source (scout and OSA) is relative-blended independently before the two are combined via weighted average.
 
 ### 2. Ballpark Data (Per-league, required)
 
-Each league has its own `leagues/<slug>/csv/ballparks.csv` with one row per team. See `leagues/.example/csv/ballparks.csv` for the schema. The validation layer cross-checks the team list against `organization.csv` and aborts with a friendly error if they don't match.
+Each league has its own `leagues/<slug>/csv/ballparks.csv` with one row per team. See `leagues/.example/csv/ballparks.csv` for the schema. The validation layer cross-checks the team list against `org.csv` and aborts with a friendly error if they don't match.
 
 ### 3. Calibration Data (Optional)
 

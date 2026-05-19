@@ -32,8 +32,11 @@ _PITCHER_POSITIONS = frozenset({"SP", "RP", "CL"})
 # File-name pattern → source tag.
 # `draft####.csv` accepts any 4-digit year — historical leagues with
 # draft1967.csv and far-future leagues with draft2156.csv both work.
+# `org.csv` and `intl.csv` share the "Organization" tag — `intl.csv` is the
+# optional split file for IntlComplex players when the OOTP export paginates.
 _SOURCE_PATTERNS: list[tuple[re.Pattern, str | None]] = [
-    (re.compile(r"^organization\.csv$", re.IGNORECASE), "Organization"),
+    (re.compile(r"^org\.csv$", re.IGNORECASE), "Organization"),
+    (re.compile(r"^intl\.csv$", re.IGNORECASE), "Organization"),
     (re.compile(r"^freeagents\.csv$", re.IGNORECASE), "Free Agent"),
     (re.compile(r"^iafa\.csv$", re.IGNORECASE), "IAFA"),
     (re.compile(r"^draft(\d{4})\.csv$", re.IGNORECASE), None),  # dynamic tag from year
@@ -97,7 +100,7 @@ def _discover_csv_files(
 
     Returns list of (scout_path, osa_path_or_None) tuples.
 
-    Pairing rule: organization.csv → organization_osa.csv,
+    Pairing rule: org.csv → org_osa.csv, intl.csv → intl_osa.csv,
     draft2042.csv → draft2042_osa.csv, etc.
     """
     scout_files = []
@@ -108,7 +111,7 @@ def _discover_csv_files(
         # Skip OSA / AAA / AA files — they'll be paired with scout files
         if "_osa" in name or "_aaa" in name or "_aa" in name:
             continue
-        if name in ("organization.csv", "freeagents.csv", "iafa.csv"):
+        if name in ("org.csv", "intl.csv", "freeagents.csv", "iafa.csv"):
             scout_files.append(p)
         elif name.startswith("draft") and name.endswith(".csv"):
             scout_files.append(p)
@@ -175,7 +178,7 @@ def _detect_two_way(df: pd.DataFrame) -> pd.Series:
 def _find_relative_files(base_path: Path) -> tuple[Path | None, Path | None]:
     """Find AAA and AA relative export files paired with a base CSV.
 
-    Pairing rule: organization.csv → organization_aaa.csv / organization_aa.csv.
+    Pairing rule: org.csv → org_aaa.csv / org_aa.csv.
     Returns (aaa_path_or_None, aa_path_or_None).
     """
     stem = base_path.stem
@@ -291,15 +294,20 @@ def load_players(
     """Load and merge all OOTP CSV exports from a directory.
 
     Discovers files by name pattern:
-      - organization.csv, freeagents.csv, iafa.csv, draft*.csv
+      - org.csv, intl.csv, freeagents.csv, iafa.csv, draft*.csv
+
+    `org.csv` holds MLB + MiLB players. `intl.csv` is the optional split file
+    for IntlComplex players when OOTP's "List All MLB Players" export
+    paginates in larger leagues; rows from both files are tagged
+    `source = "Organization"`.
 
     When relative_blend=True, for each source file, looks for paired
     _aaa.csv / _aa.csv files and blends relative ratings for finer
     granularity within each 5-point MLB rating tier.
 
     When osa_blend=True, for each scout file, looks for a paired _osa.csv
-    (e.g., organization_osa.csv) and blends rating columns using the
-    specified weights before concatenation.
+    (e.g., org_osa.csv) and blends rating columns using the specified
+    weights before concatenation.
 
     Pipeline order: load → relative blend → OSA blend → concat.
 
@@ -317,6 +325,9 @@ def load_players(
     if not csv_pairs:
         raise FileNotFoundError(f"No player CSV files found in {directory}")
 
+    name_width = max(len(p[0].name) for p in csv_pairs) + 1
+    print("\nLoading player CSVs...")
+
     frames = []
     for scout_path, osa_path in csv_pairs:
         df = _load_single_csv(scout_path)
@@ -324,7 +335,9 @@ def load_players(
             df["source"] = _source_tag(scout_path.name)
 
         # Relative blend (AAA/AA) on scout ratings
+        aaa_path = aa_path = None
         if relative_blend:
+            aaa_path, aa_path = _find_relative_files(scout_path)
             df = _apply_relative_blend(df, scout_path)
 
         if osa_path is not None:
@@ -336,6 +349,14 @@ def load_players(
             # Re-apply source tag (blend may reorder rows)
             if source_tags:
                 df["source"] = _source_tag(scout_path.name)
+
+        parts = []
+        if aaa_path is not None:
+            parts.append("AAA/AA" if aa_path is not None else "AAA")
+        if osa_path is not None:
+            parts.append(f"OSA ({scout_weight:g}/{osa_weight:g})")
+        status = "scout + " + " + ".join(parts) if parts else "scout only"
+        print(f"  {(scout_path.name + ':').ljust(name_width)} {status}")
 
         frames.append(df)
 

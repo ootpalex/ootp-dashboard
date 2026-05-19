@@ -464,6 +464,12 @@ class HitterLeagueParams:
     ubr:         float = -0.001380 # Metadata A40 — full: -0.00138026523592151
     sba_rate:    float = 0.10259   # Metadata A41 — full: 0.10259422878090046
 
+    # ── WAR replacement-level (FG-standard) ─────────────────────────────────
+    # A full-time non-catcher (600 PA) accrues +20 runs of replacement credit,
+    # yielding ~+2.0 WAR for a league-average player. Catchers automatically
+    # receive a smaller bonus (~+16.67 R at pa_c=500) via the lower PA benchmark.
+    repl_runs_per_pa: float = 20.0 / 600.0   # ≈ 0.03333 R/PA
+
     def to_ballpark_constants(self) -> "BallparkConstants":
         """
         Bridge: construct a BallparkConstants from the subset of fields shared
@@ -660,6 +666,15 @@ class PitcherLeagueParams:
     # ── RA/9 performance baselines (Metadata col T rows 41–42) ───────────────
     ra9_sp: float = 4.7611714110178145   # Metadata T41 — SP RA/9 baseline
     ra9_rp: float = 4.642996890252694    # Metadata T42 — RP RA/9 baseline
+
+    # ── RA/9 replacement-level baselines (for WAR) ──────────────────────────
+    # Solved so a league-average full-time pitcher yields the FG-standard
+    # 1.5 WAR (SP) / 0.5 WAR (RP):
+    #   ra9_repl_sp = ra9_sp + 1.5 * waa_const * 9 / ip_sp
+    #   ra9_repl_rp = ra9_rp + 0.5 * waa_const * 9 / ip_rp
+    # If ra9_sp/rp, ip_sp/rp, or waa_const change, re-derive these.
+    ra9_repl_sp: float = 5.494352736044218   # SP replacement-level RA/9
+    ra9_repl_rp: float = 5.294713623609497   # RP replacement-level RA/9
 
     # ── HLD baselines for SBA/SB% cubic polynomials (Pitcher DP I column) ──
     avg_hld_sp: float = 55.96328035235541   # I2 — SP HLD baseline

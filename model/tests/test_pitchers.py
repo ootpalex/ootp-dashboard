@@ -243,3 +243,52 @@ class TestParkMultsHandedness:
         assert ba == pytest.approx(1.0)
         assert d == pytest.approx(1.0)
         assert t == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# WAR columns — FG-standard replacement-runs adjustment
+# ---------------------------------------------------------------------------
+
+
+class TestPitcherWAR:
+    """Verify SP/RP WAR columns are emitted with the correct constant offset
+    from WAA. WAR − WAA is exactly (ra9_repl − ra9_base) * (ip/9) / waa_const
+    for any pitcher, which evaluates to 1.5 wins (SP) / 0.5 wins (RP)."""
+
+    def _expected_sp_credit(self) -> float:
+        lp = dp.league
+        return (lp.ra9_repl_sp - lp.ra9_sp) * (lp.ip_sp / 9.0) / lp.waa_const
+
+    def _expected_rp_credit(self) -> float:
+        lp = dp.league
+        return (lp.ra9_repl_rp - lp.ra9_rp) * (lp.ip_rp / 9.0) / lp.waa_const
+
+    def test_constants_yield_15_war_for_average_sp(self):
+        """The SP replacement constant is calibrated for 1.5 WAR."""
+        assert self._expected_sp_credit() == pytest.approx(1.5, abs=1e-6)
+
+    def test_constants_yield_05_war_for_average_rp(self):
+        """The RP replacement constant is calibrated for 0.5 WAR."""
+        assert self._expected_rp_credit() == pytest.approx(0.5, abs=1e-6)
+
+    def test_sp_war_minus_waa_is_constant(self):
+        """For any SP, WAR − WAA equals the SP replacement credit."""
+        p = _make_pitcher()
+        result = compute_pitcher_batting(p, neutral_adjustments(), 0.5)
+        diff = result["WAR wtd"].iloc[0] - result["WAA wtd"].iloc[0]
+        assert diff == pytest.approx(self._expected_sp_credit(), rel=1e-10)
+
+    def test_rp_war_minus_waa_is_constant(self):
+        """For any RP, WAR − WAA equals the RP replacement credit."""
+        p = _make_pitcher()
+        result = compute_pitcher_batting(p, neutral_adjustments(), 0.5)
+        diff = result["WAR wtd RP"].iloc[0] - result["WAA wtd RP"].iloc[0]
+        assert diff == pytest.approx(self._expected_rp_credit(), rel=1e-10)
+
+    def test_war_emitted_for_all_splits(self):
+        """WAR columns should be present for every WAA column (vR, vL, wtd × SP, RP)."""
+        p = _make_pitcher()
+        result = compute_pitcher_batting(p, neutral_adjustments(), 0.5)
+        for suffix in ["vR", "vL", "wtd", "vR RP", "vL RP", "wtd RP"]:
+            assert f"WAR {suffix}" in result.columns, f"missing WAR {suffix}"
+            assert f"WAA {suffix}" in result.columns, f"missing WAA {suffix}"

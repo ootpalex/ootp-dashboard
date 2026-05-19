@@ -691,16 +691,24 @@ def compute_waa(
     home_fraction: float,
     dp: HitterDataPoints = DEFAULT_HITTER_DP,
 ) -> pd.DataFrame:
-    """Compute WAA for each eligible position and Max WAA across all positions.
+    """Compute WAA and WAR per position, plus Max WAA / Max WAR across positions.
 
     Standard positions (1B–RF):
         WAA = (RunsP + BSR + BatR + PosAdj) / waa_const
+        WAR = WAA + (repl_runs_per_pa * pa) / waa_const
 
     Catcher (special — PA=500 inline BatR):
         WAA = (C_RunsP + BSR + BatR@500 + park_adj_c + PosAdj_C) / waa_const
+        WAR = WAA + (repl_runs_per_pa * pa_c) / waa_const
 
     DH (special — 0.98 non-HR discount, no fielding):
         WAA = (BSR * 0.98 + DH_BatR + PosAdj_DH) / waa_const
+        WAR = WAA + (repl_runs_per_pa * pa) / waa_const
+
+    The replacement-runs bonus scales with the playing-time benchmark for each
+    position (pa_c=500 for C, pa=600 for everything else), which is what gives
+    catchers a smaller WAR bonus than other positions and why Max WAR may pick
+    a different position than Max WAA.
 
     Args:
         batting: Output of compute_hitter_batting (has BatR, wOBA, BSR, DH BatR).
@@ -711,9 +719,9 @@ def compute_waa(
         dp: Hitter data points.
 
     Returns:
-        DataFrame with 30 columns:
-            9 positions × 3 splits (vR, vL, wtd) = 27 WAA columns
-            3 Max WAA columns (vR, vL, wtd)
+        DataFrame with 60 columns:
+            9 positions × 3 splits × 2 metrics (WAA, WAR) = 54
+            3 Max WAA columns + 3 Max WAR columns = 6
     """
     lg = dp.league
     fp = dp.fielding
@@ -736,6 +744,12 @@ def compute_waa(
     result = pd.DataFrame(index=batting.index)
     waa_vr_cols = []
     waa_vl_cols = []
+    war_vr_cols = []
+    war_vl_cols = []
+
+    # Replacement credit (wins) — scalar per playing-time benchmark
+    repl_credit_non_c = lg.repl_runs_per_pa * lg.pa / lg.waa_const
+    repl_credit_c = lg.repl_runs_per_pa * lg.pa_c / lg.waa_const
 
     # Position adjustments mapping
     pos_adj_map = {
@@ -752,16 +766,22 @@ def compute_waa(
         waa_vl = (runsp + bsr_vl + batr_vl + adj) / lg.waa_const
         waa_wtd = waa_vl * vl_frac + waa_vr * vr_frac
 
-        elig = eligibility[f"{pos} Elig"]
-        col_vr = f"{pos} WAA vR"
-        col_vl = f"{pos} WAA vL"
-        col_wtd = f"{pos} WAA wtd"
-        result[col_vr] = waa_vr.where(elig)
-        result[col_vl] = waa_vl.where(elig)
-        result[col_wtd] = waa_wtd.where(elig)
+        war_vr = waa_vr + repl_credit_non_c
+        war_vl = waa_vl + repl_credit_non_c
+        war_wtd = waa_wtd + repl_credit_non_c
 
-        waa_vr_cols.append(col_vr)
-        waa_vl_cols.append(col_vl)
+        elig = eligibility[f"{pos} Elig"]
+        result[f"{pos} WAA vR"] = waa_vr.where(elig)
+        result[f"{pos} WAA vL"] = waa_vl.where(elig)
+        result[f"{pos} WAA wtd"] = waa_wtd.where(elig)
+        result[f"{pos} WAR vR"] = war_vr.where(elig)
+        result[f"{pos} WAR vL"] = war_vl.where(elig)
+        result[f"{pos} WAR wtd"] = war_wtd.where(elig)
+
+        waa_vr_cols.append(f"{pos} WAA vR")
+        waa_vl_cols.append(f"{pos} WAA vL")
+        war_vr_cols.append(f"{pos} WAR vR")
+        war_vl_cols.append(f"{pos} WAR vL")
 
     # ── Catcher (special: PA=500 inline BatR + park adjustment) ───────────
     c_runsp = fielding["C RunsP"]
@@ -777,34 +797,58 @@ def compute_waa(
     c_waa_vl = (c_runsp + bsr_vl + batr_c_vl + park_adj_c + fp.pos_c) / lg.waa_const
     c_waa_wtd = c_waa_vl * vl_frac + c_waa_vr * vr_frac
 
+    c_war_vr = c_waa_vr + repl_credit_c
+    c_war_vl = c_waa_vl + repl_credit_c
+    c_war_wtd = c_waa_wtd + repl_credit_c
+
     c_elig = eligibility["C Elig"]
     result["C WAA vR"] = c_waa_vr.where(c_elig)
     result["C WAA vL"] = c_waa_vl.where(c_elig)
     result["C WAA wtd"] = c_waa_wtd.where(c_elig)
+    result["C WAR vR"] = c_war_vr.where(c_elig)
+    result["C WAR vL"] = c_war_vl.where(c_elig)
+    result["C WAR wtd"] = c_war_wtd.where(c_elig)
 
     waa_vr_cols.append("C WAA vR")
     waa_vl_cols.append("C WAA vL")
+    war_vr_cols.append("C WAR vR")
+    war_vl_cols.append("C WAR vL")
 
     # ── DH (special: 0.98 BSR discount, no fielding) ─────────────────────
     dh_waa_vr = (bsr_vr * 0.98 + dh_batr_vr + fp.pos_dh) / lg.waa_const
     dh_waa_vl = (bsr_vl * 0.98 + dh_batr_vl + fp.pos_dh) / lg.waa_const
     dh_waa_wtd = dh_waa_vl * vl_frac + dh_waa_vr * vr_frac
 
+    dh_war_vr = dh_waa_vr + repl_credit_non_c
+    dh_war_vl = dh_waa_vl + repl_credit_non_c
+    dh_war_wtd = dh_waa_wtd + repl_credit_non_c
+
     # DH is always eligible
     result["DH WAA vR"] = dh_waa_vr
     result["DH WAA vL"] = dh_waa_vl
     result["DH WAA wtd"] = dh_waa_wtd
+    result["DH WAR vR"] = dh_war_vr
+    result["DH WAR vL"] = dh_war_vl
+    result["DH WAR wtd"] = dh_war_wtd
 
     waa_vr_cols.append("DH WAA vR")
     waa_vl_cols.append("DH WAA vL")
+    war_vr_cols.append("DH WAR vR")
+    war_vl_cols.append("DH WAR vL")
 
     # ── Max WAA ───────────────────────────────────────────────────────────
     result["Max WAA vR"] = result[waa_vr_cols].max(axis=1)
     result["Max WAA vL"] = result[waa_vl_cols].max(axis=1)
+    waa_wtd_cols = [c for c in result.columns if c.endswith(" WAA wtd")]
+    result["Max WAA wtd"] = result[waa_wtd_cols].max(axis=1)
 
-    # Weighted Max WAA: take max of all wtd columns
-    all_wtd_cols = [c for c in result.columns if c.endswith(" WAA wtd")]
-    result["Max WAA wtd"] = result[all_wtd_cols].max(axis=1)
+    # ── Max WAR ───────────────────────────────────────────────────────────
+    # Computed independently of Max WAA because the catcher's smaller PA
+    # benchmark means C may rank differently in WAR than in WAA.
+    result["Max WAR vR"] = result[war_vr_cols].max(axis=1)
+    result["Max WAR vL"] = result[war_vl_cols].max(axis=1)
+    war_wtd_cols = [c for c in result.columns if c.endswith(" WAR wtd")]
+    result["Max WAR wtd"] = result[war_wtd_cols].max(axis=1)
 
     return result
 

@@ -12,7 +12,7 @@ leagues/
 ├── BLM/
 │   ├── league.json        # team, statsplus URL, OOTP version, blend weights
 │   ├── csv/
-│   │   ├── players/       # organization.csv, freeagents.csv, iafa.csv, draftYYYY.csv
+│   │   ├── players/       # org.csv (+ optional intl.csv, freeagents.csv, iafa.csv, draftYYYY.csv)
 │   │   └── ballparks.csv
 │   ├── metadata/          # optional per-league metadata CSVs
 │   └── output/

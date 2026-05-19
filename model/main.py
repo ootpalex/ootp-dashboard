@@ -21,7 +21,9 @@ from src.settings import (
     list_leagues,
     load_league_config,
     project_root,
+    prompt_settings,
     regressions_dir_for,
+    save_league_config,
 )
 from src.validation import PipelineValidationError, validate_league
 
@@ -40,6 +42,7 @@ def _resolve_paths_from_league(
         "metadata_dir": Path(overrides.metadata_dir) if overrides.metadata_dir else paths["metadata_dir"],
         "output_path": Path(overrides.output) if overrides.output else paths["output_gz"],
         "regressions_dir": regressions_dir_for(config.ootp_version),
+        "statsplus_cache": paths["statsplus_cache"],
     }
 
 
@@ -51,6 +54,7 @@ def _resolve_paths_legacy(args: argparse.Namespace) -> dict[str, Path]:
         "metadata_dir": Path(args.metadata_dir or "data/metadata"),
         "output_path": Path(args.output or "output/dashboard.json.gz"),
         "regressions_dir": None,  # legacy mode does not surface regressions dir
+        "statsplus_cache": None,  # legacy mode has no per-league cache dir
     }
 
 
@@ -131,6 +135,11 @@ def main() -> None:
         "--skip-network-check", action="store_true",
         help="Skip the StatsPlus URL HEAD probe during validation (use when offline).",
     )
+    parser.add_argument(
+        "--refresh-statsplus", action="store_true",
+        help="Ignore the StatsPlus fetch cache and refetch contracts/players/salaries "
+             "even if the in-game date is unchanged.",
+    )
     args = parser.parse_args()
 
     # Resolve identity + paths
@@ -164,6 +173,17 @@ def main() -> None:
     # Get settings
     teams = load_team_names(ballpark_path)
     if league_config is not None:
+        if args.configure:
+            updated = prompt_settings(league_config.to_pipeline_settings(), teams)
+            league_config.team = updated.team
+            league_config.park_factor_mode = updated.park_factor_mode
+            league_config.home_fraction = updated.home_fraction
+            league_config.relative_blend = updated.relative_blend
+            league_config.osa_blend = updated.osa_blend
+            league_config.scout_weight = updated.scout_weight
+            league_config.osa_weight = updated.osa_weight
+            league_config.statsplus_url = updated.statsplus_url
+            save_league_config(league_config)
         settings: PipelineSettings = league_config.to_pipeline_settings()
         print(f"\n=== Building league '{league_config.slug}' ({league_config.league_name}, OOTP {league_config.ootp_version}) ===")
     else:
@@ -171,47 +191,101 @@ def main() -> None:
             LEGACY_SETTINGS_PATH, player_dir, teams, force=args.configure
         )
 
-    # Fetch StatsPlus contract + player data if URL is available
+    # Fetch StatsPlus contract + player data if URL is available. To avoid
+    # hammering StatsPlus when nothing has changed, we first ask /date for the
+    # current in-game date and reuse the previous fetch's results if the date
+    # matches. The cache lives at leagues/<slug>/.statsplus_cache.json.gz and
+    # holds contracts + players + salary_reports for that date.
     statsplus_url = args.statsplus_url or settings.statsplus_url
+    statsplus_cache_path: Path | None = paths.get("statsplus_cache")
     contracts = None
     players_extra = None
+    salary_reports: dict = {}
     if statsplus_url:
-        from src.statsplus import fetch_contracts, fetch_players
-        print(f"\nFetching StatsPlus contract data...")
-        try:
-            contracts = fetch_contracts(statsplus_url)
-            print(f"  {len(contracts)} contracts loaded")
-        except Exception as e:
-            print(f"  Warning: StatsPlus fetch failed — {e}")
-            print(f"  Continuing without contract data...")
-        print(f"\nFetching StatsPlus player service data...")
-        try:
-            players_extra = fetch_players(statsplus_url)
-        except Exception as e:
-            print(f"  Warning: /players fetch failed — {e}")
-            print(f"  Continuing without service-day data...")
+        from src.statsplus import (
+            fetch_contracts,
+            fetch_game_date,
+            fetch_players,
+            load_statsplus_cache,
+            save_statsplus_cache,
+        )
+
+        print(f"\nChecking StatsPlus game date...")
+        current_date = fetch_game_date(statsplus_url)
+        if current_date:
+            print(f"  Current game date: {current_date}")
+        else:
+            print("  Could not determine game date — caching disabled this run")
+
+        cached = None
+        if statsplus_cache_path and current_date and not args.refresh_statsplus:
+            cached = load_statsplus_cache(statsplus_cache_path, current_date)
+
+        if cached is not None:
+            contracts, players_extra, salary_reports = cached
+            print(
+                f"  Reusing StatsPlus cache for {current_date} "
+                f"({len(contracts)} contracts, {len(players_extra)} player records, "
+                f"{len(salary_reports)} salary entries) — skipping network fetches"
+            )
+        else:
+            if args.refresh_statsplus:
+                print("  --refresh-statsplus set — bypassing cache")
+
+            print(f"\nFetching StatsPlus contract data...")
+            try:
+                contracts = fetch_contracts(statsplus_url)
+                print(f"  {len(contracts)} contracts loaded")
+            except Exception as e:
+                print(f"  Warning: StatsPlus fetch failed — {e}")
+                print(f"  Continuing without contract data...")
+
+            print(f"\nFetching StatsPlus player service data...")
+            try:
+                players_extra = fetch_players(statsplus_url)
+            except Exception as e:
+                print(f"  Warning: /players fetch failed — {e}")
+                print(f"  Continuing without service-day data...")
+
+            # Salary reports — one HTML scrape per MLB team in the user's league.
+            # Result is a flat {playerId: entry} dict (playerIds are league-unique)
+            # so export.py can look up by pid without knowing which team a player
+            # is on. ballparks.csv is the source of truth for which teams belong
+            # to the user's MLB league — this filters out KBO/foreign-league/
+            # All-Stars rosters sharing the same /teams/ namespace.
+            from src.salary_report import fetch_all_salary_reports
+            mlb_team_names = load_team_names(ballpark_path)
+            print(f"\nFetching salary reports for {len(mlb_team_names)} MLB teams...")
+            try:
+                salary_reports = fetch_all_salary_reports(
+                    statsplus_url, team_names=mlb_team_names
+                )
+                print(f"  {len(salary_reports)} players across all teams")
+            except Exception as e:
+                print(f"  Warning: salary report fetch failed — {e}")
+
+            # Only cache when every fetch returned (i.e. nothing raised). A
+            # transient network blip on any one endpoint would otherwise poison
+            # the cache until the in-game date advances.
+            if (
+                statsplus_cache_path
+                and current_date
+                and contracts is not None
+                and players_extra is not None
+            ):
+                save_statsplus_cache(
+                    statsplus_cache_path,
+                    current_date,
+                    contracts,
+                    players_extra,
+                    salary_reports,
+                )
+                print(f"  Saved StatsPlus cache for {current_date}")
+            elif statsplus_cache_path and current_date:
+                print("  Skipping cache save — one or more fetches failed")
     else:
         print("\nNo StatsPlus URL configured — skipping contract fetch")
         print("  Set statsplusUrl in leagues/<slug>/league.json or pass --statsplus-url to enable")
-
-    # Fetch salary reports for every MLB team in the user's league. The result
-    # is a flat {playerId: entry} dict (playerIds are league-unique), so
-    # export.py can look up by pid without needing to know which team a player
-    # is on. ballparks.csv is the source of truth for which teams belong to the
-    # user's MLB league — this filters out KBO/foreign-league/All-Stars rosters
-    # that share the same StatsPlus /teams/ namespace.
-    salary_reports: dict = {}
-    if statsplus_url:
-        from src.salary_report import fetch_all_salary_reports
-        mlb_team_names = load_team_names(ballpark_path)
-        print(f"\nFetching salary reports for {len(mlb_team_names)} MLB teams...")
-        try:
-            salary_reports = fetch_all_salary_reports(
-                statsplus_url, team_names=mlb_team_names
-            )
-            print(f"  {len(salary_reports)} players across all teams")
-        except Exception as e:
-            print(f"  Warning: salary report fetch failed — {e}")
 
     # Run pipeline
     try:

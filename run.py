@@ -170,6 +170,22 @@ def first_time_setup(slug_default: str = "default") -> str:
             "StatsPlus URL (optional; press Enter to skip) — e.g. https://atl-01.statsplus.net/ssb/",
             default="", allow_empty=True,
         )
+        # AAA/AA and OSA companions are auto-detected per CSV; only ask for the
+        # weight that controls how scout/OSA are mixed when both exist.
+        print(dim("  AAA/AA and OSA companion CSVs are auto-detected per file."))
+        while True:
+            sw_raw = _prompt(
+                "Scout weight 0.0-1.0 (used only when <name>_osa.csv companions exist)",
+                default="0.8",
+            )
+            try:
+                scout_weight = float(sw_raw)
+                if 0.0 <= scout_weight <= 1.0:
+                    break
+            except ValueError:
+                pass
+            print(red("    Enter a number between 0.0 and 1.0."))
+        osa_weight = round(1.0 - scout_weight, 4)
 
         league_dir = LEAGUES_DIR / slug
         if league_dir.exists():
@@ -189,15 +205,16 @@ def first_time_setup(slug_default: str = "default") -> str:
             "homeFraction": 0.5,
             "relativeBlend": True,
             "osaBlend": True,
-            "scoutWeight": 0.8,
-            "osaWeight": 0.2,
+            "scoutWeight": scout_weight,
+            "osaWeight": osa_weight,
         }
         (league_dir / "league.json").write_text(json.dumps(config, indent=2) + "\n")
 
         print()
         print(green(f"  Created leagues/{slug}/"))
         print(f"  Next: drop these files into {bold(f'leagues/{slug}/csv/')}:")
-        print(f"    - {bold('players/organization.csv')}  (required)")
+        print(f"    - {bold('players/org.csv')}          (required — MLB + MiLB)")
+        print(f"    - {bold('players/intl.csv')}         (optional — IntlComplex; needed when OOTP paginates the org export)")
         print(f"    - {bold('players/freeagents.csv')}    (optional — enables Free Agent Finder)")
         print(f"    - {bold('players/iafa.csv')}          (optional — enables IAFA Board)")
         print(f"    - {bold('players/draftYYYY.csv')}     (optional — one per draft year)")

@@ -216,33 +216,23 @@ def prompt_settings(
             "Enter value 0.0-1.0", c.home_fraction, 0.0, 1.0
         )
 
-    # [4] Relative blending
-    print(f"\n[4] Rating Blending")
-    print(f"    Use AAA/AA relative rating exports for finer granularity?")
-    blend_opts = ["Yes", "No"]
-    blend_current = 0 if c.relative_blend else 1
-    blend_idx = _prompt_choice("", blend_opts, blend_current)
-    relative_blend = blend_idx == 0
+    # [4] Scout / OSA weighting
+    # AAA/AA and OSA companion CSVs are auto-detected per file at build time:
+    # for each scout CSV (org, draft<year>, iafa, freeagents, intl), the
+    # pipeline looks for paired _aaa.csv / _aa.csv / _osa.csv and blends them
+    # in when present. This prompt only controls how much weight OSA ratings
+    # get vs. scout ratings when both are available for a given file.
+    print(f"\n[4] Scout vs OSA Weight")
+    print(f"    Used only for files that have a paired <name>_osa.csv companion.")
+    print(f"    Current: scout {c.scout_weight} / OSA {c.osa_weight}")
+    scout_weight = _prompt_float(
+        "Enter scout weight 0.0-1.0", c.scout_weight, 0.0, 1.0
+    )
+    osa_weight = round(1.0 - scout_weight, 4)
+    print(f"    OSA weight set to {osa_weight}")
 
-    # [5] OSA blending
-    print(f"\n[5] OSA Blending")
-    print(f"    Blend scout and OSA ratings?")
-    osa_current = 0 if c.osa_blend else 1
-    osa_idx = _prompt_choice("", blend_opts, osa_current)
-    osa_blend = osa_idx == 0
-
-    scout_weight = c.scout_weight
-    osa_weight = c.osa_weight
-    if osa_blend:
-        print(f"\n    Scout weight: {c.scout_weight}, OSA weight: {c.osa_weight}")
-        scout_weight = _prompt_float(
-            "Enter scout weight 0.0-1.0", c.scout_weight, 0.0, 1.0
-        )
-        osa_weight = round(1.0 - scout_weight, 4)
-        print(f"    OSA weight set to {osa_weight}")
-
-    # [6] StatsPlus URL
-    print(f"\n[6] StatsPlus URL")
+    # [5] StatsPlus URL
+    print(f"\n[5] StatsPlus URL")
     print(f"    League page URL for fetching contract data — e.g. https://atl-01.statsplus.net/ssb/")
     print(f"    (leave empty to skip)")
     if c.statsplus_url:
@@ -254,8 +244,8 @@ def prompt_settings(
         team=team,
         park_factor_mode=park_factor_mode,
         home_fraction=home_fraction,
-        relative_blend=relative_blend,
-        osa_blend=osa_blend,
+        relative_blend=True,
+        osa_blend=True,
         scout_weight=scout_weight,
         osa_weight=osa_weight,
         statsplus_url=statsplus_url,
@@ -347,6 +337,7 @@ def league_paths(slug: str, root: Path | None = None) -> dict[str, Path]:
         "metadata_dir": base / "metadata",
         "output_dir": base / "output",
         "output_gz": base / "output" / "dashboard.json.gz",
+        "statsplus_cache": base / ".statsplus_cache.json.gz",
     }
 
 
