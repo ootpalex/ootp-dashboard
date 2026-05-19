@@ -119,7 +119,12 @@ export default function App() {
     return (
       <ErrorBoundary>
         <LeagueSlugContext.Provider value={rawData.activeSlug}>
+          {/* The key forces Dashboard to fully remount on league switch so all
+              per-league state (useScopedLocalStorage values, in-memory selections,
+              modal open state) reads cleanly from the new league's scope rather
+              than carrying over stale state from the previous league. */}
           <Dashboard
+            key={rawData.activeSlug || "__legacy__"}
             rawHitters={rawData.rawHitters}
             rawPitchers={rawData.rawPitchers}
             platoonSplits={platoonSplits}

@@ -1627,24 +1627,6 @@ def build_dashboard(
         floor_pitchers, park_adj, home_fraction, dp_p, woba_ratio
     )
 
-    # Sanity-print floor distribution stats so we can eyeball magnitudes
-    # against L3 proxies (~−10.6 hitters, ~−11.5 SP, ~−4.2 RP raw).
-    def _floor_stats(series: pd.Series, label: str) -> None:
-        s = pd.to_numeric(series, errors="coerce").dropna()
-        if len(s) == 0:
-            print(f"  {label}: (empty)")
-            return
-        qs = s.quantile([0.0, 0.01, 0.5, 0.99]).to_dict()
-        print(
-            f"  {label}: n={len(s)} min={qs[0.0]:.2f} p1={qs[0.01]:.2f} "
-            f"p50={qs[0.5]:.2f} p99={qs[0.99]:.2f}"
-        )
-
-    print("Floor WAA distribution:")
-    _floor_stats(floor_waa.get("Max WAA wtd", pd.Series(dtype=float)), "hit (wtd)")
-    _floor_stats(floor_pitcher_stats.get("WAA wtd", pd.Series(dtype=float)), "sp  (raw)")
-    _floor_stats(floor_pitcher_stats.get("WAA wtd RP", pd.Series(dtype=float)), "rp  (raw)")
-
     # Salary and price for pitchers
     p_slr = _parse_salary(pitcher_players["SLR"]) if "SLR" in pitcher_players.columns else pd.Series(np.nan, index=pitcher_players.index)
     p_dem = _parse_demand(pitcher_players["DEM"]) if "DEM" in pitcher_players.columns else pd.Series(np.nan, index=pitcher_players.index)

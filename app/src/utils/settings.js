@@ -1,7 +1,7 @@
 // ============================================================================
 // SETTINGS — Load/save league and prospect settings (per-league scoped)
 // ============================================================================
-import { LEAGUE_SETTINGS_KEY, DEFAULT_LEAGUE_SETTINGS, STATSPLUS_PROXY, PROSPECT_SETTINGS_KEY } from "./constants.js";
+import { LEAGUE_SETTINGS_KEY, DEFAULT_LEAGUE_SETTINGS, PROSPECT_SETTINGS_KEY } from "./constants.js";
 import { readScoped, writeScoped } from "../hooks/useLocalStorage.js";
 
 export function loadLeagueSettings() {
@@ -37,22 +37,30 @@ function normalizeStatsBase(settings) {
   return url.endsWith("/api") ? url.slice(0, -4) : url;
 }
 
+// In dev, rewrite a StatsPlus URL into a /sp/<host>/<path> proxy URL so the
+// Vite dev server can forward to the correct host per league (see vite.config.js
+// for the dynamic proxy). In prod, return the absolute URL unchanged.
+function devProxy(absoluteUrl, fallbackPath) {
+  if (!import.meta.env.DEV) return absoluteUrl;
+  try {
+    const u = new URL(absoluteUrl);
+    const path = u.pathname.replace(/\/$/, "");
+    return `/sp/${u.host}${path}`;
+  } catch {
+    return fallbackPath;
+  }
+}
+
 // Returns the API base URL (appends /api). All existing callers use this.
 export function getStatsplusBase(settings) {
   const base = normalizeStatsBase(settings);
-  if (import.meta.env.DEV) {
-    try { return STATSPLUS_PROXY + new URL(base + "/api").pathname; } catch { return STATSPLUS_PROXY + "/ssb/api"; }
-  }
-  return base + "/api";
+  return devProxy(base + "/api", `/sp/atl-01.statsplus.net/ssb/api`);
 }
 
 // Returns the page/reports base URL (no /api). Used for HTML report page fetches.
 export function getStatsplusPageBase(settings) {
   const base = normalizeStatsBase(settings);
-  if (import.meta.env.DEV) {
-    try { return STATSPLUS_PROXY + new URL(base + "/").pathname.replace(/\/$/, ""); } catch { return STATSPLUS_PROXY + "/ssb"; }
-  }
-  return base;
+  return devProxy(base, `/sp/atl-01.statsplus.net/ssb`);
 }
 
 export function loadProspectSettings() {

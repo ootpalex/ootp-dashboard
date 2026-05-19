@@ -4,12 +4,80 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import json
 import os
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Bump when the pipeline code changes in a way that should invalidate cached
+# builds (column additions, formula changes, new meta fields, etc.).
+_BUILD_CACHE_VERSION = "2026-05-19-v1"
+
+
+def _compute_build_input_hash(
+    player_dir: Path,
+    ballpark_path: Path,
+    metadata_dir: Path | None,
+    league_config_path: Path | None,
+    statsplus_date: str | None,
+) -> str:
+    """Hash of everything the pipeline reads. If this matches the previous
+    successful build's hash and the output still exists, we can skip the
+    whole heavy compute and reuse the existing dashboard.json.gz."""
+    h = hashlib.sha256()
+    h.update(f"version={_BUILD_CACHE_VERSION}\n".encode())
+    h.update(f"statsplus_date={statsplus_date or ''}\n".encode())
+
+    def hash_file(path: Path) -> None:
+        if not path.is_file():
+            return
+        h.update(f"file:{path.name}:{path.stat().st_size}\n".encode())
+        h.update(path.read_bytes())
+
+    def hash_dir(directory: Path) -> None:
+        if not directory.is_dir():
+            return
+        for child in sorted(directory.iterdir()):
+            if child.is_file() and child.suffix.lower() == ".csv":
+                hash_file(child)
+            elif child.is_dir():
+                hash_dir(child)
+
+    hash_dir(player_dir)
+    hash_file(ballpark_path)
+    if metadata_dir:
+        hash_dir(metadata_dir)
+    if league_config_path:
+        hash_file(league_config_path)
+    return f"sha256:{h.hexdigest()}"
+
+
+def _load_build_cache(output_dir: Path) -> dict | None:
+    """Read the previous build's hash marker, if present and parseable."""
+    path = output_dir / ".build_cache.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _save_build_cache(output_dir: Path, input_hash: str, output_path: Path) -> None:
+    """Persist the hash marker so subsequent runs can short-circuit."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "input_hash": input_hash,
+        "output_path": str(output_path),
+        "built_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+    try:
+        (output_dir / ".build_cache.json").write_text(json.dumps(payload, indent=2) + "\n")
+    except OSError:
+        pass
 
 from src.ballparks import load_team_names
 from src.export import build_dashboard
@@ -139,6 +207,11 @@ def main() -> None:
         "--refresh-statsplus", action="store_true",
         help="Ignore the StatsPlus fetch cache and refetch contracts/players/salaries "
              "even if the in-game date is unchanged.",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Rebuild the dashboard even if no inputs have changed since the "
+             "previous run (bypasses the build-cache short-circuit).",
     )
     args = parser.parse_args()
 
@@ -286,6 +359,54 @@ def main() -> None:
     else:
         print("\nNo StatsPlus URL configured — skipping contract fetch")
         print("  Set statsplusUrl in leagues/<slug>/league.json or pass --statsplus-url to enable")
+
+    # Build-cache short-circuit. Hash every input that affects the output
+    # (CSVs, ballpark, metadata, league.json, StatsPlus game date, pipeline
+    # version) and skip the heavy compute when nothing has changed AND the
+    # previous output still exists. `--force` bypasses this.
+    league_cfg_path: Path | None = None
+    if league_config is not None:
+        league_cfg_path = league_paths(league_config.slug)["league_json"]
+    sp_date_for_hash = current_date if statsplus_url else None
+    build_hash = _compute_build_input_hash(
+        player_dir, ballpark_path, metadata_dir, league_cfg_path, sp_date_for_hash,
+    )
+    cached_build = None if args.force else _load_build_cache(output_path.parent)
+    if (
+        cached_build
+        and cached_build.get("input_hash") == build_hash
+        and output_path.is_file()
+    ):
+        print(
+            f"\nInputs unchanged since last run ({cached_build.get('built_at', 'unknown')})"
+            f" — skipping rebuild. Pass --force to rebuild anyway."
+        )
+        json_bytes = output_path.read_bytes()
+        # Decompress for the copy step below.
+        with gzip.open(output_path, "rb") as f:
+            raw_json = f.read()
+        size_kb = output_path.stat().st_size / 1024
+        print(f"Reusing {output_path} ({size_kb:.0f} KB)")
+        elapsed = 0.0
+        # Mimic the post-build path: copy to app/public/data/<slug>/ and
+        # refresh the leagues index so the SPA picks up the existing build.
+        root = project_root()
+        app_data_dir = root / "app" / "public" / "data"
+        if app_data_dir.is_dir():
+            import shutil
+            if league_config is not None:
+                league_app_dir = app_data_dir / league_config.slug
+                league_app_dir.mkdir(parents=True, exist_ok=True)
+                app_gz = league_app_dir / "dashboard.json.gz"
+                app_json = league_app_dir / "dashboard.json"
+            else:
+                app_gz = app_data_dir / "dashboard.json.gz"
+                app_json = app_data_dir / "dashboard.json"
+            shutil.copy2(output_path, app_gz)
+            app_json.write_bytes(raw_json)
+            _update_leagues_index(app_data_dir)
+            print(f"  Copied to {app_gz.parent}/")
+        return
 
     # Run pipeline
     try:

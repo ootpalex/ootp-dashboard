@@ -30,20 +30,12 @@ const PAGE_FALLBACK = (
 );
 
 export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dashMeta, leagues = [], currentLeague = null, onSelectLeague }) {
+  // Dashboard is keyed on activeSlug in App.jsx, so this lazy init runs fresh
+  // on every league switch — reading the correct league's scoped settings
+  // each time. No reload effect needed.
   const [leagueSettings, setLeagueSettings] = useState(loadLeagueSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
-
-  // `loadLeagueSettings` runs once via the lazy useState initializer above.
-  // When the user switches leagues, the slug in localStorage changes but the
-  // settings state would stay pinned to the previous league's values —
-  // re-read from the new league's scope whenever `currentLeague` changes.
-  // Also closes the settings modal so an in-progress edit doesn't leak from
-  // one league into another.
-  useEffect(() => {
-    setLeagueSettings(loadLeagueSettings());
-    setShowSettings(false);
-  }, [currentLeague]);
 
   // Auto-detect excluded teams from raw data
   const autoExcluded = useMemo(() => detectExcludedTeams([...rawHitters, ...rawPitchers]), [rawHitters, rawPitchers]);
