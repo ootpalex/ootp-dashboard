@@ -14,7 +14,7 @@ from pathlib import Path
 
 # Bump when the pipeline code changes in a way that should invalidate cached
 # builds (column additions, formula changes, new meta fields, etc.).
-_BUILD_CACHE_VERSION = "2026-05-19-v1"
+_BUILD_CACHE_VERSION = "2026-05-21-v1"
 
 
 def _compute_build_input_hash(
@@ -371,7 +371,10 @@ def main() -> None:
     build_hash = _compute_build_input_hash(
         player_dir, ballpark_path, metadata_dir, league_cfg_path, sp_date_for_hash,
     )
-    cached_build = None if args.force else _load_build_cache(output_path.parent)
+    cached_build = (
+        None if (args.force or args.refresh_statsplus)
+        else _load_build_cache(output_path.parent)
+    )
     if (
         cached_build
         and cached_build.get("input_hash") == build_hash
@@ -442,6 +445,11 @@ def main() -> None:
     print(f"  Hitters:  {len(result['hitters'])}")
     print(f"  Pitchers: {len(result['pitchers'])}")
     print(f"  Time:     {elapsed:.1f}s")
+
+    # Persist the build-cache marker so the next run with identical inputs can
+    # short-circuit. Saved after the canonical output write (independent of the
+    # optional app-copy below) so it lands even when app/public/data is absent.
+    _save_build_cache(output_path.parent, build_hash, output_path)
 
     # Auto-copy to app/public/data/ for the React frontend
     root = project_root()
