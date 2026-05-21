@@ -28,6 +28,11 @@ from src.metadata import (
     _compute_rating_averages_pitching,
     _compute_woba_from_aggregates,
     _blend_params,
+    _ip_clean,
+    _normalize_batter_ratings_frame,
+    _normalize_fielding_data_frame,
+    _normalize_fielding_ratings_frame,
+    _normalize_pitching_frame,
     _resolve_season_dirs,
     has_metadata_inputs,
     compose_data_points,
@@ -1044,3 +1049,64 @@ class TestPitcherRatings2FileFormat:
         assert rp_vr.loc[1, "BF"] == pytest.approx(0.0)
         assert sp_vr.loc[2, "BF"] == pytest.approx(0.0)
         assert rp_vr.loc[2, "BF"] == pytest.approx(250)
+
+
+class TestRawExportNormalization:
+    """Derived columns computed from raw OOTP exports when absent (idempotent)."""
+
+    def test_ip_clean_thirds_to_decimal(self):
+        s = _ip_clean(pd.Series([225.0, 139.2, 215.1, 0.1]))
+        assert s.iloc[0] == pytest.approx(225.0)
+        assert s.iloc[1] == pytest.approx(139 + 2 / 3)
+        assert s.iloc[2] == pytest.approx(215 + 1 / 3)
+        assert s.iloc[3] == pytest.approx(1 / 3)
+
+    def test_pitching_frame_adds_ip_clean(self):
+        df = _normalize_pitching_frame(pd.DataFrame({"ID": [1], "IP": [139.2]}))
+        assert df["IP Clean"].iloc[0] == pytest.approx(139 + 2 / 3)
+
+    def test_pitching_frame_idempotent(self):
+        """An existing IP Clean (spreadsheet-derived) is left untouched."""
+        df = _normalize_pitching_frame(pd.DataFrame({"ID": [1], "IP": [139.2], "IP Clean": [999.0]}))
+        assert df["IP Clean"].iloc[0] == 999.0
+
+    def test_fielding_data_adds_plays_from_biz(self):
+        raw = pd.DataFrame({
+            "ID": [1], "IP": [100.0],
+            "BIZ-R": [10], "BIZ-L": [5], "BIZ-E": [3], "BIZ-U": [2], "BIZ-Z": [1], "BIZ-I": [4],
+            "BIZ-Rm": [9], "BIZ-Lm": [4], "BIZ-Em": [2], "BIZ-Um": [1], "BIZ-Zm": [0],
+        })
+        df = _normalize_fielding_data_frame(raw)
+        assert df["Plays A"].iloc[0] == 10 + 5 + 3 + 2 + 1 + 4   # 25
+        assert df["Plays M"].iloc[0] == 9 + 4 + 2 + 1 + 0        # 16
+        assert df["IP Clean"].iloc[0] == pytest.approx(100.0)
+
+    def test_fielding_ratings_fix_and_htcm(self):
+        raw = pd.DataFrame({
+            "ID": [1, 2], "HT": ["6' 2'", "5' 11'"],
+            "C ABI": [55, "-"], "C FRM": ["-", 60], "C ARM": [50, 45],
+        })
+        df = _normalize_fielding_ratings_frame(raw)
+        # dash -> 20
+        assert df["C ABI Fix"].tolist() == [55, 20]
+        assert df["C FRM Fix"].tolist() == [20, 60]
+        # height parse: 6'2" = 6*30.48 + 2*2.54
+        assert df["HT CM"].iloc[0] == pytest.approx(6 * 30.48 + 2 * 2.54)
+
+    def test_batter_ratings_side_aliasing(self):
+        both = pd.DataFrame({
+            "ID": [1], "PA": [600],
+            "BA vR": [55], "BA vL": [45], "EYE vR": [60], "EYE vL": [50],
+            "GAP vR": [50], "GAP vL": [50], "POW vR": [40], "POW vL": [40],
+            "K vR": [50], "K vL": [50], "SPE": [70],
+        })
+        vr = _normalize_batter_ratings_frame(both, "vR")
+        vl = _normalize_batter_ratings_frame(both, "vL")
+        assert vr["BA"].iloc[0] == 55 and vr["EYE"].iloc[0] == 60
+        assert vl["BA"].iloc[0] == 45 and vl["EYE"].iloc[0] == 50
+
+    def test_batter_ratings_legacy_untouched(self):
+        """Legacy single-column files (already have BA) pass through unchanged."""
+        legacy = pd.DataFrame({"ID": [1], "PA": [600], "BA": [52], "EYE": [58], "SPE": [70]})
+        out = _normalize_batter_ratings_frame(legacy, "vR")
+        assert out["BA"].iloc[0] == 52 and out["EYE"].iloc[0] == 58

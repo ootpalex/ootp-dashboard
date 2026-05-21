@@ -40,6 +40,7 @@ class _BlendKwargs(TypedDict):
     osa_weight: float
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.aggregators._shared import _compute_woba_from_aggregates
@@ -74,6 +75,7 @@ from src.data_points import (
     PitcherLeagueParams,
     PitchingRegressionCoeffs,
 )
+from src.hitters import parse_height_cm
 from src.relative_ratings import blend_relative_ratings
 
 
@@ -206,6 +208,88 @@ def _load_metadata_rating_csv(
 
 
 # ---------------------------------------------------------------------------
+# Raw-export normalization
+# ---------------------------------------------------------------------------
+#
+# Raw OOTP exports lack several columns the YourKidnies' 25 Metadata.xlsx
+# computed. These helpers derive them when absent so raw and spreadsheet-derived
+# inputs both work. They are *idempotent*: an already-present column is left
+# untouched, so spreadsheet-derived seasons produce byte-identical results.
+
+_BIZ_ATTEMPTED = ["BIZ-R", "BIZ-L", "BIZ-E", "BIZ-U", "BIZ-Z", "BIZ-I"]
+_BIZ_MADE = ["BIZ-Rm", "BIZ-Lm", "BIZ-Em", "BIZ-Um", "BIZ-Zm"]
+
+
+def _ip_clean(ip_series: pd.Series) -> pd.Series:
+    """Convert OOTP thirds notation to true decimal innings.
+
+    OOTP writes IP as ``139.2`` meaning 139 + 2/3 innings (the decimal is outs,
+    not tenths). ``139.2 -> 139.667``, ``225.0 -> 225.0``.
+    """
+    ip = pd.to_numeric(ip_series, errors="coerce")
+    whole = np.floor(ip)
+    outs = ((ip - whole) * 10).round()
+    return whole + outs / 3.0
+
+
+def _normalize_pitching_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Add ``IP Clean`` from ``IP`` when absent (pitching_data/sp_data/rp_data)."""
+    if "IP Clean" not in df.columns and "IP" in df.columns:
+        df = df.copy()
+        df["IP Clean"] = _ip_clean(df["IP"])
+    return df
+
+
+def _normalize_fielding_data_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Add ``IP Clean`` and ``Plays A``/``Plays M`` (BIZ-* sums) when absent."""
+    df = df.copy()
+    if "IP Clean" not in df.columns and "IP" in df.columns:
+        df["IP Clean"] = _ip_clean(df["IP"])
+    if "Plays A" not in df.columns and all(c in df.columns for c in _BIZ_ATTEMPTED):
+        df["Plays A"] = sum(pd.to_numeric(df[c], errors="coerce").fillna(0)
+                            for c in _BIZ_ATTEMPTED)
+    if "Plays M" not in df.columns and all(c in df.columns for c in _BIZ_MADE):
+        df["Plays M"] = sum(pd.to_numeric(df[c], errors="coerce").fillna(0)
+                            for c in _BIZ_MADE)
+    return df
+
+
+_SPLIT_HIT_STATS = ["BA", "GAP", "POW", "EYE", "K"]
+
+
+def _normalize_batter_ratings_frame(df: pd.DataFrame, side: str) -> pd.DataFrame:
+    """Map new both-sides batter ratings to the legacy single-column shape.
+
+    The new ``Batting Rtng Export`` carries both ``BA vR`` and ``BA vL`` (etc.) in
+    each file; the aggregator expects a single ``BA`` column holding this file's
+    side. For ``side="vR"`` alias ``BA vR -> BA`` (… EYE/POW/GAP/K too); for
+    ``side="vL"`` alias the vL columns. Idempotent: legacy single-column files
+    (which already have ``BA``) are returned unchanged. SPE/STE/RUN/SR are
+    side-independent in both formats and need no aliasing.
+    """
+    df = df.copy()
+    for stat in _SPLIT_HIT_STATS:
+        col_side = f"{stat} {side}"
+        if stat not in df.columns and col_side in df.columns:
+            df[stat] = pd.to_numeric(df[col_side], errors="coerce")
+    return df
+
+
+def _normalize_fielding_ratings_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Add ``HT CM`` (height parse) and catcher ``* Fix`` (dash->20) when absent."""
+    df = df.copy()
+    if "HT CM" not in df.columns and "HT" in df.columns:
+        df["HT CM"] = parse_height_cm(df["HT"])
+    for raw, fixed in (("C ABI", "C ABI Fix"), ("C FRM", "C FRM Fix"),
+                       ("C ARM", "C ARM Fix")):
+        if fixed not in df.columns and raw in df.columns:
+            # OOTP writes "-" for non-catchers → coerce to NaN, then 20 (matches
+            # the spreadsheet's IF(="-",20,val)). Avoids replace()'s downcast warning.
+            df[fixed] = pd.to_numeric(df[raw], errors="coerce").fillna(20)
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
 
@@ -242,7 +326,8 @@ def load_metadata_inputs(
     positions = ["c", "1b", "2b", "3b", "ss", "lf", "cf", "rf"]
     fielding_data = {}
     for pos in positions:
-        fielding_data[pos] = pd.read_csv(d / f"fielding_data_{pos}.csv")
+        fielding_data[pos] = _normalize_fielding_data_frame(
+            pd.read_csv(d / f"fielding_data_{pos}.csv"))
 
     # Pitcher ratings: the new 2-file combined format (pitcher_ratings_vr/vl)
     # takes precedence; otherwise fall back to the legacy 4-file per-role format.
@@ -261,13 +346,15 @@ def load_metadata_inputs(
 
     return MetadataInputs(
         hitting_data=pd.read_csv(d / "hitting_data.csv"),
-        batter_ratings_vr=_load_metadata_rating_csv(d / "batter_ratings_vr.csv", **blend_kw),
-        batter_ratings_vl=_load_metadata_rating_csv(d / "batter_ratings_vl.csv", **blend_kw),
-        pitching_data=pd.read_csv(d / "pitching_data.csv"),
-        sp_data=pd.read_csv(d / "sp_data.csv"),
-        rp_data=pd.read_csv(d / "rp_data.csv"),
+        batter_ratings_vr=_normalize_batter_ratings_frame(
+            _load_metadata_rating_csv(d / "batter_ratings_vr.csv", **blend_kw), "vR"),
+        batter_ratings_vl=_normalize_batter_ratings_frame(
+            _load_metadata_rating_csv(d / "batter_ratings_vl.csv", **blend_kw), "vL"),
+        pitching_data=_normalize_pitching_frame(pd.read_csv(d / "pitching_data.csv")),
+        sp_data=_normalize_pitching_frame(pd.read_csv(d / "sp_data.csv")),
+        rp_data=_normalize_pitching_frame(pd.read_csv(d / "rp_data.csv")),
         fielding_data=fielding_data,
-        fielding_ratings=pd.read_csv(d / "fielding_ratings.csv"),
+        fielding_ratings=_normalize_fielding_ratings_frame(pd.read_csv(d / "fielding_ratings.csv")),
         **pitcher_kwargs,
     )
 
