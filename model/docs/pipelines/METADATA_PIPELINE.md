@@ -6,7 +6,7 @@ The `25 Metadata.xlsx` workbook is a **constant-generation pipeline**: raw OOTP 
 
 **Module:** `src/metadata.py` (orchestrator + caching) + `src/aggregators/{hit,pitch,field}_aggregator.py` (Phase E split — domain-specific aggregation)
 **Test suite:** `model/tests/test_metadata.py`
-**Per-league inputs:** `leagues/<slug>/metadata/*.csv` (raw OOTP rating + sim CSVs the pipeline auto-detects on each build)
+**Per-league inputs:** `leagues/<slug>/metadata/*.csv` (raw OOTP rating + sim CSVs the pipeline auto-detects on each build), or year-named subfolders for multi-season pooling (see [Multi-season pooling](#multi-season-pooling))
 **Calibration answer keys:** `data/regressions/ootp<version>/calibration/*.json` (shipped per OOTP version)
 
 After Phase E (2026-04-28), `src/metadata.py` slimmed from 1482 → 439 lines. It now owns: `MetadataInputs`, CSV loading + OSA/relative blending, result caching (SHA-256 hash via `.metadata_cache.json`), and the top-level orchestrators `generate_data_points` / `compose_data_points`. The heavy aggregation moved into the `src/aggregators/` package — `hit_aggregator.py` (`_aggregate_hitting`, `compute_hitting_constants`), `pitch_aggregator.py` (`_aggregate_pitching`, `compute_pitching_constants` with SP-normalized RP wOBA), `field_aggregator.py` (`_compute_fielding_aggregates`, `_compute_position_adjustments`, `compute_fielding_constants`), and `_shared.py` (`_compute_woba_from_aggregates`, weighted-mean helpers). `src.metadata` re-exports the private helpers that `tests/test_metadata.py` imports, so test imports stayed unchanged across the split.
@@ -18,6 +18,40 @@ Input Tables (Hitting Data, Pitching Data, SP/RP Data, Fielding Data, Ratings)
   → Calc Sheets (aggregation + wOBA derivation + weighted averages)
     → Data Points (HitterLeagueParams, PitcherLeagueParams, FieldingParams)
 ```
+
+## Multi-season pooling
+
+A single season of metadata is noisy — wOBA weights, league rating averages, and
+especially **position adjustments** swing year to year on small samples. To stabilize the
+constants, `metadata/` can hold **year-named subfolders** and the pipeline pools the most
+recent seasons with a recency-weighted blend:
+
+```
+leagues/<slug>/metadata/
+  2026/   ← newest; weight 3   (full set of the ~20 metadata CSVs)
+  2025/   ← weight 2
+  2024/   ← weight 1
+  .metadata_cache.json         ← combined cache stays at the parent level
+```
+
+- **Detection.** A "season" is any child directory whose name is all digits (a year). Each
+  season folder must contain the complete metadata CSV set. **If year subfolders exist they
+  are the source of truth and loose CSVs in `metadata/` are ignored. If none exist, the flat
+  `metadata/*.csv` is loaded as a single season — identical to the legacy behavior.**
+- **Weighting (years-back).** The newest present year gets `season_weights[0]`, one year
+  older `season_weights[1]`, etc. A **gap year leaves its weight slot unused** (e.g. 2026 +
+  2024 with weights `(3,2,1)` → 2026=3, 2024=1). Seasons older than the weight window are
+  dropped; a single season collapses to weight 1.
+- **Blend method.** Each season's `HitterLeagueParams` / `PitcherLeagueParams` /
+  `FieldingParams` is computed **independently** with the existing aggregators, then every
+  (float) field is weighted-averaged via `_blend_params`. The aggregator math is untouched.
+- **Config.** The weight vector is `seasonWeights` in `leagues/<slug>/league.json`
+  (default `[3, 2, 1]`); it flows through `LeagueConfig` → `generate_data_points(...,
+  season_weights=...)` and is folded into the cache config hash.
+
+Key functions in `src/metadata.py`: `_resolve_season_dirs` (discovery + weighting),
+`_blend_params` (generic weighted average), `has_metadata_inputs` (detection gate shared
+with `export.py` / `validation.py`).
 
 ## Phase Status
 

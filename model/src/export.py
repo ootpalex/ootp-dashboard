@@ -22,7 +22,7 @@ from src.ballparks import (
     neutral_park_deltas,
 )
 from src.data_points import DEFAULT_HITTER_DP, DEFAULT_PITCHER_DP
-from src.metadata import compose_data_points, generate_data_points
+from src.metadata import compose_data_points, generate_data_points, has_metadata_inputs
 from src.hitters import (
     compute_fielding,
     compute_hitter_batting,
@@ -1439,12 +1439,13 @@ def _detect_metadata(
     if not metadata_dir.is_dir():
         return None
 
-    csvs = list(metadata_dir.glob("*.csv"))
-    if not csvs:
+    # Recognize loose CSVs *or* year-named season subfolders (e.g. 2026/).
+    if not has_metadata_inputs(metadata_dir):
         return None
 
     from src.metadata import _BlendKwargs
     blend_kw: _BlendKwargs | dict = {}
+    season_weights = None
     if settings is not None:
         blend_kw = {
             "relative_blend": settings.relative_blend,
@@ -1452,8 +1453,10 @@ def _detect_metadata(
             "scout_weight": settings.scout_weight,
             "osa_weight": settings.osa_weight,
         }
+        season_weights = settings.season_weights
 
-    hitting, pitching, fielding = generate_data_points(metadata_dir, **blend_kw)
+    hitting, pitching, fielding = generate_data_points(
+        metadata_dir, season_weights=season_weights, **blend_kw)
     return compose_data_points(hitting, pitching, fielding)
 
 

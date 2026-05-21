@@ -257,11 +257,27 @@ def _check_statsplus_url(url: str, *, skip_network_check: bool) -> None:
 
 
 def _check_metadata_dir(metadata_dir: Path) -> None:
-    """Soft check: if the dir exists, list any missing files but don't fail."""
+    """Soft check: if the dir exists, list any missing files but don't fail.
+
+    Recognizes both a flat metadata dir (loose CSVs) and the multi-season layout
+    where CSVs live in year-named subfolders (``2026/`` …) that get pooled with
+    recency weights.
+    """
     if not metadata_dir.is_dir():
         return
-    csvs = list(metadata_dir.glob("*.csv"))
-    if not csvs:
+    has_flat = any(metadata_dir.glob("*.csv"))
+    season_dirs = sorted(
+        (c for c in metadata_dir.iterdir()
+         if c.is_dir() and c.name.isdigit() and any(c.glob("*.csv"))),
+        key=lambda p: p.name, reverse=True,
+    )
+    if not has_flat and not season_dirs:
         print(
             f"  Note: {metadata_dir} is empty — pipeline will use OOTP-version defaults."
+        )
+    elif season_dirs:
+        years = ", ".join(p.name for p in season_dirs)
+        print(
+            f"  Found {len(season_dirs)} metadata season(s) [{years}] — "
+            f"will pool with recency weights."
         )

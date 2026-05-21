@@ -14,7 +14,8 @@ leagues/
 │   ├── csv/
 │   │   ├── players/       # org.csv (+ optional intl.csv, freeagents.csv, iafa.csv, draftYYYY.csv)
 │   │   └── ballparks.csv
-│   ├── metadata/          # optional per-league metadata CSVs
+│   ├── metadata/          # optional per-league metadata CSVs (flat = one season,
+│   │                      #   or year subfolders 2026/ 2025/ … to pool seasons)
 │   └── output/
 │       └── dashboard.json.gz
 └── SSB/                   # second league, mirror structure
@@ -22,6 +23,31 @@ leagues/
 ```
 
 After each pipeline run, `app/public/data/leagues.json` is rewritten as an index of all configured leagues. The SPA reads this index on startup and offers a league dropdown in the sidebar when more than one league is present.
+
+## Per-league config (`league.json`)
+
+Each league's `league.json` holds its identity and pipeline-tuning fields:
+
+| Field | Default | Purpose |
+|---|---|---|
+| `slug`, `leagueName`, `ootpVersion` | — | Identity; `ootpVersion` selects the regression calibration |
+| `team` | `"Nashville Stars"` | Your organization (drives park factors + roster views) |
+| `statsplusUrl` | `""` | League page URL for fetching contract data |
+| `parkFactorMode`, `homeFraction` | `"team"`, `0.5` | Park-factor application |
+| `relativeBlend`, `osaBlend`, `scoutWeight`, `osaWeight` | `true`, `true`, `0.8`, `0.2` | Rating-blend toggles for AAA/AA and OSA companion CSVs |
+| `seasonWeights` | `[3, 2, 1]` | Recency weights (newest-first) for blending year-subfolder metadata seasons — see [Metadata seasons](#metadata-seasons) |
+
+Omitted fields fall back to these defaults, so an older `league.json` keeps working unchanged.
+
+### Metadata seasons
+
+A league's `metadata/` directory is normally a flat set of CSVs representing **one** season.
+To smooth single-season noise, you can instead keep **year-named subfolders** — `metadata/2026/`,
+`metadata/2025/`, `metadata/2024/` — each containing the complete CSV set for that season. The
+pipeline computes each season's calibration constants independently and blends them with the
+`seasonWeights` recency weights (newest-first; the newest gets the first weight, a gap year
+leaves its slot unused, seasons beyond the weight window are dropped). If no year subfolders
+exist, the flat `metadata/` is used as a single season exactly as before.
 
 ## What's shared vs. per-league
 

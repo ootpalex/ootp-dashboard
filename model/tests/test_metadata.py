@@ -25,6 +25,9 @@ from src.metadata import (
     _compute_rating_averages_hitting,
     _compute_rating_averages_pitching,
     _compute_woba_from_aggregates,
+    _blend_params,
+    _resolve_season_dirs,
+    has_metadata_inputs,
     compose_data_points,
     compute_fielding_constants,
     compute_hitting_constants,
@@ -739,6 +742,25 @@ def _copy_inputs(src_dir: Path, dst_dir: Path) -> None:
         shutil.copy2(csv_file, dst_dir / csv_file.name)
 
 
+def _make_season(parent: Path, year: str, *, truncate_hitting: bool = False) -> Path:
+    """Build a full year-subfolder season under *parent* from the fixture data.
+
+    When *truncate_hitting* is set, half the hitting_data rows are dropped so the
+    season's computed constants differ from an untruncated season — used to verify
+    the weighted blend actually weights distinct seasons.
+    """
+    season = parent / year
+    season.mkdir(parents=True, exist_ok=True)
+    _copy_inputs(DATA_DIR, season)
+    if truncate_hitting:
+        hd = season / "hitting_data.csv"
+        lines = hd.read_text().splitlines()
+        header, rows = lines[0], lines[1:]
+        keep = rows[: max(1, len(rows) // 2)]
+        hd.write_text("\n".join([header, *keep]) + "\n")
+    return season
+
+
 class TestCache:
     """Tests for the SHA-256 hash-based change detection cache."""
 
@@ -815,3 +837,119 @@ class TestCache:
         # Cache should be overwritten with correct version
         refreshed = json.loads(cache_path.read_text())
         assert refreshed["version"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Multi-season pooling (3-season weighted blend)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveSeasonDirs:
+    """Tests for year-subfolder discovery + recency weighting."""
+
+    def test_flat_fallback(self, tmp_path):
+        """No year subfolders → the dir itself, single season weight 1.0."""
+        _copy_inputs(DATA_DIR, tmp_path)
+        assert _resolve_season_dirs(tmp_path, [3, 2, 1]) == [(tmp_path, 1.0)]
+
+    def test_full_three_newest_first(self, tmp_path):
+        for y in ("2024", "2025", "2026"):
+            (tmp_path / y).mkdir()
+        seasons = _resolve_season_dirs(tmp_path, [3, 2, 1])
+        assert [(p.name, w) for p, w in seasons] == [
+            ("2026", 3.0), ("2025", 2.0), ("2024", 1.0)]
+
+    def test_gap_year_leaves_weight_unused(self, tmp_path):
+        # 2025 missing → 2024 is two years back (idx 2, weight 1); slot-2 unused.
+        for y in ("2024", "2026"):
+            (tmp_path / y).mkdir()
+        seasons = _resolve_season_dirs(tmp_path, [3, 2, 1])
+        assert [(p.name, w) for p, w in seasons] == [("2026", 3.0), ("2024", 1.0)]
+
+    def test_truncates_beyond_window(self, tmp_path):
+        for y in ("2023", "2024", "2025", "2026"):
+            (tmp_path / y).mkdir()
+        seasons = _resolve_season_dirs(tmp_path, [3, 2, 1])
+        assert [p.name for p, _ in seasons] == ["2026", "2025", "2024"]  # 2023 dropped
+
+    def test_single_year(self, tmp_path):
+        (tmp_path / "2026").mkdir()
+        assert [(p.name, w) for p, w in _resolve_season_dirs(tmp_path, [3, 2, 1])] == [
+            ("2026", 3.0)]
+
+    def test_non_digit_dirs_ignored(self, tmp_path):
+        _copy_inputs(DATA_DIR, tmp_path)
+        (tmp_path / "archive").mkdir()  # not a year → ignored, stays flat
+        assert _resolve_season_dirs(tmp_path, [3, 2, 1]) == [(tmp_path, 1.0)]
+
+
+class TestBlendParams:
+    """Tests for the generic weighted-average param blend."""
+
+    def test_weighted_mean(self):
+        a = HitterLeagueParams(lg_woba=0.300)
+        b = HitterLeagueParams(lg_woba=0.350)
+        blended = _blend_params([a, b], [3, 1])
+        assert blended.lg_woba == pytest.approx((3 * 0.300 + 1 * 0.350) / 4)
+
+    def test_single_item_is_identity(self):
+        a = HitterLeagueParams()
+        assert _blend_params([a], [5]) is a
+
+    def test_zero_total_weight_raises(self):
+        with pytest.raises(ValueError):
+            _blend_params([FieldingParams(), FieldingParams()], [0, 0])
+
+
+class TestHasMetadataInputs:
+    def test_flat(self, tmp_path):
+        _copy_inputs(DATA_DIR, tmp_path)
+        assert has_metadata_inputs(tmp_path)
+
+    def test_subfolders(self, tmp_path):
+        _make_season(tmp_path, "2026")
+        assert has_metadata_inputs(tmp_path)  # no loose CSVs, only 2026/
+
+    def test_empty_or_missing(self, tmp_path):
+        assert not has_metadata_inputs(tmp_path)
+        assert not has_metadata_inputs(tmp_path / "nope")
+
+
+class TestMultiSeasonGenerate:
+    """End-to-end: generate_data_points over year subfolders."""
+
+    def test_blends_distinct_seasons(self, tmp_path):
+        _make_season(tmp_path, "2026")
+        _make_season(tmp_path, "2025", truncate_hitting=True)
+        h26, _p26, f26 = generate_data_points(tmp_path / "2026", use_cache=False)
+        h25, _p25, f25 = generate_data_points(tmp_path / "2025", use_cache=False)
+        hb, _pb, fb = generate_data_points(
+            tmp_path, use_cache=False, season_weights=[3, 2, 1])
+        # 2026 → weight 3, 2025 → weight 2 (idx 1); normalized by 5.
+        assert hb.lg_woba == pytest.approx((3 * h26.lg_woba + 2 * h25.lg_woba) / 5)
+        assert fb.pos_ss == pytest.approx((3 * f26.pos_ss + 2 * f25.pos_ss) / 5)
+        # Sanity: the truncated season really is different.
+        assert h26.lg_woba != pytest.approx(h25.lg_woba)
+
+    def test_duplicate_seasons_equal_flat(self, tmp_path):
+        """Two identical seasons blend to the same result as one flat season."""
+        flat = tmp_path / "flat"
+        flat.mkdir()
+        _copy_inputs(DATA_DIR, flat)
+        multi = tmp_path / "multi"
+        _make_season(multi, "2026")
+        _make_season(multi, "2025")
+        h_flat, p_flat, f_flat = generate_data_points(flat, use_cache=False)
+        h_multi, p_multi, f_multi = generate_data_points(multi, use_cache=False)
+        assert dataclasses.asdict(h_multi) == pytest.approx(dataclasses.asdict(h_flat))
+        assert dataclasses.asdict(p_multi) == pytest.approx(dataclasses.asdict(p_flat))
+        assert dataclasses.asdict(f_multi) == pytest.approx(dataclasses.asdict(f_flat))
+
+    def test_cache_at_parent(self, tmp_path):
+        _make_season(tmp_path, "2026")
+        _make_season(tmp_path, "2025", truncate_hitting=True)
+        h1, _p1, f1 = generate_data_points(tmp_path, use_cache=True)
+        assert (tmp_path / _CACHE_FILENAME).exists()  # cache stored at the parent
+        h2, _p2, f2 = generate_data_points(tmp_path, use_cache=True)  # served from cache
+        assert dataclasses.asdict(h1) == dataclasses.asdict(h2)
+        assert dataclasses.asdict(f1) == dataclasses.asdict(f2)

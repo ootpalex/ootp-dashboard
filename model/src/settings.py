@@ -35,6 +35,8 @@ class PipelineSettings:
     scout_weight: float = 0.8
     osa_weight: float = 0.2
     statsplus_url: str = ""              # e.g. "https://atl-01.statsplus.net/ssb/"
+    # Recency weights (newest-first) for blending year-subfolder metadata seasons.
+    season_weights: list[float] = field(default_factory=lambda: [3.0, 2.0, 1.0])
 
 
 @dataclass
@@ -56,6 +58,8 @@ class LeagueConfig:
     osa_blend: bool = True
     scout_weight: float = 0.8
     osa_weight: float = 0.2
+    # Recency weights (newest-first) for blending year-subfolder metadata seasons.
+    season_weights: list[float] = field(default_factory=lambda: [3.0, 2.0, 1.0])
 
     def to_pipeline_settings(self) -> PipelineSettings:
         """Project to legacy PipelineSettings for code that still expects it."""
@@ -68,6 +72,7 @@ class LeagueConfig:
             scout_weight=self.scout_weight,
             osa_weight=self.osa_weight,
             statsplus_url=self.statsplus_url,
+            season_weights=list(self.season_weights),
         )
 
 
@@ -99,6 +104,7 @@ _CAMEL_TO_SNAKE = {
     "scoutWeight": "scout_weight",
     "osaWeight": "osa_weight",
     "statsplusUrl": "statsplus_url",
+    "seasonWeights": "season_weights",
 }
 
 
@@ -133,6 +139,7 @@ def save_settings(settings: PipelineSettings, input_hash: str, path: Path) -> No
         "scoutWeight": data["scout_weight"],
         "osaWeight": data["osa_weight"],
         "statsplusUrl": data["statsplus_url"],
+        "seasonWeights": data["season_weights"],
         "_inputHash": input_hash,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -303,6 +310,7 @@ _LEAGUE_CAMEL_TO_SNAKE = {
     "scoutWeight": "scout_weight",
     "osaWeight": "osa_weight",
     "statsplusUrl": "statsplus_url",
+    "seasonWeights": "season_weights",
 }
 
 
@@ -384,6 +392,7 @@ def save_league_config(config: LeagueConfig, root: Path | None = None) -> Path:
         "osaBlend": data["osa_blend"],
         "scoutWeight": data["scout_weight"],
         "osaWeight": data["osa_weight"],
+        "seasonWeights": data["season_weights"],
     }
     league_json = paths["league_json"]
     with league_json.open("w") as f:
@@ -456,6 +465,7 @@ def migrate_legacy_settings(
         osa_blend=saved.osa_blend,
         scout_weight=saved.scout_weight,
         osa_weight=saved.osa_weight,
+        season_weights=list(saved.season_weights),
     )
     save_league_config(config, root)
     return config

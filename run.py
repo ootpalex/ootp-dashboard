@@ -207,6 +207,7 @@ def first_time_setup(slug_default: str = "default") -> str:
             "osaBlend": True,
             "scoutWeight": scout_weight,
             "osaWeight": osa_weight,
+            "seasonWeights": [3, 2, 1],
         }
         (league_dir / "league.json").write_text(json.dumps(config, indent=2) + "\n")
 

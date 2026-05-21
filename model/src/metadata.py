@@ -23,6 +23,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -78,6 +79,7 @@ from src.relative_ratings import blend_relative_ratings
 __all__ = [
     "MetadataInputs",
     "load_metadata_inputs",
+    "has_metadata_inputs",
     "compute_hitting_constants",
     "compute_pitching_constants",
     "compute_fielding_constants",
@@ -267,14 +269,33 @@ def _compute_input_hash(directory: Path | str) -> str:
     return f"sha256:{h.hexdigest()}"
 
 
+def _compute_seasons_input_hash(season_dirs: Sequence[Path]) -> str:
+    """SHA-256 over the CSVs of every pooled season dir.
+
+    Each file is season-qualified by its parent directory name so two seasons
+    sharing the same filenames hash distinctly and the hash changes whenever any
+    pooled season's data changes.
+    """
+    h = hashlib.sha256()
+    for d in season_dirs:
+        d = Path(d)
+        for csv_path in sorted(d.glob("*.csv")):
+            h.update(f"{d.name}/{csv_path.name}".encode())
+            h.update(csv_path.read_bytes())
+    return f"sha256:{h.hexdigest()}"
+
+
 def _compute_config_hash(
     relative_blend: bool,
     osa_blend: bool,
     scout_weight: float,
     osa_weight: float,
+    season_weights: Sequence[float] | None = None,
 ) -> str:
     """Short hash of blending parameters for cache invalidation."""
-    cfg = f"rel={relative_blend},osa={osa_blend},sw={scout_weight:.6f},ow={osa_weight:.6f}"
+    sw = ",".join(f"{w:.6f}" for w in (season_weights or ()))
+    cfg = (f"rel={relative_blend},osa={osa_blend},"
+           f"sw={scout_weight:.6f},ow={osa_weight:.6f},seasons=[{sw}]")
     return hashlib.sha256(cfg.encode()).hexdigest()[:16]
 
 
@@ -324,6 +345,99 @@ def _save_cache(
 
 
 # ---------------------------------------------------------------------------
+# Multi-season pooling
+# ---------------------------------------------------------------------------
+
+# Recency weights applied newest-first when a metadata dir holds year subfolders.
+_DEFAULT_SEASON_WEIGHTS: tuple[float, ...] = (3.0, 2.0, 1.0)
+
+
+def has_metadata_inputs(directory: Path | str) -> bool:
+    """True if *directory* holds metadata CSVs directly or in year subfolders.
+
+    Used by the pipeline's detection gates so a metadata dir that only contains
+    year-named season subfolders (no loose CSVs) is still recognized as custom
+    metadata rather than treated as empty.
+    """
+    d = Path(directory)
+    if not d.is_dir():
+        return False
+    if any(d.glob("*.csv")):
+        return True
+    return any(
+        child.is_dir() and child.name.isdigit() and any(child.glob("*.csv"))
+        for child in d.iterdir()
+    )
+
+
+def _resolve_season_dirs(
+    directory: Path | str,
+    season_weights: Sequence[float],
+) -> list[tuple[Path, float]]:
+    """Resolve which season subfolders to pool, with their recency weights.
+
+    A "season" subfolder is a child directory whose name is all digits (a year).
+    Weights are assigned by *years-back* from the newest present season: the
+    newest gets ``season_weights[0]``, one year older ``season_weights[1]``, etc.
+    Seasons more than ``len(season_weights) - 1`` years older than the newest are
+    dropped, and a gap year simply leaves its weight slot unused (e.g. 2026 + 2024
+    with weights (3, 2, 1) → 2026=3, 2024=1).
+
+    When no year subfolders exist, the flat *directory* itself is returned as a
+    single season with weight 1.0 — identical to the legacy single-season
+    behavior. The list is ordered newest-first.
+    """
+    directory = Path(directory)
+    year_dirs: list[tuple[int, Path]] = []
+    if directory.is_dir():
+        for child in directory.iterdir():
+            if child.is_dir() and child.name.isdigit():
+                year_dirs.append((int(child.name), child))
+
+    if not year_dirs:
+        return [(directory, 1.0)]
+
+    newest = max(year for year, _ in year_dirs)
+    n = len(season_weights)
+    selected: list[tuple[int, Path, float]] = []
+    for year, path in year_dirs:
+        idx = newest - year
+        if 0 <= idx < n:
+            weight = float(season_weights[idx])
+            if weight > 0:
+                selected.append((year, path, weight))
+
+    if not selected:
+        # Degenerate config (e.g. empty/zero weights) — fall back to newest only.
+        newest_dir = next(p for y, p in year_dirs if y == newest)
+        return [(newest_dir, 1.0)]
+
+    selected.sort(key=lambda t: t[0], reverse=True)  # newest first
+    return [(path, weight) for _, path, weight in selected]
+
+
+def _blend_params(params_list: list, weights: Sequence[float]):
+    """Weighted-average every (float) field across same-typed param dataclasses.
+
+    Every field of HitterLeagueParams / PitcherLeagueParams / FieldingParams is a
+    plain float, so a field-wise weighted mean is well-defined. A single-element
+    list returns that element unchanged (exact identity — no float drift on the
+    single-season path).
+    """
+    if len(params_list) == 1:
+        return params_list[0]
+    total = float(sum(weights))
+    if total <= 0:
+        raise ValueError("season weights must sum to a positive value")
+    cls = type(params_list[0])
+    blended = {
+        f.name: sum(getattr(p, f.name) * w for p, w in zip(params_list, weights)) / total
+        for f in dataclasses.fields(cls)
+    }
+    return cls(**blended)
+
+
+# ---------------------------------------------------------------------------
 # Master function
 # ---------------------------------------------------------------------------
 
@@ -337,13 +451,17 @@ def generate_data_points(
     osa_blend: bool = False,
     scout_weight: float = 0.8,
     osa_weight: float = 0.2,
+    season_weights: Sequence[float] | None = None,
 ) -> tuple[HitterLeagueParams, PitcherLeagueParams, FieldingParams]:
     """Full pipeline: load inputs → compute all calibration constants.
 
     Parameters
     ----------
     directory : Path
-        Path to ``data/metadata/`` containing the metadata CSVs.
+        Path to ``data/metadata/`` containing the metadata CSVs. May instead
+        hold year-named subfolders (``2026/``, ``2025/`` …), in which case the
+        most recent seasons are computed independently and blended (see
+        ``season_weights``).
     use_cache : bool
         When True (default), check for a valid cache before computing and
         save results to cache after computing.
@@ -361,6 +479,10 @@ def generate_data_points(
         Weight applied to scout ratings when OSA blending (default 0.8).
     osa_weight : float
         Weight applied to OSA ratings when OSA blending (default 0.2).
+    season_weights : Sequence[float], optional
+        Recency weights for year-subfolder pooling, newest-first
+        (default ``(3, 2, 1)``). Ignored when ``directory`` holds the metadata
+        CSVs directly (single season).
 
     Returns
     -------
@@ -368,6 +490,8 @@ def generate_data_points(
         (HitterLeagueParams, PitcherLeagueParams, FieldingParams)
     """
     directory = Path(directory)
+    if season_weights is None:
+        season_weights = _DEFAULT_SEASON_WEIGHTS
     blend_kw: _BlendKwargs = {
         "relative_blend": relative_blend,
         "osa_blend": osa_blend,
@@ -375,19 +499,36 @@ def generate_data_points(
         "osa_weight": osa_weight,
     }
 
+    seasons = _resolve_season_dirs(directory, season_weights)
+    is_flat = len(seasons) == 1 and seasons[0][0] == directory
+
     if use_cache:
-        input_hash = _compute_input_hash(directory)
-        config_hash = _compute_config_hash(**blend_kw)
+        input_hash = (
+            _compute_input_hash(directory) if is_flat
+            else _compute_seasons_input_hash([d for d, _ in seasons])
+        )
+        config_hash = _compute_config_hash(**blend_kw, season_weights=season_weights)
         if not force_recompute:
             cached = _load_cache(directory, input_hash, config_hash)
             if cached is not None:
                 return cached
 
-    inputs = load_metadata_inputs(directory, **blend_kw)
+    if not is_flat:
+        years = ", ".join(d.name for d, _ in seasons)
+        wts = ", ".join(f"{w:g}" for _, w in seasons)
+        print(f"Pooling {len(seasons)} metadata seasons [{years}] weighted [{wts}]")
 
-    hitting = compute_hitting_constants(inputs)
-    pitching = compute_pitching_constants(inputs)
-    fielding = compute_fielding_constants(inputs)
+    hit_list, pit_list, fld_list, weights = [], [], [], []
+    for season_dir, weight in seasons:
+        inputs = load_metadata_inputs(season_dir, **blend_kw)
+        hit_list.append(compute_hitting_constants(inputs))
+        pit_list.append(compute_pitching_constants(inputs))
+        fld_list.append(compute_fielding_constants(inputs))
+        weights.append(weight)
+
+    hitting = _blend_params(hit_list, weights)
+    pitching = _blend_params(pit_list, weights)
+    fielding = _blend_params(fld_list, weights)
 
     if use_cache:
         _save_cache(directory, input_hash, config_hash, hitting, pitching, fielding)
