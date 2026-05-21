@@ -3,7 +3,7 @@ import { S } from "../theme.js";
 import { posColor, proneColor, warStyle, devPctColor, zToColor } from "../theme.js";
 import { fmt, fmtAge, num, isTrueFA, rankSuffix, searchFilter, paginateRows } from "../utils/helpers.js";
 import { getMaxWar, getMaxWarP, genericSort, pickPitcherRole, pickFielderPos, passesPositionFilter, INF_POSITIONS, OF_POSITIONS } from "../utils/accessors.js";
-import { ALL_DISPLAY_POS, POT_DISPLAY_POS, PER_PAGE } from "../utils/constants.js";
+import { POT_DISPLAY_POS, PER_PAGE } from "../utils/constants.js";
 import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 
@@ -17,7 +17,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
   const [gapOnly, setGapOnly] = useState(false);
   const [sort, setSort] = useState({ col: "_fv", dir: "desc" });
   const [page, setPage] = useState(0);
-  const [strengthMode, setStrengthMode] = useState("current");
+  const [strengthMode, setStrengthMode] = useState("now");
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
   const [proyMin, setProyMin] = useState("");
@@ -28,11 +28,10 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
   const totalTeams = data.teams.length;
 
   const sortedNeeds = useMemo(() => {
-    const positions = strengthMode === "potential" ? POT_DISPLAY_POS : ALL_DISPLAY_POS;
-    return positions
+    return POT_DISPLAY_POS
       .map((pos) => ({ pos, z: teamZ[pos] ?? 0, rank: teamRanks[pos] }))
       .sort((a, b) => a.z - b.z);
-  }, [teamZ, teamRanks, strengthMode]);
+  }, [teamZ, teamRanks]);
 
   const weakPositions = useMemo(() => new Set(sortedNeeds.filter((n) => n.z < 0).map((n) => n.pos)), [sortedNeeds]);
 
@@ -134,7 +133,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Section title="Team Positional Needs" actions={
         <div style={{ display: "flex", gap: 8 }}>
-          {["current", "potential"].map((m) => <PillBtn key={m} active={strengthMode === m} onClick={() => setStrengthMode(m)}>{m === "current" ? "Current" : "Potential"}</PillBtn>)}
+          {["now", "farm"].map((m) => <PillBtn key={m} active={strengthMode === m} onClick={() => setStrengthMode(m)}>{m === "now" ? "Now (MLB)" : "Farm"}</PillBtn>)}
         </div>
       }>
         {needsCards}
@@ -197,7 +196,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
                     <td style={{ ...S.td, ...warStyle(p._fv) }}>{fmt(p._fv)}</td>
                     <td style={{ ...S.td, ...warStyle(p._war) }}>{fmt(p._war)}</td>
                     <td style={{ ...S.td, ...(p._matured ? { color: "#475569" } : warStyle(p._warP)) }}>{p._matured ? "—" : fmt(p._warP)}</td>
-                    <td style={{ ...S.td, color: !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: !p._ageMatured && p._devPct != null ? 600 : 400 }}>{!p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}</td>
+                    <td style={{ ...S.td, color: !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: !p._ageMatured && p._devPct != null ? 600 : 400 }}>{!p._ageMatured && p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—"}</td>
                     <td style={{ ...S.td, color: "#94a3b8" }}>{(p.meta?.proy ?? p.PROY) || "—"}</td>
                     <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
                     <td style={{ ...S.td, color: "#94a3b8" }}>{p._price != null ? "$" + p._price.toLocaleString() : "—"}</td>

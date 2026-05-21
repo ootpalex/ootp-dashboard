@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { S, FV_TIER_COLORS } from "../theme.js";
 import { posColor, levelColor, warStyle, devPctColor, scoutingRatingColor } from "../theme.js";
-import { fmt, fmtAge, num, paginateRows, searchFilter, orgLabel } from "../utils/helpers.js";
+import { fmt, fmtAge, num, paginateRows, searchFilter, orgLabel, rankSuffix } from "../utils/helpers.js";
 import { genericSort, getMaxWar, getSpWar, getRpWar, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
 import { FV_TIERS, PER_PAGE, PROSPECT_SUB_TABS } from "../utils/constants.js";
 import { loadProspectSettings, saveProspectSettings } from "../utils/settings.js";
@@ -353,7 +353,7 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                         onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
                     <td style={S.td}>{fmtAge(p._age)}</td>
                     <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>
-                      {p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}
+                      {p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—"}
                     </td>
                     <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
                     <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>

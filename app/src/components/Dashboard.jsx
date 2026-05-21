@@ -105,7 +105,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
     // every user edit to be reverted to dashMeta.gameDate on the next render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashMeta?.gameDate]);
-  const [strengthMode, setStrengthMode] = useState("current");
+  const [strengthMode, setStrengthMode] = useState("now");
   const [curveSettings, setCurveSettings] = useState(() => {
     // Bumped on each defaults change so prior auto-saved blobs reset cleanly.
     // v21 — three-input simplification with power-law creditAge.
@@ -218,7 +218,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
     };
   }, [datedData, curveSettings, dashMeta]);
 
-  const strength = useMemo(() => calcPositionalStrength(enrichedData.hitters, enrichedData.pitchers, enrichedData.teams), [enrichedData]);
+  const strength = useMemo(() => calcPositionalStrength(enrichedData.hitters, enrichedData.pitchers, enrichedData.teams, curveSettings), [enrichedData, curveSettings]);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "linear-gradient(145deg, #0c1222 0%, #0f172a 50%, #0c1222 100%)", fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace", color: "#cbd5e1" }}>
@@ -288,7 +288,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
       {/* Main Content */}
       <div style={{ flex: 1, padding: 24, maxWidth: 1400, overflowX: "hidden" }}>
         <Suspense fallback={PAGE_FALLBACK}>
-          {activePage === "org" && myTeam && <OrgView data={enrichedData} team={myTeam} strength={strength} strengthMode={strengthMode} setStrengthMode={setStrengthMode} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
+          {activePage === "org" && myTeam && <OrgView data={enrichedData} team={myTeam} strength={strength} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "players" && <PlayersView data={enrichedData} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "fa" && myTeam && <FreeAgentFinder data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "draft" && myTeam && <DraftBoard data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onUpdateLeagueSettings={handleUpdateLeagueSettings} onSelectPlayer={setSelectedPlayer} />}

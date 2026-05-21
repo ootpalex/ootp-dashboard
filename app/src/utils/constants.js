@@ -27,6 +27,46 @@ export const DEPTH_N = { C: 4, "1B": 3, "2B": 3, "3B": 3, SS: 3, LF: 3, CF: 3, R
 export const DEPTH_N_POT = { C: 4, "1B": 3, "2B": 3, "3B": 3, SS: 3, LF: 3, CF: 3, RF: 3, SP: 10, RP: 8 };
 export const ACTIVE_ROSTER_DEPTH = { C: 1, "1B": 1, "2B": 1, "3B": 1, SS: 1, LF: 1, CF: 1, RF: 1, DH: 1, SP: 5, RP: 8 };
 
+// Positional-strength slot weights = empirical share of a position's playing time
+// taken by the 1st/2nd/3rd... player on the depth chart. The strength engine
+// (utils/strength.js) weights each depth slot's WAR by these so a starter
+// dominates, depth contributes with diminishing weight, and deep scrubs ~vanish.
+//
+// DATA-DERIVED (not hand-picked): mean defensive-innings ("IP Clean") share by
+// depth rank, pooled across unique team-seasons in leagues/*/metadata/ (BLM +
+// default, n≈58; the four identical BLM-* exports deduped, ORG="-" excluded).
+// The MEAN is intentional — the share distribution is left-skewed (healthy
+// starter ~0.74-0.82 median, but a ~30% injury/platoon tail pulls the mean to
+// ~0.67-0.74), so it's already moderately conservative / depth-favoring.
+// SP comes out flat-across-the-rotation + steep depth tail; RP a gentle decay.
+// Recompute as more leagues arrive: `python model/tools/compute_slot_shares.py`.
+// Keys are lowercase to match the nested-JSON position accessors.
+export const SLOT_SHARES = {
+  hit: {
+    c:    [0.674, 0.283, 0.038, 0.005],
+    "1b": [0.698, 0.189, 0.066, 0.029, 0.012],
+    "2b": [0.680, 0.208, 0.070, 0.028, 0.010],
+    "3b": [0.686, 0.224, 0.063, 0.018, 0.006],
+    ss:   [0.738, 0.169, 0.063, 0.019, 0.007],
+    lf:   [0.664, 0.204, 0.077, 0.031, 0.014],
+    cf:   [0.697, 0.206, 0.064, 0.024, 0.006],
+    rf:   [0.705, 0.185, 0.071, 0.023, 0.009],
+  },
+  sp: [0.244, 0.229, 0.195, 0.163, 0.103, 0.036, 0.016, 0.008],
+  rp: [0.224, 0.172, 0.149, 0.121, 0.096, 0.079, 0.054],
+};
+
+// Aging-core / future-need detection (utils/decline.js + utils/strength.js).
+// FV alone can't flag an aging core — it never declines a 27+ player. So the
+// strength engine separately projects each NOW contributor forward `horizon`
+// years along a standard decline curve; a position that is league-average-or
+// -better today but loses >= futureNeedDropFrac of its value over the horizon
+// is flagged as an aging core (a future need despite looking fine now).
+export const AGING = {
+  horizon: 3,
+  futureNeedDropFrac: 0.15,
+};
+
 export const LEVELS_ORDER = { "MLB": 0, "AAA": 1, "AA": 2, "A+": 3, "A": 4, "R": 5, "INT": 6, "-": 7 };
 export const LEVEL_FILTERS = ["ALL", "MLB", "AAA", "AA", "A+", "A", "R", "INT"];
 export const PER_PAGE = 50;
@@ -87,15 +127,14 @@ export const CAP_GROUP_DISPLAY_ORDER = ["C", "CF", "MI", "3B", "COF", "1B", "SP"
 // Smart-rank tuning. All values are WAR-unit deltas — see applySmartRank.
 // Defaults are first-pass estimates; expect to retune after a real draft.
 export const SMART_RANK_TUNING = {
-  // Org Positional Need — bonus = scale × maxNeed (where maxNeed comes from
-  // calcOrgNeed: 0.3 at z=0, 0.6 at z=-1, 0.9 at z=-2).
-  // Phase-2 calibration (2026-05-19): 0.20 after z-score distribution
-  // analysis across 5 leagues × 148 team-positions (n=1480). Distribution is
-  // ~N(0,1); only ~12% of team-positions are at z<-1 ("notably weak"). 0.20
-  // keeps the bonus below intangibles at every matched rarity, satisfying
-  // the design intent of "weakest of the smart-rank adjustments." z=-1
-  // weak position gives +0.12 WAR (~11 spots in R5-7); z=-2 gives +0.18 WAR.
-  ORG_NEED_BONUS_SCALE: 0.20,
+  // Org Positional Need — bonus = scale × maxNeed. As of the 2026-05-19
+  // strength rebuild, calcOrgNeed returns need = max(0, -z): 0 at/above league
+  // average (no more phantom bonus for average positions), 1.0 at z=-1, 2.0 at
+  // z=-2, off the "now" (MLB-squad) z-scores by default. Scale 0.12 preserves the
+  // prior "z=-1 weak position ≈ +0.12 WAR" magnitude (keeping org-need the
+  // weakest smart-rank adjustment); z=-2 now gives +0.24 (the old +1-offset
+  // formula artificially compressed the deep-weakness tail).
+  ORG_NEED_BONUS_SCALE: 0.12,
 
   // Position Caps — additive penalty driven by the player's best landing spot
   // (min fill across their eligible cap groups). Gentle slope between START
@@ -136,13 +175,18 @@ export const SMART_RANK_TUNING = {
   SIG_BASE_WAR: 4.0,
   SIG_MAX_WAR: 3.0,
   SIG_IMPOSSIBLE_WAR: 3.0,
+  // Impossible players have no parseable demand (OOTP emits "Impossible", the
+  // pipeline stores demSort as NaN). For budget tracking we estimate their
+  // signing cost above the realistic pool max — the user notes it typically
+  // takes north of $15M and can exceed $20M to sign one.
+  SIG_IMPOSSIBLE_DEMAND: 20_000_000,
   SIG_DEMAND_FRACTION: {
     "Very Easy":      0.85,
     "Easy":           0.90,
     "Normal":         0.93,
     "Hard":           0.97,
     "Extremely Hard": 1.00,
-    // "Impossible" handled separately via SIG_IMPOSSIBLE_WAR
+    // "Impossible" handled separately via SIG_IMPOSSIBLE_WAR / SIG_IMPOSSIBLE_DEMAND
   },
 
   // Injury Proneness — direct WAR delta per OOTP prone string. Negative = bonus.

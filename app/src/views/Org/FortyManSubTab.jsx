@@ -6,7 +6,7 @@ import { ALL_DISPLAY_POS, DEF_SPECTRUM, ACTIVE_ROSTER_DEPTH } from "../../utils/
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
 import { Section, TwoWayBadge } from "../../components/shared.jsx";
 
-export default function FortyManSubTab({ data, team, strength, strengthMode, onSelectPlayer }) {
+export default function FortyManSubTab({ data, team, strength, onSelectPlayer }) {
   const allTeamHitters = useMemo(() => data.hitters.filter((h) => (h.meta?.org ?? h.ORG) === team), [data.hitters, team]);
   const allTeamPitchers = useMemo(() => data.pitchers.filter((p) => (p.meta?.org ?? p.ORG) === team), [data.pitchers, team]);
   const fortyManHitters = useMemo(() => allTeamHitters.filter((h) => (h.meta?.on40 ?? (h.ON40 === "Yes"))), [allTeamHitters]);
@@ -98,8 +98,8 @@ export default function FortyManSubTab({ data, team, strength, strengthMode, onS
     return { chart, starterUids };
   }, [mlbHitters, mlbPitchers, fortyManHitters, fortyManPitchers]);
 
-  const teamZ = strength.zScores[strengthMode]?.[team] || {};
-  const teamRanks = strength.ranks[strengthMode]?.[team] || {};
+  const teamZ = strength.zScores.now?.[team] || {};
+  const teamRanks = strength.ranks.now?.[team] || {};
   const totalTeams = data.teams.length;
 
   return (
@@ -115,12 +115,14 @@ export default function FortyManSubTab({ data, team, strength, strengthMode, onS
               <div key={pos} style={{ background: "rgba(15,23,42,0.4)", border: "1px solid #1e293b", borderRadius: 8, overflow: "hidden" }}>
                 <div style={{ background: colors.bg, borderBottom: `1px solid ${colors.border}`, padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 14, fontWeight: 800, color: posColor(pos) }}>{pos}</span>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: colors.value }}>
-                      {rankSuffix(rank)}<span style={{ color: "#475569", fontWeight: 400 }}>/{totalTeams}</span>
+                  {z != null && (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: colors.value }}>
+                        {rankSuffix(rank)}<span style={{ color: "#475569", fontWeight: 400 }}>/{totalTeams}</span>
+                      </div>
+                      <div style={{ fontSize: 9, color: colors.label }}>z: {fmt(z, 2)}</div>
                     </div>
-                    <div style={{ fontSize: 9, color: colors.label }}>z: {fmt(z, 2)}</div>
-                  </div>
+                  )}
                 </div>
                 <div style={{ padding: "4px 0" }}>
                   {players.length === 0 && (

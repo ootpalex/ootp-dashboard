@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { S } from "../theme.js";
 import { posColor, levelColor, proneColor, warStyle, devPctColor, gradeStyle } from "../theme.js";
-import { fmt, fmtAge, num, isTrueFA, parseCSVBoolean, searchFilter, paginateRows } from "../utils/helpers.js";
+import { fmt, fmtAge, num, isTrueFA, parseCSVBoolean, searchFilter, paginateRows, rankSuffix } from "../utils/helpers.js";
 import { resolveKey, genericSort, getMaxWar, getMaxWarP, pickFielderPos, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
 import { PER_PAGE_LARGE, PLAYERS_HIT_COLS, PLAYERS_PIT_COLS, PLAYERS_MIXED_COLS } from "../utils/constants.js";
 import { SortHeader, PositionFilter, LevelFilter, MultiSelectDropdown, TwoWayBadge, Pagination } from "./shared.jsx";
@@ -152,7 +152,7 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
               }
               if (key === "Name") { style.fontWeight = 600; style.color = "#e2e8f0"; style.minWidth = 170; style.cursor = "pointer"; return <td key={key} style={style} onClick={() => onSelectPlayer?.(r)}>{val}<TwoWayBadge player={r} /></td>; }
               else if (key === "_fv") { const fvVal = fvForRow(r); Object.assign(style, warStyle(fvVal)); val = fmt(fvVal); }
-              else if (key === "_devPct") { const m = r._ageMatured; style.color = !m && r._devPct != null ? devPctColor(r._devPct) : "#475569"; style.fontWeight = !m && r._devPct != null ? 600 : 400; val = !m && r._devPct != null ? Math.round(r._devPct * 100) + "th" : "—"; }
+              else if (key === "_devPct") { const m = r._ageMatured; style.color = !m && r._devPct != null ? devPctColor(r._devPct) : "#475569"; style.fontWeight = !m && r._devPct != null ? 600 : 400; val = !m && r._devPct != null ? rankSuffix(Math.round(r._devPct * 100)) : "—"; }
               else if (key === "MAX WAR P" || key === "WARP" || key === "WARP RP") { if (r._matured) { val = "—"; style.color = "#475569"; } else { const n = num(val); Object.assign(style, warStyle(n)); val = fmt(n); } }
               else if (key === "_age") { val = fmtAge(val); style.color = "#94a3b8"; }
               else if (key === "_bestPos") { style.color = posColor((val || "").replace("*", "")); val = val || "—"; }

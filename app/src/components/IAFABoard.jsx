@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { S } from "../theme.js";
 import { posColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle } from "../theme.js";
-import { fmt, fmtAge, num, paginateRows } from "../utils/helpers.js";
+import { fmt, fmtAge, num, paginateRows, rankSuffix } from "../utils/helpers.js";
 import { PER_PAGE } from "../utils/constants.js";
 import { calcOrgNeed } from "../utils/strength.js";
 import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
@@ -131,7 +131,7 @@ export default function IAFABoard({ data, myTeam, strength, curveSettings, leagu
                   <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 140, cursor: "pointer" }}
                       onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
                   <td style={S.td}>{fmtAge(p._age)}</td>
-                  <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>{p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}</td>
+                  <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>{p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—"}</td>
                   <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
                   <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
                   {anyToggle && <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}

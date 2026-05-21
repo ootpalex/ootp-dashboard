@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { S } from "../theme.js";
 import { posColor, levelColor, proneColor, warStyle, devPctColor, zToColor } from "../theme.js";
 import { fmt, fmtAge, toRosterRow, sortRosterRows, rankSuffix, paginateRows } from "../utils/helpers.js";
-import { ALL_DISPLAY_POS, POT_DISPLAY_POS, PER_PAGE } from "../utils/constants.js";
+import { POT_DISPLAY_POS, PER_PAGE } from "../utils/constants.js";
 import { passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
 import { calcOrgNeed } from "../utils/strength.js";
 import { Section, SortHeader, PillBtn, PositionFilter, LevelFilter, TwoWayBadge, Pagination } from "./shared.jsx";
@@ -15,7 +15,7 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
   const [page, setPage] = useState(0);
 
   const mode = strengthMode;
-  const orgNeed = useMemo(() => calcOrgNeed(myTeam, strength), [myTeam, strength]);
+  const orgNeed = useMemo(() => calcOrgNeed(myTeam, strength, mode), [myTeam, strength, mode]);
   const totalTeams = data.teams.length;
 
   const scoutZ = strength.zScores[mode]?.[scoutTeam] || {};
@@ -26,7 +26,7 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
   const myRanks = strength.ranks[mode]?.[myTeam] || {};
   const myScores = strength.teamScores[myTeam]?.[mode] || {};
 
-  const positions = mode === "potential" ? POT_DISPLAY_POS : ALL_DISPLAY_POS;
+  const positions = POT_DISPLAY_POS;
 
   const tradeOpportunities = useMemo(() =>
     positions.filter((pos) => {
@@ -93,7 +93,7 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Section title="Scout Team" actions={
         <div style={{ display: "flex", gap: 8 }}>
-          {["current", "potential"].map((m) => <PillBtn key={m} active={mode === m} onClick={() => setStrengthMode(m)}>{m === "current" ? "Current" : "Potential"}</PillBtn>)}
+          {["now", "farm"].map((m) => <PillBtn key={m} active={mode === m} onClick={() => setStrengthMode(m)}>{m === "now" ? "Now (MLB)" : "Farm"}</PillBtn>)}
         </div>
       }>
         <select value={scoutTeam} onChange={(e) => { setScoutTeam(e.target.value); setPage(0); }} style={{ ...S.filterSelect, fontSize: 14, padding: "8px 12px" }}>
@@ -180,7 +180,7 @@ export default function ScoutView({ data, myTeam, strength, strengthMode, setStr
                   <td style={{ ...S.td, ...warStyle(p.fv) }}>{fmt(p.fv)}</td>
                   <td style={{ ...S.td, ...warStyle(p.war) }}>{fmt(p.war)}</td>
                   <td style={{ ...S.td, ...(p.matured ? { color: "#475569" } : warStyle(p.warP)) }}>{p.matured ? "—" : fmt(p.warP)}</td>
-                  <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? Math.round(p.devPct * 100) + "th" : "—"}</td>
+                  <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? rankSuffix(Math.round(p.devPct * 100)) : "—"}</td>
                   <td style={{ ...S.td, color: proneColor(p.prone) }}>{p.prone || "—"}</td>
                   <td style={{ ...S.td, ...warStyle(p.fit), fontWeight: p.fit != null ? 700 : 400 }}>{p.fit != null ? fmt(p.fit) : ""}</td>
                   <td style={{ ...S.td, color: "#94a3b8" }}>{p.price != null ? "$" + p.price.toLocaleString() : "—"}</td>

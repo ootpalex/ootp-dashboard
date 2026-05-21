@@ -3,7 +3,7 @@ import { S } from "../theme.js";
 import { posColor, levelColor, proneColor, warStyle, intangibleColor, devPctColor, zToColor } from "../theme.js";
 import { fmt, fmtAge, num, parseCSVBoolean, paginateRows, toRosterRow, sortRosterRows, rankSuffix } from "../utils/helpers.js";
 import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, isEligible, resolveKey, genericSort } from "../utils/accessors.js";
-import { ALL_DISPLAY_POS, HITTER_POS, PER_PAGE } from "../utils/constants.js";
+import { ALL_DISPLAY_POS, POT_DISPLAY_POS, HITTER_POS, PER_PAGE } from "../utils/constants.js";
 import { calcOrgNeed } from "../utils/strength.js";
 import { isMatured } from "../utils/dataProcessing.js";
 import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
@@ -27,12 +27,12 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
   const [page, setPage] = useState(0);
 
   const orgNeed = useMemo(() => myTeam ? calcOrgNeed(myTeam, strength) : null, [myTeam, strength]);
-  const teamZ = strength.zScores["current"]?.[myTeam] || {};
-  const teamRanks = strength.ranks["current"]?.[myTeam] || {};
+  const teamZ = strength.zScores["farm"]?.[myTeam] || {};
+  const teamRanks = strength.ranks["farm"]?.[myTeam] || {};
 
   // Positions sorted weakest to strongest
   const sortedNeeds = useMemo(() => {
-    return ALL_DISPLAY_POS
+    return POT_DISPLAY_POS
       .map((pos) => ({ pos, z: teamZ[pos] ?? 0, rank: teamRanks[pos] }))
       .sort((a, b) => a.z - b.z);
   }, [teamZ, teamRanks]);
@@ -125,7 +125,7 @@ function Rule5Board({ data, myTeam, strength, curveSettings, onSelectPlayer }) {
                   <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
                       onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
                   <td style={S.td}>{fmtAge(p._age)}</td>
-                  <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>{p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—"}</td>
+                  <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>{p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—"}</td>
                   <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
                   <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
                   <td style={{ ...S.td, color: "#cbd5e1", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.meta?.org ?? p.ORG}</td>
@@ -430,7 +430,7 @@ function ProtectionPlanner({ data, myTeam, strength, curveSettings, onSelectPlay
                     <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
                         onClick={() => onSelectPlayer?.(p._original || p)}>{p.name}<TwoWayBadge player={p} /></td>
                     <td style={S.td}>{fmtAge(p.age)}</td>
-                    <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? Math.round(p.devPct * 100) + "th" : "—"}</td>
+                    <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? rankSuffix(Math.round(p.devPct * 100)) : "—"}</td>
                     <td style={{ ...S.td, color: posColor(p.pos) }}>{p.pos}</td>
                     <td style={{ ...S.td, color: posColor((p.bestPos || "").replace("*", "")) }}>{p.bestPos || "—"}</td>
                     <td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>

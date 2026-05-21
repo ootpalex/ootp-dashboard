@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 import { S } from "../theme.js";
 import { posColor, levelColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle } from "../theme.js";
-import { fmt, fmtAge, fmtMLD, num, orgLabel } from "../utils/helpers.js";
+import { fmt, fmtAge, fmtMLD, num, orgLabel, rankSuffix } from "../utils/helpers.js";
 import { resolveKey, getMaxWarP, getSpWarP, getRpWarP, getRunsP, isEligible } from "../utils/accessors.js";
 import { HITTER_POS } from "../utils/constants.js";
 import { Section, PillBtn, TwoWayBadge } from "./shared.jsx";
@@ -47,7 +47,7 @@ export default function PlayerCompareView({ data, curveSettings }) {
       { key: "_fv", label: "Future Value", numeric: true, war: true, fmt: (p) => fmt(p._fv) },
       { key: "Max WAR wtd", label: "WAR", numeric: true, war: true },
       { key: "MAX WAR P", label: "WAR Potential", numeric: true, war: true, fmt: (p) => p._matured ? "—" : fmt(getMaxWarP(p)), color: (p) => p._matured ? "#475569" : undefined },
-      { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
+      { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
     ]},
     { group: "Value (Pitchers)", appliesTo: "pitcher", stats: [
       { key: "_fv", label: "Future Value", numeric: true, war: true, fmt: (p) => fmt(p._fv) },
@@ -55,7 +55,7 @@ export default function PlayerCompareView({ data, curveSettings }) {
       { key: "WAR wtd RP", label: "RP WAR", numeric: true, war: true },
       { key: "WARP", label: "SP Potential", numeric: true, war: true, fmt: (p) => (!p.starter && !p.starterP) || p._matured ? "—" : fmt(getSpWarP(p)), color: (p) => (!p.starter && !p.starterP) || p._matured ? "#475569" : undefined },
       { key: "WARP RP", label: "RP Potential", numeric: true, war: true, fmt: (p) => p._matured ? "—" : fmt(getRpWarP(p)), color: (p) => p._matured ? "#475569" : undefined },
-      { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? Math.round(p._devPct * 100) + "th" : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
+      { key: "_devPct", label: "Dev%", fmt: (p) => !p._ageMatured && p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—", color: (p) => !p._ageMatured && p._devPct != null ? devPctColor(p._devPct) : "#475569" },
       { key: "STM", label: "Stamina", numeric: true },
       { key: "VELO", label: "Velocity", numeric: true },
     ]},

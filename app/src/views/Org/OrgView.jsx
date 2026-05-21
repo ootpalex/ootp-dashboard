@@ -7,7 +7,7 @@ import FortyManSubTab from "./FortyManSubTab.jsx";
 import OptimizedLineupSubTab from "./OptimizedLineupSubTab.jsx";
 import R5EligibleSubTab from "./R5EligibleSubTab.jsx";
 
-export default function OrgView({ data, team, strength, strengthMode, setStrengthMode, curveSettings, onSelectPlayer }) {
+export default function OrgView({ data, team, strength, curveSettings, onSelectPlayer }) {
   const [orgSubTab, setOrgSubTab] = useState("overview");
 
   const teamHitters = useMemo(() => data.hitters.filter((h) => (h.meta?.org ?? h.ORG) === team), [data.hitters, team]);
@@ -40,12 +40,12 @@ export default function OrgView({ data, team, strength, strengthMode, setStrengt
         <OverviewSubTab
           data={data} team={team}
           teamHitters={teamHitters} teamPitchers={teamPitchers}
-          strength={strength} strengthMode={strengthMode} setStrengthMode={setStrengthMode}
+          strength={strength}
           onSelectPlayer={onSelectPlayer}
         />
       )}
       {orgSubTab === "active" && <ActiveRosterSubTab data={data} team={team} onSelectPlayer={onSelectPlayer} />}
-      {orgSubTab === "fortyman" && <FortyManSubTab data={data} team={team} strength={strength} strengthMode={strengthMode} onSelectPlayer={onSelectPlayer} />}
+      {orgSubTab === "fortyman" && <FortyManSubTab data={data} team={team} strength={strength} onSelectPlayer={onSelectPlayer} />}
       {orgSubTab === "lineup" && <OptimizedLineupSubTab data={data} team={team} onSelectPlayer={onSelectPlayer} />}
       {orgSubTab === "r5" && <R5EligibleSubTab teamHitters={teamHitters} teamPitchers={teamPitchers} onSelectPlayer={onSelectPlayer} />}
     </div>

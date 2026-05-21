@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { S, posColor, levelColor, proneColor, warStyle, devPctColor } from "../../theme.js";
-import { fmt, fmtAge, parseCSVBoolean, toRosterRow, sortRosterRows } from "../../utils/helpers.js";
+import { fmt, fmtAge, parseCSVBoolean, toRosterRow, sortRosterRows, rankSuffix } from "../../utils/helpers.js";
 import { Section, SortHeader, TwoWayBadge } from "../../components/shared.jsx";
 
 export default function R5EligibleSubTab({ teamHitters, teamPitchers, onSelectPlayer }) {
@@ -30,7 +30,7 @@ export default function R5EligibleSubTab({ teamHitters, teamPitchers, onSelectPl
             <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 180, cursor: "pointer" }}
                 onClick={() => onSelectPlayer?.(p._original || p)}>{p.name}<TwoWayBadge player={p} /></td>
             <td style={S.td}>{fmtAge(p.age)}</td>
-            <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? Math.round(p.devPct * 100) + "th" : "—"}</td>
+            <td style={{ ...S.td, color: !p.matured && p.devPct != null ? devPctColor(p.devPct) : "#475569", fontWeight: !p.matured && p.devPct != null ? 600 : 400 }}>{!p.matured && p.devPct != null ? rankSuffix(Math.round(p.devPct * 100)) : "—"}</td>
             <td style={{ ...S.td, color: posColor(p.pos) }}>{p.pos}</td>
             <td style={{ ...S.td, color: posColor((p.bestPos || "").replace("*", "")) }}>{p.bestPos || "—"}</td>
             <td style={{ ...S.td, color: levelColor(p.level) }}>{p.level}</td>
