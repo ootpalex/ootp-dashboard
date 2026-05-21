@@ -202,30 +202,44 @@ function computeCapPenalty(player, capStatus) {
   return Math.max(0, Math.min(CAP_MAX_WAR, penalty));
 }
 
-// Signability penalty — discount the player's listed demand by their Sign
-// category (Easy signs settle for less; Extremely Hard need full demand),
-// then apply the share-of-remaining-budget formula. 'Impossible' bypasses
+// Expected signing cost for a player — the OOTP-stated demand discounted by
+// their Sign category. Easy signs settle for less than the listed amount;
+// Extremely Hard need the full demand. 'Impossible' players have no parseable
+// demand (pipeline stores NaN) and realistically cost more than the pool max,
+// so they're estimated at SIG_IMPOSSIBLE_DEMAND. Returns 0 when no demand is
+// known. Used by both the smart-rank signability penalty and the Draft Board
+// budget tracker so the two always agree.
+export function effectiveDemand(player) {
+  const sign = player.meta?.sign ?? player.Sign ?? null;
+  const { SIG_DEMAND_FRACTION, SIG_IMPOSSIBLE_DEMAND } = SMART_RANK_TUNING;
+  if (sign === "Impossible") return SIG_IMPOSSIBLE_DEMAND ?? 0;
+  const demand = Number(player._demSort ?? player.meta?.demSort ?? 0);
+  if (!(demand > 0)) return 0;
+  // No discount when Sign is missing/unknown (legacy dashboards) — assume the
+  // listed demand is the cost rather than inventing a discount.
+  const fraction = (SIG_DEMAND_FRACTION && sign != null && SIG_DEMAND_FRACTION[sign] != null)
+    ? SIG_DEMAND_FRACTION[sign] : 1.0;
+  return demand * fraction;
+}
+
+// Signability penalty — apply the share-of-remaining-budget formula to the
+// player's effective (signability-discounted) demand. 'Impossible' bypasses
 // the dollar math entirely and returns a fixed SIG_IMPOSSIBLE_WAR penalty
 // (these players will not sign within any realistic budget). Active only
 // when demandsOn && budget > 0.
 function computeSignabilityPenalty(player, ctx) {
   if (!ctx || !ctx.demandsOn || !(ctx.budget > 0)) return 0;
   const sign = player.meta?.sign ?? player.Sign ?? null;
-  const { SIG_THRESHOLD, SIG_BASE_WAR, SIG_MAX_WAR, SIG_IMPOSSIBLE_WAR, SIG_DEMAND_FRACTION } = SMART_RANK_TUNING;
+  const { SIG_THRESHOLD, SIG_BASE_WAR, SIG_MAX_WAR, SIG_IMPOSSIBLE_WAR } = SMART_RANK_TUNING;
   if (sign === "Impossible") return SIG_IMPOSSIBLE_WAR;
 
-  const demand = Number(player._demSort ?? 0);
-  if (!(demand > 0)) return 0;
-  // Discount the demand by Sign category. Default to Normal's fraction
-  // when meta.sign is missing (legacy dashboards) or unknown.
-  const fraction = (SIG_DEMAND_FRACTION && sign != null && SIG_DEMAND_FRACTION[sign] != null)
-    ? SIG_DEMAND_FRACTION[sign] : (SIG_DEMAND_FRACTION?.Normal ?? 1.0);
-  const effectiveDemand = demand * fraction;
+  const effDemand = effectiveDemand(player);
+  if (!(effDemand > 0)) return 0;
 
   const spent = Number(ctx.spent ?? 0);
   const remaining = Math.max(0, ctx.budget - spent);
   if (remaining <= 0) return SIG_MAX_WAR;
-  const share = effectiveDemand / remaining;
+  const share = effDemand / remaining;
   if (share <= SIG_THRESHOLD) return 0;
   const penalty = (share - SIG_THRESHOLD) * SIG_BASE_WAR;
   return Math.max(0, Math.min(SIG_MAX_WAR, penalty));

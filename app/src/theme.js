@@ -26,6 +26,10 @@ export const levelColor = (lev) => ({ MLB:"#fbbf24",AAA:"#a78bfa",AA:"#60a5fa","
 
 export const proneColor = (p) => ({ "Iron Man":"#22c55e",Durable:"#4ade80",Normal:"#94a3b8",Fragile:"#f87171",Wrecked:"#ef4444" })[p] || "#94a3b8";
 
+export const signColor = (s) => ({ "Very Easy":"#22c55e",Easy:"#4ade80",Normal:"#94a3b8",Hard:"#fbbf24","Extremely Hard":"#fb923c",Impossible:"#ef4444" })[s] || "#64748b";
+
+export const signShort = (s) => ({ "Very Easy":"V.Easy",Easy:"Easy",Normal:"Normal",Hard:"Hard","Extremely Hard":"Ext.Hard",Impossible:"Impos." })[s] || s;
+
 // OOTP 20-80 scale color mapping based on MLB WAA z-scores
 // mean=-0.25, std=1.49 → grade = 50 + 10*(v - mean)/std
 // 80=blue, 70=cyan, 60=teal, 50=green, 40=yellow, 30=orange, 20=red
