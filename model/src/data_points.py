@@ -215,8 +215,12 @@ class FieldingRegressionCoeffs:
     second_pm_rng_slope: float =  0.003755662891497341
     second_pm_arm_slope: float =  0.0003164084844450831
 
-    # K15/L15: 2B E%
-    second_err_const:    float =  0.007874640770265841
+    # K15/L15: 2B E% — Excel intercept corrected. The "Fielding Reg IF" sheet's
+    # AP column subtracted $AC$118 (zone-rating total) instead of $AD$118 (errors
+    # total), corrupting the centering and thus the LINEST intercept (AU86). Slope
+    # is centering-invariant and unaffected. Was 0.007874640770265841. See
+    # Spreadsheet/docs/KNOWN_BUGS.md Bug 13.
+    second_err_const:    float = -2.3808211729618375e-05
     second_err_slope:    float = -0.00013250009062873734
 
     # K17/L17: 2B DP
@@ -241,8 +245,12 @@ class FieldingRegressionCoeffs:
     ss_pm_rng_slope:     float =  0.004131565657882439
     ss_pm_arm_slope:     float =  0.001612025228173002
 
-    # K25/L25: SS E%
-    ss_err_const:        float =  0.015278208342137478
+    # K25/L25: SS E% — Excel intercept corrected. Two centering bugs in the
+    # "Fielding Reg IF" SS block: AP subtracted $AC$197 (zone-rating total) not
+    # $AD$197 (errors total), and AQ centered on $F$118 (2B's avg rating) instead
+    # of $F$197 (SS's own). Both only shift the LINEST intercept (AU165); the slope
+    # is unaffected. Was 0.015278208342137478. See Spreadsheet/docs/KNOWN_BUGS.md Bug 13.
+    ss_err_const:        float =  1.204902615357462e-05
     ss_err_slope:        float = -0.0002744909984624334
 
     # K45/L45: SS DP (separate from 2B DP; uses Q25 as avg TDP)

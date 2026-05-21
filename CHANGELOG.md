@@ -13,6 +13,10 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 - **`players/intl.csv` (optional)** — IntlComplex players can now ship in a separate CSV when OOTP's "List All MLB Players" export paginates in larger leagues. Rows from `intl.csv` are concatenated with `org.csv` and tagged `source = "Organization"`, so all downstream views behave identically to a single-file export. OSA / AAA / AA pairing follows the same stem rule (`intl_osa.csv`, etc.). New `meta.csvPresence.hasIntl` flag in `dashboard.json` (informational).
 
+### Fixed
+
+- **2B and SS fielding error intercepts** — `second_err_const` and `ss_err_const` in `model/src/data_points.py` were imported from the original Excel "Fielding Reg IF" sheet, which had copy-paste centering bugs in the 2B/SS `E%` regression inputs (subtracting the zone-rating total instead of the errors total, and SS centering on 2B's grand total). This only corrupted the regression *intercepts* (slopes were unaffected), but those intercepts feed the errors-above-average term, adding a constant positive error bias to every 2B and SS and understating middle-infield defensive value. Corrected to the properly-centered values (≈ `-2.4e-05` / `1.2e-05`), matching the other infield positions. See `Spreadsheet/docs/KNOWN_BUGS.md` Bug 13.
+
 ## [0.1.1] — 2026-04-30
 
 Same-day patch: ship test fixtures so CI runs the full pytest suite without skip markers.
