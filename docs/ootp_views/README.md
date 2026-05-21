@@ -1,13 +1,27 @@
 # OOTP Saved Views and Filters
 
-This folder contains two OOTP data files that define the column layout (`player_views`) and saved filters (`player_filters`) used by every CSV export the pipeline reads. Loading these into your OOTP installation gives you a one-click "Player Export" preset that already includes every column the dashboard needs — you don't have to build the column list by hand.
+This folder contains two OOTP data files that define the **column layouts** (`player_views`) and **saved filters** (`player_filters`) used by every CSV export the pipeline reads. Loading these into your OOTP installation gives you one-click presets that already include every column the dashboard needs — you don't have to build the column lists by hand. An OOTP "view" is just a saved selection of which columns to display.
 
 ## Files
 
-- **`player_views`** — defines all saved column-layout views, including the `Player Export` view this project relies on.
+- **`player_views`** — all saved column-layout views: the `Player Export` view (player-list CSVs) plus the six metadata export views used on the **Statistics → Sortable Stats** screen.
 - **`player_filters`** — defines all saved filter presets.
 
-Both files are binary OOTP data files (no extension, no human-readable structure). They are bundled exactly as the original creator distributed them.
+Both are OOTP data files (no extension, not human-readable). They originate from the YourKidnies' spreadsheet bundle; the only change here is a view rename (`Batting Rtngs Export` → `Batting Rtng Export`).
+
+### Views in this bundle
+
+| View | Produces | OOTP screen |
+|---|---|---|
+| `Player Export` | `org` / `intl` / `freeagents` / `iafa` / `draftYYYY` CSVs | List All MLB Players (+ Free Agents / IAFA / Draft Pool) |
+| `Batting Export` | `hitting_data.csv` | Statistics → Sortable Stats |
+| `Pitching Export` | `pitching_data.csv` / `sp_data.csv` / `rp_data.csv` | Statistics → Sortable Stats |
+| `Batting Rtng Export` | `batter_ratings_vr.csv` / `batter_ratings_vl.csv` | Statistics → Sortable Stats |
+| `Pitching Rtng Export` | pitcher-rating exports | Statistics → Sortable Stats |
+| `Fielding Export` | `fielding_data_<pos>.csv` (per position) | Statistics → Sortable Stats |
+| `Fielding Rtng Export` | `fielding_ratings.csv` | Statistics → Sortable Stats |
+
+The player CSVs (`Player Export`) are required for any build; the rest drive the optional per-league metadata refresh — see [`../OOTP_EXPORT_GUIDE.md`](../OOTP_EXPORT_GUIDE.md) "Metadata files".
 
 ## Installation
 
@@ -27,6 +41,8 @@ Copying these files **replaces** any saved views and filters you have already cr
 
 ## After installation
 
-Open OOTP, navigate to **League → Reports & Info → List All MLB Players**, and load the **Player Export** preset from the views dropdown. The preset includes every column the pipeline reads, plus several it doesn't — that's intentional, so the same preset can be reused for free agents, IAFA, and draft pool exports.
+For the **player CSVs**: open OOTP, navigate to **League → Reports & Info → List All MLB Players**, and load the **Player Export** preset from the views dropdown. The preset includes every column the pipeline reads, plus several it doesn't — that's intentional, so the same preset can be reused for free agents, IAFA, and draft pool exports.
 
-For the full export workflow (toggling OSA ratings, selecting AAA/AA relative-rating leagues, where the CSV gets written), see [`../OOTP_EXPORT_GUIDE.md`](../OOTP_EXPORT_GUIDE.md).
+For the **metadata CSVs**: navigate to **(League) → Statistics → Sortable Stats** and load the matching export view from the table above (`Batting Export`, `Fielding Rtng Export`, etc.).
+
+For the full export workflow (which view + filter + split each file needs, toggling OSA ratings, selecting AAA/AA relative-rating leagues, where the CSV gets written), see [`../OOTP_EXPORT_GUIDE.md`](../OOTP_EXPORT_GUIDE.md).

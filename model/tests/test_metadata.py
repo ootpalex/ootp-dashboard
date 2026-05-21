@@ -9,6 +9,7 @@ import json
 import shutil
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from src.metadata import (
@@ -16,6 +17,7 @@ from src.metadata import (
     _aggregate_hitting,
     _aggregate_pitching,
     _build_fielding_helper,
+    _build_virtual_role_frames,
     _compute_fielding_aggregates,
     _compute_fielding_rating_averages,
     _compute_input_hash,
@@ -953,3 +955,92 @@ class TestMultiSeasonGenerate:
         h2, _p2, f2 = generate_data_points(tmp_path, use_cache=True)  # served from cache
         assert dataclasses.asdict(h1) == dataclasses.asdict(h2)
         assert dataclasses.asdict(f1) == dataclasses.asdict(f2)
+
+
+class TestPitcherRatings2FileFormat:
+    """The new 2-file pitcher_ratings format → _build_virtual_role_frames.
+
+    Verifies usage-based proportional role weighting and the ±5 STU role
+    conversion. The reconstructed frames are then consumed by the already-tested
+    _compute_rating_averages_pitching / _compute_matchup_splits_pitching, so this
+    focuses on the new logic that produces the frames.
+    """
+
+    def _pitcher_ratings(self, bf_scale=1.0):
+        """Three pitchers: P1 pure SP, P2 pure RP, P3 swingman (listed SP)."""
+        cols = {
+            "ID": [1, 2, 3],
+            "POS": ["SP", "RP", "SP"],
+            "Name": ["Ace", "Closer", "Swing"],
+            "BF": [int(700 * bf_scale), int(250 * bf_scale), int(500 * bf_scale)],
+            "T": ["R", "L", "R"],
+            "STU vR": [60, 50, 55], "HRR vR": [55, 45, 50],
+            "PBABIP vR": [50, 50, 50], "CON vR": [60, 55, 50],
+            "STU vL": [58, 52, 54], "HRR vL": [54, 46, 49],
+            "PBABIP vL": [50, 50, 50], "CON vL": [59, 54, 49],
+            "HLD": [55, 60, 55],
+        }
+        return pd.DataFrame(cols)
+
+    def _role_data(self):
+        # P1: 800 BF all SP. P2: 300 BF all RP. P3: 600 SP + 400 RP → frac 0.6.
+        sp = pd.DataFrame({"ID": [1, 3], "BF": [800, 600]})
+        rp = pd.DataFrame({"ID": [2, 3], "BF": [300, 400]})
+        return sp, rp
+
+    def test_starter_fraction_weighting(self):
+        pr_vr = self._pitcher_ratings()
+        pr_vl = self._pitcher_ratings(bf_scale=0.5)
+        sp_data, rp_data = self._role_data()
+        sp_vr, sp_vl, rp_vr, rp_vl = _build_virtual_role_frames(pr_vr, pr_vl, sp_data, rp_data)
+
+        sp_vr = sp_vr.set_index("ID")
+        rp_vr = rp_vr.set_index("ID")
+        # Pure starter: full BF into SP, zero into RP.
+        assert sp_vr.loc[1, "BF"] == pytest.approx(700)
+        assert rp_vr.loc[1, "BF"] == pytest.approx(0.0)
+        # Pure reliever: zero into SP, full BF into RP.
+        assert sp_vr.loc[2, "BF"] == pytest.approx(0.0)
+        assert rp_vr.loc[2, "BF"] == pytest.approx(250)
+        # Swingman (frac 0.6): 0.6 into SP, 0.4 into RP.
+        assert sp_vr.loc[3, "BF"] == pytest.approx(500 * 0.6)
+        assert rp_vr.loc[3, "BF"] == pytest.approx(500 * 0.4)
+
+    def test_stu_pm5_conversion(self):
+        pr_vr = self._pitcher_ratings()
+        pr_vl = self._pitcher_ratings()
+        sp_data, rp_data = self._role_data()
+        sp_vr, _sp_vl, rp_vr, _rp_vl = _build_virtual_role_frames(pr_vr, pr_vl, sp_data, rp_data)
+
+        sp_vr = sp_vr.set_index("ID")
+        rp_vr = rp_vr.set_index("ID")
+        # SP frame: SP-POS unchanged; RP-POS gets STU-5.
+        assert sp_vr.loc[1, "STU"] == 60      # P1 SP-POS, no change
+        assert sp_vr.loc[2, "STU"] == 50 - 5  # P2 RP-POS → -5 into SP avg
+        assert sp_vr.loc[3, "STU"] == 55      # P3 SP-POS, no change
+        # RP frame: SP-POS gets STU+5; RP-POS unchanged.
+        assert rp_vr.loc[1, "STU"] == 60 + 5  # P1 SP-POS → +5 into RP avg
+        assert rp_vr.loc[2, "STU"] == 50      # P2 RP-POS, no change
+        assert rp_vr.loc[3, "STU"] == 55 + 5  # P3 SP-POS → +5
+
+    def test_non_stu_ratings_not_converted(self):
+        """Only STU converts; HRR/PBABIP/CON/HLD pass through unchanged."""
+        pr_vr = self._pitcher_ratings()
+        sp_data, rp_data = self._role_data()
+        sp_vr, _, rp_vr, _ = _build_virtual_role_frames(pr_vr, pr_vr, sp_data, rp_data)
+        # P2 (RP-POS) in the SP frame: HRR stays 45 (no ±5 on non-STU).
+        assert sp_vr.set_index("ID").loc[2, "HRR"] == 45
+        assert rp_vr.set_index("ID").loc[1, "CON"] == 60
+
+    def test_missing_role_data_falls_back_to_pos(self):
+        """A pitcher absent from both data files is bucketed by POS listing."""
+        pr_vr = self._pitcher_ratings()
+        sp_vr, _, rp_vr, _ = _build_virtual_role_frames(
+            pr_vr, pr_vr, pd.DataFrame({"ID": [], "BF": []}), pd.DataFrame({"ID": [], "BF": []}))
+        sp_vr = sp_vr.set_index("ID")
+        rp_vr = rp_vr.set_index("ID")
+        # P1/P3 listed SP → full weight to SP; P2 listed RP → full weight to RP.
+        assert sp_vr.loc[1, "BF"] == pytest.approx(700)
+        assert rp_vr.loc[1, "BF"] == pytest.approx(0.0)
+        assert sp_vr.loc[2, "BF"] == pytest.approx(0.0)
+        assert rp_vr.loc[2, "BF"] == pytest.approx(250)

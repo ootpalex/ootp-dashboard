@@ -69,7 +69,7 @@ with `export.py` / `validation.py`).
 
 ### Inputs
 - `hitting_data.csv` — 516 batters, 26 stat columns (R, PA, AB, 1B, 2B, 3B, HR, BB, HP, IBB, SH, SF, SB, CS, Outs, SO, UBR, GIDP)
-- `batter_ratings.csv` — 518 batters with PA, handedness, and all split ratings
+- `batter_ratings_vr.csv` / `batter_ratings_vl.csv` — batter ratings with PA, handedness, and split ratings (the two files carry the same ratings and differ only in the side-specific PA column)
 
 ### Computation Chain
 
@@ -115,17 +115,16 @@ with `export.py` / `validation.py`).
 ## Pitching Calc Pipeline (Phase 2)
 
 ### Inputs
-- `pitching_data.csv` — 512 pitchers, overall stats → SP wOBA weights
-- `rp_data.csv` — 396 relievers → RP wOBA weights
-- `sp_ratings.csv` — 346 SP entries with BF, ratings, HLD
-- `rp_ratings.csv` — 515 RP entries with BF, ratings, HLD
+- `pitching_data.csv` — overall pitching stats (drives `lg_RA/9` + WAA constant)
+- `sp_data.csv` / `rp_data.csv` — per-pitcher counting stats as starter / reliever → SP and RP wOBA weights, **and** the per-pitcher BF used to classify role
+- `pitcher_ratings_vr.csv` / `pitcher_ratings_vl.csv` — all pitchers, both-side rating columns + `POS`; `BF` = RH-faced (vr) / LH-faced (vl). **Legacy fallback:** older seasons instead carry the 4-file `sp_ratings_vr/vl` + `rp_ratings_vr/vl` (per-role, single rating column); the loader auto-detects per season folder.
 
 ### Computation Chain
-1. **SP wOBA weights** from `sp_data.csv` (255 starters, BF=104928) — NOT from `pitching_data.csv`
+1. **SP wOBA weights** from `sp_data.csv` (BF as starter) — NOT from `pitching_data.csv`
 2. **RP wOBA weights** from `rp_data.csv` — uses RP run values but **SP normalization** (SP's runs_minus and woba_scale for cross-normalization)
-3. **BF-weighted SP rating averages** from sp_ratings (STU, HRR, pBABIP, CON, HLD)
-4. **BF-weighted RP rating averages** from rp_ratings
-5. **Pitcher matchup splits** from BF pivot tables
+3. **Role classification (2-file format)** — `_build_virtual_role_frames` (`pitch_aggregator.py`) computes each pitcher's `starter_fraction = sp_BF / (sp_BF + rp_BF)` and reconstructs per-role rating frames: each pitcher's per-hand BF is scaled by `starter_fraction` (SP) / `1 − starter_fraction` (RP), and STU is converted ±5 by POS (mirrors `pitchers.py`). The 4-file legacy format skips this and uses the per-role files directly.
+4. **BF-weighted SP / RP rating averages** (STU, HRR, pBABIP, CON, HLD) from the role frames
+5. **Pitcher matchup splits** from the (role-weighted) BF by pitcher hand
 6. **RA/9 baselines**: `R / Clean_IP × 9` for SP and RP sections
 7. **WAA constant**: `lg_RA/9 × 1.5 + 3` where `lg_RA/9 = pitching_data_R / pitching_data_IP_Clean × 9` (uses overall Pitching Data, not SP+RP separately)
 8. **Pitching stat rate denominators** differ from hitting: `BF - HP - BB` (no IBB subtraction)
@@ -134,10 +133,10 @@ with `export.py` / `validation.py`).
 ## Fielding Calc + POS Adj Pipeline (Phase 3)
 
 ### Inputs
-- `fielding_data_{pos}.csv` — 8 position-specific tables
-- `fielding_ratings.csv` — 509 players with fielding ratings
-- `fielding_helper.csv` — IP distribution per player per position
-- `pos_adj_helper.csv` — PA, IP, and offensive value per player
+- `fielding_data_{pos}.csv` — 8 position-specific tables (`c`, `1b`, `2b`, `3b`, `ss`, `lf`, `cf`, `rf`)
+- `fielding_ratings.csv` — per-player fielding ratings
+
+(The `fielding_helper` / `pos_adj_helper` tables are **not** input files — they are built in code by `_build_fielding_helper` / `_build_pos_adj_helper` from the two inputs above.)
 
 ### Computation Chain
 1. **Position aggregate stats** — SUM of IP, Plays, E, DP, ARM, FRM, SBA, RTO per position

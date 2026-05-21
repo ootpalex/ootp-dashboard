@@ -59,6 +59,7 @@ from src.aggregators.hit_aggregator import (
 )
 from src.aggregators.pitch_aggregator import (
     _aggregate_pitching,
+    _build_virtual_role_frames,
     _compute_matchup_splits_pitching,
     _compute_rating_averages_pitching,
     compute_pitching_constants,
@@ -103,12 +104,20 @@ class MetadataInputs:
     pitching_data: pd.DataFrame
     sp_data: pd.DataFrame
     rp_data: pd.DataFrame
-    sp_ratings_vr: pd.DataFrame  # SP ratings when facing RH batters
-    sp_ratings_vl: pd.DataFrame  # SP ratings when facing LH batters
-    rp_ratings_vr: pd.DataFrame  # RP ratings when facing RH batters
-    rp_ratings_vl: pd.DataFrame  # RP ratings when facing LH batters
     fielding_data: dict[str, pd.DataFrame]  # keyed by position: c, 1b, ...
     fielding_ratings: pd.DataFrame
+    # Pitcher ratings come in one of two mutually exclusive formats:
+    #   Legacy 4-file (per-role): sp_ratings_vr/vl + rp_ratings_vr/vl, each with a
+    #     single "STU"/"HRR"/… column already filtered to that role.
+    #   New 2-file (combined): pitcher_ratings_vr/vl, one row per pitcher with both
+    #     vR/vL rating columns + POS; SP/RP role split is computed in pitch_aggregator.
+    # Exactly one set is populated by load_metadata_inputs.
+    sp_ratings_vr: pd.DataFrame | None = None  # SP ratings when facing RH batters
+    sp_ratings_vl: pd.DataFrame | None = None  # SP ratings when facing LH batters
+    rp_ratings_vr: pd.DataFrame | None = None  # RP ratings when facing RH batters
+    rp_ratings_vl: pd.DataFrame | None = None  # RP ratings when facing LH batters
+    pitcher_ratings_vr: pd.DataFrame | None = None  # all pitchers, BF = RH-faced
+    pitcher_ratings_vl: pd.DataFrame | None = None  # all pitchers, BF = LH-faced
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +125,7 @@ class MetadataInputs:
 # ---------------------------------------------------------------------------
 
 # Columns that carry metadata (weights/identity) rather than ratings.
-_METADATA_NON_RATING_COLS = frozenset({"ID", "PA", "BF", "B", "T"})
+_METADATA_NON_RATING_COLS = frozenset({"ID", "POS", "Name", "PA", "BF", "B", "T"})
 
 
 def _blend_metadata_osa_ratings(
@@ -235,6 +244,21 @@ def load_metadata_inputs(
     for pos in positions:
         fielding_data[pos] = pd.read_csv(d / f"fielding_data_{pos}.csv")
 
+    # Pitcher ratings: the new 2-file combined format (pitcher_ratings_vr/vl)
+    # takes precedence; otherwise fall back to the legacy 4-file per-role format.
+    if (d / "pitcher_ratings_vr.csv").is_file():
+        pitcher_kwargs = {
+            "pitcher_ratings_vr": _load_metadata_rating_csv(d / "pitcher_ratings_vr.csv", **blend_kw),
+            "pitcher_ratings_vl": _load_metadata_rating_csv(d / "pitcher_ratings_vl.csv", **blend_kw),
+        }
+    else:
+        pitcher_kwargs = {
+            "sp_ratings_vr": _load_metadata_rating_csv(d / "sp_ratings_vr.csv", **blend_kw),
+            "sp_ratings_vl": _load_metadata_rating_csv(d / "sp_ratings_vl.csv", **blend_kw),
+            "rp_ratings_vr": _load_metadata_rating_csv(d / "rp_ratings_vr.csv", **blend_kw),
+            "rp_ratings_vl": _load_metadata_rating_csv(d / "rp_ratings_vl.csv", **blend_kw),
+        }
+
     return MetadataInputs(
         hitting_data=pd.read_csv(d / "hitting_data.csv"),
         batter_ratings_vr=_load_metadata_rating_csv(d / "batter_ratings_vr.csv", **blend_kw),
@@ -242,12 +266,9 @@ def load_metadata_inputs(
         pitching_data=pd.read_csv(d / "pitching_data.csv"),
         sp_data=pd.read_csv(d / "sp_data.csv"),
         rp_data=pd.read_csv(d / "rp_data.csv"),
-        sp_ratings_vr=_load_metadata_rating_csv(d / "sp_ratings_vr.csv", **blend_kw),
-        sp_ratings_vl=_load_metadata_rating_csv(d / "sp_ratings_vl.csv", **blend_kw),
-        rp_ratings_vr=_load_metadata_rating_csv(d / "rp_ratings_vr.csv", **blend_kw),
-        rp_ratings_vl=_load_metadata_rating_csv(d / "rp_ratings_vl.csv", **blend_kw),
         fielding_data=fielding_data,
         fielding_ratings=pd.read_csv(d / "fielding_ratings.csv"),
+        **pitcher_kwargs,
     )
 
 

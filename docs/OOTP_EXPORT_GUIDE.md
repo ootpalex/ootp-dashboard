@@ -134,6 +134,152 @@ In total, with all blends enabled, you can end up with as many as 4 files per fi
 
 ---
 
+## Metadata files (per-league seasonal refresh)
+
+The pipeline can calibrate league-specific constants — wOBA weights, league stat rates, rating averages, fielding baselines, and position adjustments — from your own league's data instead of the bundled OOTP 26 defaults. It does this by reading the CSVs in `leagues/<slug>/metadata/`.
+
+**This is optional.** With an empty `metadata/` directory the pipeline falls back to `DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP` (calibrated against OOTP 26 baseline data) and produces a perfectly usable dashboard. Refreshing metadata from your own league improves accuracy for *that* league and is recommended once per season.
+
+> **Timing — export at the start of the playoffs, _not_ the offseason.** Once the offseason begins, players retire. Retired players still show up in the exports, but their ratings come through as **OSA-only**, which skews the league rating averages the pipeline computes. Exporting at the start of the playoffs captures the full league while everyone still has real (non-OSA) ratings.
+
+### Season layout
+
+`leagues/<slug>/metadata/` supports two layouts:
+
+**Single season (flat).** Drop the metadata CSVs directly in the folder; the pipeline treats them as one season:
+
+```
+leagues/<slug>/metadata/
+├── hitting_data.csv
+├── batter_ratings_vr.csv
+└── … (the full file set below)
+```
+
+**Multiple seasons (recency-pooled).** Put each season's CSVs in an all-digit `<year>/` subfolder. The pipeline pools the most recent seasons, weighting newer data more heavily:
+
+```
+leagues/<slug>/metadata/
+├── 2042/   ← newest present season
+│   └── … (the full file set below)
+├── 2041/
+│   └── … (the full file set below)
+└── 2040/
+    └── … (the full file set below)
+```
+
+- Recency weights are **3 / 2 / 1**, newest-first (`metadata.py` `_DEFAULT_SEASON_WEIGHTS`). The newest present year gets weight 3, one year older 2, two years older 1.
+- Each season's constants are computed independently, then **field-wise weighted-averaged** into the final calibration.
+- Seasons more than two years older than the newest are **ignored**. Gap years are fine — e.g. with `2042/` and `2040/` present (no `2041/`), 2042 gets weight 3 and 2040 gets weight 1; the empty weight-2 slot is just unused.
+- On a pooled run the pipeline prints `Pooling N metadata seasons [years] weighted [weights]` so you can confirm what it picked up.
+
+**To add a new season:** create a new `<year>/` subfolder and export the full file set below into it. (If you're currently on the flat single-season layout and want to start pooling, move your existing CSVs into a `<year>/` subfolder first.)
+
+### Files to export each season
+
+Every season folder needs the same set of files, sourced from a handful of OOTP screens. Export each one and save it with the exact filename shown.
+
+| File | Contents |
+|---|---|
+| `hitting_data.csv` | League batting counting stats |
+| `pitching_data.csv` | League pitching counting stats (overall) |
+| `sp_data.csv` | Starter-only pitching counting stats |
+| `rp_data.csv` | Reliever-only pitching counting stats |
+| `batter_ratings_vr.csv` / `batter_ratings_vl.csv` | Per-batter ratings vs RHP / vs LHP |
+| `pitcher_ratings_vr.csv` / `pitcher_ratings_vl.csv` | All pitcher ratings vs RHP / vs LHP (SP/RP split is computed by the pipeline) |
+| `fielding_data_c.csv` … `fielding_data_rf.csv` (8 files) | Per-position fielding stats (`c`, `1b`, `2b`, `3b`, `ss`, `lf`, `cf`, `rf`) |
+| `fielding_ratings.csv` | Per-player fielding ratings |
+
+The per-screen export walkthroughs below follow the same shape as the player-CSV sections above (OOTP screen → view preset → export action → save-as).
+
+### hitting_data.csv
+
+- **OOTP screen:** Click your league name in the top bar (e.g. **MLB**) → **Statistics → Sortable Stats**. Set the player pool to **All players** (not just *Qualified*), so part-season and low-PA players are included.
+- **View:** Load the **`Batting Export`** view. *(New saved view — ships in [`docs/ootp_views/`](ootp_views/); see [`docs/ootp_views/README.md`](ootp_views/README.md) for install.)*
+- **Filters:** Set all **splits to None** and **Scope** to the **major-league level**. A **PA > 0** filter is optional — it only trims the list cosmetically, since the model already ignores 0-PA players.
+- **Export action:** **Report → Write Report to CSV**.
+- **Save as:** OOTP writes the file into your league's `import_export/` folder. Rename it to `hitting_data.csv` and move it into the season folder — `leagues/<slug>/metadata/<year>/hitting_data.csv` (e.g. `leagues/SSB/metadata/2042/hitting_data.csv`).
+
+### pitching_data.csv / sp_data.csv / rp_data.csv
+
+All three come off the same screen and view — only the **Split** changes.
+
+- **OOTP screen:** Click your league name in the top bar (e.g. **MLB**) → **Statistics → Sortable Stats**. Set the player pool to **All players** (not just *Qualified*).
+- **View:** Load the **`Pitching Export`** view. *(New saved view — ships in [`docs/ootp_views/`](ootp_views/).)*
+- **Filters:** **Scope** = **major-league level** for all three. The **Split** selects which file you're producing:
+
+  | File | Split |
+  |---|---|
+  | `pitching_data.csv` | All splits **None** (overall pitching) |
+  | `sp_data.csv` | **Split → Lineup → As Starter** |
+  | `rp_data.csv` | **Split → Lineup → As Reliever / Substitution** |
+
+- **Export action:** **Report → Write Report to CSV**, once per split.
+- **Save as:** rename each export from your league's `import_export/` folder to the filename above and move it into `leagues/<slug>/metadata/<year>/`. Re-export and rename between split changes — OOTP overwrites the same `import_export/` file each time.
+
+### batter_ratings_vr.csv / batter_ratings_vl.csv
+
+Both come off the same screen and view; only the **Split** changes. The `Batting Rtng Export` view includes **both** vR and vL rating columns in every export — the Split doesn't change which ratings appear, it changes the **PA column** (plate appearances logged against that side). That side-specific PA count is what the pipeline uses to PA-weight each side's league rating averages, so you still need both files.
+
+- **OOTP screen:** Click your league name in the top bar (e.g. **MLB**) → **Statistics → Sortable Stats**. Set the player pool to **All players** (not just *Qualified*).
+- **View:** Load the **`Batting Rtng Export`** view. *(New saved view — ships in [`docs/ootp_views/`](ootp_views/).)*
+- **Filters:** **Scope** = **major-league level**. The **Split** selects the file:
+
+  | File | Split |
+  |---|---|
+  | `batter_ratings_vr.csv` | **Versus Right** |
+  | `batter_ratings_vl.csv` | **Versus Left** |
+
+- **Export action:** **Report → Write Report to CSV**, once per split.
+- **Save as:** rename each export from `import_export/` to the filename above and move it into `leagues/<slug>/metadata/<year>/`.
+
+### fielding_data_c.csv … fielding_data_rf.csv (one per position)
+
+- **OOTP screen:** Click your league name in the top bar (e.g. **MLB**) → **Statistics → Sortable Stats**. Set the player pool to **All players** (not just *Qualified*).
+- **View:** Load the **`Fielding Export`** view. *(New saved view — ships in [`docs/ootp_views/`](ootp_views/).)*
+- **Filters:** No filter; **Scope** = **major-league level**. Set the **`POSITION:`** selector to the position you're exporting, then re-export for each.
+- **Export action:** **Report → Write Report to CSV**, once per position.
+- **Save as:** rename each export to `fielding_data_<pos>.csv` and move it into `leagues/<slug>/metadata/<year>/`. The eight positions the pipeline reads:
+
+  | Position | File |
+  |---|---|
+  | Catcher | `fielding_data_c.csv` |
+  | First base | `fielding_data_1b.csv` |
+  | Second base | `fielding_data_2b.csv` |
+  | Third base | `fielding_data_3b.csv` |
+  | Shortstop | `fielding_data_ss.csv` |
+  | Left field | `fielding_data_lf.csv` |
+  | Center field | `fielding_data_cf.csv` |
+  | Right field | `fielding_data_rf.csv` |
+
+- **Optional — `fielding_data_p.csv` (pitchers):** You can also set `POSITION:` to **Pitcher** and export `fielding_data_p.csv`. The pipeline does **not** read it today (the positions list above stops at RF), so it has no effect on the current build — but pitchers carry stolen-bases-against and catcher-framing-benefit data that may be useful later, so it's worth capturing. Dropping it in the folder is safe: it only nudges the metadata cache hash (forcing a recompute), never an error.
+
+### fielding_ratings.csv
+
+- **OOTP screen:** Click your league name in the top bar (e.g. **MLB**) → **Statistics → Sortable Stats**. Set the player pool to **All players** (not just *Qualified*).
+- **View:** Load the **`Fielding Rtng Export`** view. *(New saved view — ships in [`docs/ootp_views/`](ootp_views/).)*
+- **Filters:** No filter; **Scope** = **major-league level**.
+- **Export action:** **Report → Write Report to CSV**.
+- **Save as:** rename to `fielding_ratings.csv` and move it into `leagues/<slug>/metadata/<year>/`.
+
+### pitcher_ratings_vr.csv / pitcher_ratings_vl.csv
+
+Same shape as the batter ratings: one row per pitcher with both vR and vL rating columns; the two files differ only in the `BF` column (RH-faced vs LH-faced). **You do not split by role (SP/RP) on export** — the pipeline classifies each pitcher from their actual starter-vs-reliever innings (in `sp_data.csv` / `rp_data.csv`) and weights their contribution to the SP and RP league averages proportionally. The view includes a `POS` column so the pipeline can apply OOTP's SP↔RP Stuff conversion (±5) where a pitcher's usage differs from their listing.
+
+- **OOTP screen:** Click your league name in the top bar (e.g. **MLB**) → **Statistics → Sortable Stats**. Set the player pool to **All players** (not just *Qualified*).
+- **View:** Load the **`Pitching Rtng Export`** view. *(New saved view — ships in [`docs/ootp_views/`](ootp_views/).)*
+- **Filters:** **Scope** = **major-league level**, no role filter. The **Split** selects the file:
+
+  | File | Split |
+  |---|---|
+  | `pitcher_ratings_vr.csv` | **Versus Right** |
+  | `pitcher_ratings_vl.csv` | **Versus Left** |
+
+- **Export action:** **Report → Write Report to CSV**, once per split.
+- **Save as:** rename each export from `import_export/` to the filename above and move it into `leagues/<slug>/metadata/<year>/`.
+- **Migrating from the legacy 4-file format?** Older seasons (and the bundled `default/`) used `sp_ratings_vr/vl` + `rp_ratings_vr/vl`. Those still load — the pipeline auto-detects the format per season folder — so you don't need to re-export old years.
+
+---
+
 ## File-naming summary
 
 All filenames are **case-insensitive but strict on stem**. Files not matching one of the patterns above are silently skipped by `_discover_csv_files()` (`model/src/players.py:33`).

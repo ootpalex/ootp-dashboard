@@ -7,6 +7,7 @@ are directly comparable.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from src.aggregators._shared import (
@@ -91,6 +92,68 @@ def _compute_rating_averages_pitching(
     }
 
 
+def _build_virtual_role_frames(
+    pr_vr: pd.DataFrame,
+    pr_vl: pd.DataFrame,
+    sp_data: pd.DataFrame,
+    rp_data: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Reconstruct legacy per-role rating frames from the 2-file combined format.
+
+    The combined ``pitcher_ratings_vr/vl`` files carry both-side rating columns
+    (``STU vR``/``STU vL`` …) plus ``POS``; the two files differ only in ``BF``
+    (RH-faced vs LH-faced). Returns ``(sp_vr, sp_vl, rp_vr, rp_vl)`` each with the
+    legacy columns (``ID, BF, T, STU, HRR, PBABIP, CON, HLD``) so the existing
+    ``_compute_rating_averages_pitching`` / ``_compute_matchup_splits_pitching``
+    consume them unchanged.
+
+    Two transforms make this faithful to the player-eval pipeline:
+    - **Proportional role weighting** — each pitcher's per-hand BF is scaled by
+      their starter fraction ``sp_BF / (sp_BF + rp_BF)`` (from sp_data/rp_data) for
+      the SP frames and ``1 − fraction`` for the RP frames, so a swingman splits
+      across both roles and other-role BF never enters a role average.
+    - **±5 STU role conversion** — keyed on POS, mirroring ``pitchers.py``: the SP
+      frames use ``STU − 5`` for non-SP-POS pitchers, the RP frames ``STU + 5`` for
+      SP-POS pitchers. Only STU converts; HRR/PBABIP/CON/HLD are role-independent.
+    """
+    ids = pr_vr["ID"]
+    pos = pr_vr["POS"].astype(str).to_numpy()
+    throws = pr_vr["T"].to_numpy()
+    is_sp_pos = pos == "SP"
+
+    # Per-pitcher starter fraction from role-specific BF (both hands). Pitchers
+    # absent from a role's data file contribute 0 BF there; a pitcher in neither
+    # falls back to their POS listing.
+    sp_bf = pd.to_numeric(sp_data.set_index("ID")["BF"], errors="coerce").reindex(ids).fillna(0.0).to_numpy()
+    rp_bf = pd.to_numeric(rp_data.set_index("ID")["BF"], errors="coerce").reindex(ids).fillna(0.0).to_numpy()
+    role_total = sp_bf + rp_bf
+    starter_frac = np.where(role_total > 0, np.divide(sp_bf, role_total, where=role_total > 0),
+                            is_sp_pos.astype(float))
+
+    # Per-hand BF from the ratings files (vl aligned to vr's ID order).
+    bf_vr = pd.to_numeric(pr_vr["BF"], errors="coerce").to_numpy()
+    bf_vl = pd.to_numeric(pr_vl.set_index("ID")["BF"], errors="coerce").reindex(ids).fillna(0.0).to_numpy()
+
+    def _frame(side: str, role: str) -> pd.DataFrame:
+        bf_side = bf_vr if side == "vR" else bf_vl
+        role_w = starter_frac if role == "sp" else (1.0 - starter_frac)
+        stu = pd.to_numeric(pr_vr[f"STU {side}"], errors="coerce").to_numpy()
+        stu_conv = (np.where(is_sp_pos, stu, stu - 5) if role == "sp"
+                    else np.where(is_sp_pos, stu + 5, stu))
+        return pd.DataFrame({
+            "ID": ids.to_numpy(),
+            "BF": bf_side * role_w,
+            "T": throws,
+            "STU": stu_conv,
+            "HRR": pd.to_numeric(pr_vr[f"HRR {side}"], errors="coerce").to_numpy(),
+            "PBABIP": pd.to_numeric(pr_vr[f"PBABIP {side}"], errors="coerce").to_numpy(),
+            "CON": pd.to_numeric(pr_vr[f"CON {side}"], errors="coerce").to_numpy(),
+            "HLD": pd.to_numeric(pr_vr["HLD"], errors="coerce").to_numpy(),
+        })
+
+    return _frame("vR", "sp"), _frame("vL", "sp"), _frame("vR", "rp"), _frame("vL", "rp")
+
+
 def compute_pitching_constants(inputs) -> PitcherLeagueParams:
     """Compute all PitcherLeagueParams from pitching data + ratings."""
 
@@ -129,16 +192,24 @@ def compute_pitching_constants(inputs) -> PitcherLeagueParams:
     rp_den = AB + (BB - IBB) + HP + SF
     rp_woba["lg_woba"] = rp_num / rp_den if rp_den > 0 else 0.0
 
+    # --- Pitcher rating frames ---
+    # New 2-file combined format → reconstruct legacy per-role frames (proportional
+    # role weighting + ±5 STU conversion). Legacy 4-file format → use the per-role
+    # files directly (byte-identical to pre-redesign behavior).
+    if inputs.pitcher_ratings_vr is not None:
+        sp_vr, sp_vl, rp_vr, rp_vl = _build_virtual_role_frames(
+            inputs.pitcher_ratings_vr, inputs.pitcher_ratings_vl,
+            inputs.sp_data, inputs.rp_data)
+    else:
+        sp_vr, sp_vl = inputs.sp_ratings_vr, inputs.sp_ratings_vl
+        rp_vr, rp_vl = inputs.rp_ratings_vr, inputs.rp_ratings_vl
+
     # --- Matchup splits ---
-    p_splits = _compute_matchup_splits_pitching(
-        inputs.sp_ratings_vr, inputs.sp_ratings_vl,
-        inputs.rp_ratings_vr, inputs.rp_ratings_vl)
+    p_splits = _compute_matchup_splits_pitching(sp_vr, sp_vl, rp_vr, rp_vl)
 
     # --- Rating averages ---
-    sp_rating_avgs = _compute_rating_averages_pitching(
-        inputs.sp_ratings_vr, inputs.sp_ratings_vl, p_splits["sp_ovr_vr"])
-    rp_rating_avgs = _compute_rating_averages_pitching(
-        inputs.rp_ratings_vr, inputs.rp_ratings_vl, p_splits["rp_ovr_vr"])
+    sp_rating_avgs = _compute_rating_averages_pitching(sp_vr, sp_vl, p_splits["sp_ovr_vr"])
+    rp_rating_avgs = _compute_rating_averages_pitching(rp_vr, rp_vl, p_splits["rp_ovr_vr"])
 
     # --- Workload (overall pitching data drives BF/IP ratio) ---
     overall_ip = pd.to_numeric(inputs.pitching_data["IP Clean"], errors="coerce").sum()
