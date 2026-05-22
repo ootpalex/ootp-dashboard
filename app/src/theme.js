@@ -36,16 +36,26 @@ export const signShort = (s) => ({ "Very Easy":"V.Easy",Easy:"Easy",Normal:"Norm
 const WAA_MEAN = -0.25;
 const WAA_STD = 1.49;
 
-// WAR equivalents — empirically calibrated 2026-05-18 from the MLB-level pool
-// across all five OOTP leagues (default + BLM-ATL/COL/MIA/NYM): n=4582 players.
-//   mean=+0.95, std=2.22
-//   percentiles: p5=-3.66, p25=+0.54, p50=+1.09, p75=+2.04, p95=+3.55
-// FG-canonical benchmarks place avg full-time players at +2 hitter / +1.5 SP /
-// +0.5 RP. OOTP MLB pool mean comes in lower (~+0.95) because rosters carry
-// more mop-up and long-relief WAR-negative arms than real MLB. Not a bug.
-// Recompute as the league talent distribution shifts.
-const WAR_MEAN = 0.95;
-const WAR_STD = 2.22;
+// WAR color calibration. The ACTIVE values are set PER LEAGUE from that league's
+// own MLB WAR distribution (pipeline embeds it in dashboard meta.warColor) via
+// setWarCalibration(), so each league's color scale reflects its own MLB talent.
+// The constants below are only a fallback for legacy dashboards lacking warColor;
+// they are the 5-league MLB pool snapshot (2026-05-22, n=4454): mean +1.61 /
+// std 1.88, after replacement became FG-calibrated + per-league.
+const WAR_MEAN_DEFAULT = 1.61;
+const WAR_STD_DEFAULT = 1.88;
+let _warMean = WAR_MEAN_DEFAULT;
+let _warStd = WAR_STD_DEFAULT;
+
+// Set the active WAR color calibration from a league's MLB WAR distribution
+// (dashboard meta.warColor = {mean, std, n}). Call when league data loads;
+// null/invalid resets to the built-in default.
+export function setWarCalibration(warColor) {
+  const mean = warColor == null ? NaN : Number(warColor.mean);
+  const std = warColor == null ? NaN : Number(warColor.std);
+  _warMean = Number.isFinite(mean) ? mean : WAR_MEAN_DEFAULT;
+  _warStd = Number.isFinite(std) && std > 0 ? std : WAR_STD_DEFAULT;
+}
 const GRADE_COLORS = [
   [20, [239, 68, 68]],   // red
   [30, [249, 115, 22]],  // orange
@@ -79,7 +89,7 @@ export const waaStyle = (v) => {
 
 export const warStyle = (v) => {
   if (v == null || isNaN(v)) return { color: "#475569" };
-  const grade = 50 + 10 * (v - WAR_MEAN) / WAR_STD;
+  const grade = 50 + 10 * (v - _warMean) / _warStd;
   const bold = grade >= 70 || grade <= 30;
   return { color: gradeToColor(grade), ...(bold ? { fontWeight: 700 } : {}) };
 };

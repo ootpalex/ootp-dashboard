@@ -14,6 +14,19 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 
 
+def compute_runs_per_win(pitching_data: pd.DataFrame) -> float:
+    """League runs-per-win (the WAA/WAR scale constant), from overall pitching.
+
+    FanGraphs-style RPW = lg_RA/9 × 1.5 + 3, computed from the league's own
+    overall run environment. Shared by the hit and pitch aggregators so both
+    derive an identical, per-league value (rather than a stale hardcoded one).
+    """
+    overall_ip = pd.to_numeric(pitching_data["IP Clean"], errors="coerce").sum()
+    overall_r = pd.to_numeric(pitching_data["R"], errors="coerce").sum()
+    lg_ra9 = overall_r / overall_ip * 9 if overall_ip > 0 else 0.0
+    return lg_ra9 * 1.5 + 3.0
+
+
 def _weighted_mean(weights: pd.Series, values: pd.Series) -> float:
     """Return the weight-weighted mean of *values*.
 

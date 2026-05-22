@@ -1484,6 +1484,38 @@ def _detect_csv_presence(player_dir: Path) -> dict:
     }
 
 
+def _compute_war_color(hitter_dicts: list, pitcher_dicts: list) -> dict:
+    """Per-league MLB WAR mean/std for the value-color scale (frontend warStyle).
+
+    Hitters contribute ``maxWar.wtd`` (best position); pitchers the better of
+    ``sp``/``rp`` ``wtd.war``. Filtered to ``lev == "MLB"`` so each league's
+    color scale reflects its OWN MLB distribution rather than a cross-league
+    blend. Population std. Returns ``{}`` if too few MLB players (frontend then
+    falls back to its built-in default).
+    """
+    vals: list[float] = []
+    for h in hitter_dicts:
+        if (h.get("meta") or {}).get("lev") != "MLB":
+            continue
+        v = (h.get("maxWar") or {}).get("wtd")
+        if isinstance(v, (int, float)):
+            vals.append(v)
+    for p in pitcher_dicts:
+        if (p.get("meta") or {}).get("lev") != "MLB":
+            continue
+        sp = ((p.get("sp") or {}).get("wtd") or {}).get("war")
+        rp = ((p.get("rp") or {}).get("wtd") or {}).get("war")
+        cands = [x for x in (sp, rp) if isinstance(x, (int, float))]
+        if cands:
+            vals.append(max(cands))
+    n = len(vals)
+    if n < 30:
+        return {}
+    mean = sum(vals) / n
+    var = sum((x - mean) ** 2 for x in vals) / n
+    return {"mean": round(mean, 4), "std": round(var ** 0.5, 4), "n": n}
+
+
 def build_dashboard(
     settings: PipelineSettings,
     player_dir: str | Path,
@@ -1814,6 +1846,8 @@ def build_dashboard(
         role_filter="rp",
     )
 
+    war_color = _compute_war_color(hitter_dicts, pitcher_dicts)
+
     result = {
         "meta_projection": {
             "gameYear": game_year,
@@ -1840,6 +1874,7 @@ def build_dashboard(
                 "pitchers": len(pitcher_dicts),
             },
             "csvPresence": _detect_csv_presence(player_dir),
+            "warColor": war_color,
             "progressCurve": {
                 "hit": progress_curve_hit,
                 "sp": progress_curve_sp,

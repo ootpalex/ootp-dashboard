@@ -10,6 +10,7 @@ import pandas as pd
 
 from src.aggregators._shared import (
     _compute_woba_from_aggregates,
+    compute_runs_per_win,
     _pa_fractions_by_hand,
     _weighted_mean,
 )
@@ -123,7 +124,9 @@ def compute_hitting_constants(inputs) -> HitterLeagueParams:
 
         # League measurements
         lg_woba=woba["lg_woba"],
-        waa_const=10.07272219530025,  # Computed in pitching calc
+        # Per-league runs-per-win from the same overall pitching data the pitch
+        # aggregator uses — keeps hitter & pitcher WAR on one scale per league.
+        waa_const=compute_runs_per_win(inputs.pitching_data),
         pa=600.0,
         pa_c=500.0,
         ip=1200.0,

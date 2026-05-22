@@ -14,8 +14,9 @@ from src.aggregators._shared import (
     _compute_woba_from_aggregates,
     _pa_fractions_by_hand,
     _weighted_mean,
+    compute_runs_per_win,
 )
-from src.data_points import PitcherLeagueParams
+from src.data_points import FG_REPL_WPG_RP, FG_REPL_WPG_SP, PitcherLeagueParams
 
 
 def _aggregate_pitching(df: pd.DataFrame) -> dict:
@@ -229,8 +230,15 @@ def compute_pitching_constants(inputs) -> PitcherLeagueParams:
     ra9_rp = rp_r / rp_ip * 9 if rp_ip > 0 else 0.0
 
     # --- WAA constant: RPW = lg_RA/9 × 1.5 + 3 (FanGraphs formula) ---
-    lg_ra9 = overall_r / overall_ip * 9 if overall_ip > 0 else 0.0
-    waa_const = lg_ra9 * 1.5 + 3.0
+    waa_const = compute_runs_per_win(inputs.pitching_data)
+
+    # --- WAR replacement-level RA/9 (FG-calibrated, scaled by this league) ---
+    # Replacement = a fixed standard (FG: 0.12 W/9IP starters, 0.03 relievers)
+    # applied with THIS league's runs-per-win, so the replacement RA/9 offset is
+    # WPG * waa_const (the IP/9 cancels). Recomputed per league here so it tracks
+    # each league's run environment instead of using a stale hardcoded baseline.
+    ra9_repl_sp = ra9_sp + FG_REPL_WPG_SP * waa_const
+    ra9_repl_rp = ra9_rp + FG_REPL_WPG_RP * waa_const
 
     pitcher_r_per_pa = overall_r / overall_bf if overall_bf > 0 else 0.0
 
@@ -262,6 +270,10 @@ def compute_pitching_constants(inputs) -> PitcherLeagueParams:
         # RA/9 baselines
         ra9_sp=ra9_sp,
         ra9_rp=ra9_rp,
+
+        # RA/9 replacement baselines (FG 0.12/0.03 W·9IP × this league's RPW)
+        ra9_repl_sp=ra9_repl_sp,
+        ra9_repl_rp=ra9_repl_rp,
 
         # HLD baselines
         avg_hld_sp=sp_rating_avgs.get("hld", 55.96),

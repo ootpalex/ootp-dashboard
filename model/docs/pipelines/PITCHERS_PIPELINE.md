@@ -289,6 +289,42 @@ WAA_wtd = (ra9_baseline - RA/9_wtd) × (IP / 9) / waa_const
 
 **Test targets:** ~25–30 tests covering wOBA with SB/CS, RA/9 quadratic, WAA, weighted stats
 
+#### Phase 4b: WAR (replacement-level, added post-spreadsheet)
+
+WAR was **not** part of the original spreadsheet (which only produced WAA — Wins Above
+*Average*). It was added later in the Python pipeline. WAR mirrors WAA but measures against a
+**replacement** RA/9 instead of the league average:
+```
+WAR = (ra9_repl - RA/9) × (IP / 9) / waa_const
+```
+
+**Replacement level is FanGraphs-calibrated and derived per league.** FG sets replacement as a
+fixed wins-per-9-innings standard — **0.12 for starters, 0.03 for relievers** (from a
+replacement team winning ~.294 → ~1000 WAR / 30 teams, split 57/43). We apply it with *this
+league's own* runs-per-win, so the replacement RA/9 offset is `WPG × waa_const` (the IP/9
+cancels):
+```
+ra9_repl_sp = ra9_sp + 0.12 × waa_const     # avg full-season SP ≈ +2.47 WAR
+ra9_repl_rp = ra9_rp + 0.03 × waa_const     # avg full-season RP ≈ +0.23 WAR
+```
+These are computed in `compute_pitching_constants()` (`aggregators/pitch_aggregator.py`) from
+each league's `ra9_sp`/`ra9_rp`/`waa_const`, using the `FG_REPL_WPG_SP` / `FG_REPL_WPG_RP`
+constants in `data_points.py`. The hitter side is symmetric: replacement is the FG-standard ~20
+runs/600 PA, scaled by the same per-league `waa_const` (≈ +1.97 for an average regular). Per-
+player WAR is league-size-invariant (each team distributes the same WAR over a fixed schedule),
+matching how real WAR holds the .294 standard constant across team counts/eras.
+
+> **History / fixed bug:** before this, `ra9_repl_sp`/`ra9_repl_rp` were hardcoded OOTP26
+> baseline defaults (and the hitter `waa_const` was hardcoded too), so they did **not** track a
+> league's run environment — stale for any non-baseline league. The targets were also a
+> hand-picked +1.5/+0.5 (mislabeled "FG-standard"); the real FG levels are +2.47/+0.23.
+
+**Color scale:** the frontend `warStyle()` colors WAR on a 20-80 z-scale. Its mean/std are
+calibrated **per league** from that league's MLB-level WAR distribution and embedded in the
+dashboard at `meta.warColor = {mean, std, n}` (`export._compute_war_color`); the SPA reads it
+via `setWarCalibration()`. A compressed-talent league (e.g. SSB: std ≈ 1.3) thus gets a tighter
+color scale than a wider one (BLM: std ≈ 2.0).
+
 ---
 
 ### Phase 5: Prospect Stats — COMPLETE (via `src/export.py`)

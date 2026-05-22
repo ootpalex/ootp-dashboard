@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from src.ballparks import NormalizedAdjustments, neutral_adjustments
-from src.data_points import DEFAULT_PITCHER_DP
+from src.data_points import DEFAULT_PITCHER_DP, FG_REPL_WPG_RP, FG_REPL_WPG_SP
 from src.pitchers import (
     _compute_park_mults,
     _stu_delta_rp,
@@ -253,7 +253,9 @@ class TestParkMultsHandedness:
 class TestPitcherWAR:
     """Verify SP/RP WAR columns are emitted with the correct constant offset
     from WAA. WAR − WAA is exactly (ra9_repl − ra9_base) * (ip/9) / waa_const
-    for any pitcher, which evaluates to 1.5 wins (SP) / 0.5 wins (RP)."""
+    for any pitcher. With the FanGraphs-calibrated replacement (0.12 / 0.03 wins
+    per 9 IP, applied per-league via waa_const), that credit evaluates to
+    0.12 * ip_sp/9 for an average SP and 0.03 * ip_rp/9 for an average RP."""
 
     def _expected_sp_credit(self) -> float:
         lp = dp.league
@@ -263,13 +265,19 @@ class TestPitcherWAR:
         lp = dp.league
         return (lp.ra9_repl_rp - lp.ra9_rp) * (lp.ip_rp / 9.0) / lp.waa_const
 
-    def test_constants_yield_15_war_for_average_sp(self):
-        """The SP replacement constant is calibrated for 1.5 WAR."""
-        assert self._expected_sp_credit() == pytest.approx(1.5, abs=1e-6)
+    def test_avg_sp_earns_fg_starter_replacement(self):
+        """Average full-season SP credit = FG starter level (0.12 W per 9 IP)."""
+        lp = dp.league
+        assert self._expected_sp_credit() == pytest.approx(
+            FG_REPL_WPG_SP * lp.ip_sp / 9.0, abs=1e-6
+        )
 
-    def test_constants_yield_05_war_for_average_rp(self):
-        """The RP replacement constant is calibrated for 0.5 WAR."""
-        assert self._expected_rp_credit() == pytest.approx(0.5, abs=1e-6)
+    def test_avg_rp_earns_fg_reliever_replacement(self):
+        """Average full-season RP credit = FG reliever level (0.03 W per 9 IP)."""
+        lp = dp.league
+        assert self._expected_rp_credit() == pytest.approx(
+            FG_REPL_WPG_RP * lp.ip_rp / 9.0, abs=1e-6
+        )
 
     def test_sp_war_minus_waa_is_constant(self):
         """For any SP, WAR − WAA equals the SP replacement credit."""

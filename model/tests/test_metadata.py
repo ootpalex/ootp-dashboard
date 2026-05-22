@@ -43,6 +43,8 @@ from src.metadata import (
     load_metadata_inputs,
 )
 from src.data_points import (
+    FG_REPL_WPG_RP,
+    FG_REPL_WPG_SP,
     FieldingParams,
     HitterDataPoints,
     HitterLeagueParams,
@@ -372,6 +374,45 @@ class TestComputePitchingConstants:
         result = compute_pitching_constants(inputs)
         expected = PitcherLeagueParams()
         assert result.waa_const == pytest.approx(expected.waa_const, rel=1e-4)
+
+    def test_ra9_replacement_derived_from_league(self, inputs):
+        """Replacement RA/9 = league RA/9 + FG W-per-9IP × the league's own RPW."""
+        r = compute_pitching_constants(inputs)
+        assert r.ra9_repl_sp == pytest.approx(
+            r.ra9_sp + FG_REPL_WPG_SP * r.waa_const, rel=1e-9
+        )
+        assert r.ra9_repl_rp == pytest.approx(
+            r.ra9_rp + FG_REPL_WPG_RP * r.waa_const, rel=1e-9
+        )
+        # On the OOTP26 baseline data it matches the documented fallback defaults.
+        exp = PitcherLeagueParams()
+        assert r.ra9_repl_sp == pytest.approx(exp.ra9_repl_sp, rel=1e-4)
+        assert r.ra9_repl_rp == pytest.approx(exp.ra9_repl_rp, rel=1e-4)
+
+    def test_ra9_replacement_tracks_run_environment(self, inputs):
+        """Regression for the staleness bug: replacement must move with a changed
+        run environment, not stay pinned to a hardcoded baseline."""
+        def scale_runs(df, k):
+            df = df.copy()
+            df["R"] = pd.to_numeric(df["R"], errors="coerce") * k
+            return df
+
+        hotter = dataclasses.replace(
+            inputs,
+            pitching_data=scale_runs(inputs.pitching_data, 1.25),
+            sp_data=scale_runs(inputs.sp_data, 1.25),
+            rp_data=scale_runs(inputs.rp_data, 1.25),
+        )
+        base = compute_pitching_constants(inputs)
+        hot = compute_pitching_constants(hotter)
+        # the environment actually changed...
+        assert hot.ra9_sp > base.ra9_sp
+        assert hot.waa_const > base.waa_const
+        # ...and replacement followed it (would be flat if stale)
+        assert hot.ra9_repl_sp > base.ra9_repl_sp
+        assert hot.ra9_repl_sp == pytest.approx(
+            hot.ra9_sp + FG_REPL_WPG_SP * hot.waa_const, rel=1e-9
+        )
 
     def test_workload(self, inputs):
         result = compute_pitching_constants(inputs)

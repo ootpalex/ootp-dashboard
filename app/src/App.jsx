@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, Component } from "react";
-import { S } from "./theme.js";
+import { S, setWarCalibration } from "./theme.js";
 import { loadLeagueSettings } from "./utils/settings.js";
 import { useLocalStorage, LeagueSlugContext } from "./hooks/useLocalStorage.js";
 import { DataLoader } from "./components/shared.jsx";
@@ -97,6 +97,9 @@ export default function App() {
         if (!resp.ok) throw new Error(`Dashboard JSON not found at ${dashboardUrl}`);
         const dashboard = await resp.json();
         if (!cancelled) {
+          // Calibrate the WAR color scale to THIS league's MLB distribution
+          // (pipeline-embedded). Resets to the built-in default when absent.
+          setWarCalibration(dashboard.meta?.warColor);
           setRawData({
             rawHitters: dashboard.hitters,
             rawPitchers: dashboard.pitchers,

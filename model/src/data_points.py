@@ -33,6 +33,25 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# WAR replacement level (FanGraphs-calibrated, applied per-league)
+# ---------------------------------------------------------------------------
+# Replacement level is a fixed, once-calibrated standard (a replacement team
+# wins ~.294 → ~1000 WAR / 30 teams, split 57% hitting / 43% pitching). For
+# pitchers FanGraphs publishes it as wins-per-9-innings: 0.12 for a pure
+# starter, 0.03 for a pure reliever. We apply these per league by scaling with
+# each league's own runs-per-win (waa_const), so the replacement RA/9 offset is
+# WPG * waa_const (the IP/9 cancels):
+#     ra9_repl_sp = ra9_sp + FG_REPL_WPG_SP * waa_const
+#     ra9_repl_rp = ra9_rp + FG_REPL_WPG_RP * waa_const
+# This is size-invariant by construction (per-player WAR doesn't depend on team
+# count — only on the league's run environment). See
+# library.fangraphs.com/war/calculating-war-pitchers/ and
+# blogs.fangraphs.com/unifying-replacement-level/.
+FG_REPL_WPG_SP: float = 0.12   # replacement level, wins per 9 IP — starters
+FG_REPL_WPG_RP: float = 0.03   # replacement level, wins per 9 IP — relievers
+
+
+# ---------------------------------------------------------------------------
 # Helper coefficient types
 # ---------------------------------------------------------------------------
 
@@ -676,13 +695,13 @@ class PitcherLeagueParams:
     ra9_rp: float = 4.642996890252694    # Metadata T42 — RP RA/9 baseline
 
     # ── RA/9 replacement-level baselines (for WAR) ──────────────────────────
-    # Solved so a league-average full-time pitcher yields the FG-standard
-    # 1.5 WAR (SP) / 0.5 WAR (RP):
-    #   ra9_repl_sp = ra9_sp + 1.5 * waa_const * 9 / ip_sp
-    #   ra9_repl_rp = ra9_rp + 0.5 * waa_const * 9 / ip_rp
-    # If ra9_sp/rp, ip_sp/rp, or waa_const change, re-derive these.
-    ra9_repl_sp: float = 5.494352736044218   # SP replacement-level RA/9
-    ra9_repl_rp: float = 5.294713623609497   # RP replacement-level RA/9
+    # FALLBACK ONLY. compute_pitching_constants() recomputes these per league as
+    #   ra9_repl_sp = ra9_sp + FG_REPL_WPG_SP * waa_const   (FG starter = 0.12 W/9)
+    #   ra9_repl_rp = ra9_rp + FG_REPL_WPG_RP * waa_const   (FG reliever = 0.03 W/9)
+    # so they track each league's RA/9 + runs-per-win. The defaults below are the
+    # OOTP26 baseline values, kept only for code paths that build params directly.
+    ra9_repl_sp: float = 5.969898074453844   # = 4.7611714110178145 + 0.12*10.07272219530025
+    ra9_repl_rp: float = 4.945178556111702   # = 4.642996890252694  + 0.03*10.07272219530025
 
     # ── HLD baselines for SBA/SB% cubic polynomials (Pitcher DP I column) ──
     avg_hld_sp: float = 55.96328035235541   # I2 — SP HLD baseline
