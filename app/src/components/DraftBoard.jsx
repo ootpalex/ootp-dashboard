@@ -3,10 +3,10 @@ import * as Papa from "papaparse";
 import { S } from "../theme.js";
 import { posColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle, zToColor, signColor, signShort } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows, rankSuffix } from "../utils/helpers.js";
-import { PER_PAGE, CAP_GROUPS, CAP_GROUP_DISPLAY_ORDER } from "../utils/constants.js";
+import { PER_PAGE, CAP_TREE_WALK, POS_TO_LEAF, LEAF_CHAINS, SMART_RANK_TUNING } from "../utils/constants.js";
 import { getStatsplusBase } from "../utils/settings.js";
 import { calcOrgNeed } from "../utils/strength.js";
-import { effectiveDemand } from "../utils/futureValue.js";
+import { effectiveDemand, computeCoverageFloorContext } from "../utils/futureValue.js";
 import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
 import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
@@ -24,13 +24,30 @@ const DEFAULT_TOGGLES = {
   signability: false,
   injury: false,
   intangibles: false,
+  coverage: true,
 };
 const DEFAULT_TOTAL_PICKS = 25;
+// Caps for every node: { soft, hard } from roster shares (ceil(pct × picks)),
+// or "open" for no-max nodes (SP/MI/CF — bounded only by their parent's cap).
 const defaultCaps = (totalPicks) => {
   const c = {};
-  CAP_GROUPS.forEach((g) => { c[g.id] = Math.max(1, Math.ceil(g.pct * totalPicks)); });
+  CAP_TREE_WALK.forEach((n) => {
+    c[n.id] = n.noMax ? "open" : {
+      soft: Math.max(1, Math.ceil((n.softPct ?? 0) * totalPicks)),
+      hard: Math.max(1, Math.ceil((n.hardPct ?? 0) * totalPicks)),
+    };
+  });
   return c;
 };
+// True when a stored caps blob predates the soft/hard tree (missing nodes, or
+// the old single-number / "open"-only shape).
+const capsNeedMigration = (caps) =>
+  !caps || typeof caps !== "object" ||
+  CAP_TREE_WALK.some((n) => {
+    const v = caps[n.id];
+    if (n.noMax) return v !== "open";
+    return !v || typeof v !== "object" || v.soft == null || v.hard == null;
+  });
 
 // Shared stepper-button style (used by Total Picks + the position-cap +/−).
 const STEP_BTN = {
@@ -82,6 +99,20 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
   const [toggles, setToggles] = useScopedLocalStorage("ssb_draft_toggles", DEFAULT_TOGGLES, JSON_OPTS);
   const [totalPicks, setTotalPicks] = useScopedLocalStorage("ssb_draft_total_picks", DEFAULT_TOTAL_PICKS, JSON_OPTS);
   const [caps, setCaps] = useScopedLocalStorage("ssb_draft_caps", defaultCaps(DEFAULT_TOTAL_PICKS), JSON_OPTS);
+  // Per-pick WAR penalty steps (over soft / over hard). Defaults to the
+  // calibrated SMART_RANK_TUNING magnitudes; editable behind the ✎ pencil.
+  const [capPenalty, setCapPenalty] = useScopedLocalStorage("ssb_draft_cap_penalty",
+    { soft: SMART_RANK_TUNING.CAP_SOFT_STEP, hard: SMART_RANK_TUNING.CAP_HARD_STEP }, JSON_OPTS);
+  // Per-position minimum-coverage targets (the floor MIN-puller). Defaults to the
+  // calibrated SMART_RANK_TUNING.FLOOR_MINS (C/MI/CF = 1); editable per-row behind
+  // the ✎ pencil. 0 = no floor at that position.
+  const [floorMins, setFloorMins] = useScopedLocalStorage("ssb_draft_floor_mins",
+    { ...SMART_RANK_TUNING.FLOOR_MINS }, JSON_OPTS);
+  // When the min-coverage nudge starts engaging: by position scarcity (≤ N quality
+  // players left at the spot) and/or by draft urgency (≤ N of your picks left).
+  // Defaults to the calibrated SMART_RANK_TUNING values; editable behind the ✎ pencil.
+  const [floorTuning, setFloorTuning] = useScopedLocalStorage("ssb_draft_floor_tuning",
+    { cushionS: SMART_RANK_TUNING.FLOOR_CUSHION_S, picksStart: SMART_RANK_TUNING.FLOOR_PICKS_START }, JSON_OPTS);
   const [myManualPicks, setMyManualPicks] = useScopedLocalStorage("ssb_draft_my_picks", [], JSON_OPTS);
   const [posFilter, setPosFilter] = useScopedLocalStorage("ssb_draft_pos_filter", [], JSON_OPTS);
   const [sort, setSort] = useScopedLocalStorage("ssb_draft_sort", { col: "_rank", dir: "desc" }, JSON_OPTS);
@@ -93,10 +124,11 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
   const [showManual, setShowManual] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [editCaps, setEditCaps] = useState(false);  // pencil toggle: show cap steppers
 
   const setToggle = (key) => setToggles((t) => ({ ...t, [key]: !t[key] }));
 
-  // Recompute caps from CAP_GROUPS proportions whenever totalPicks changes —
+  // Recompute caps from the cap-tree proportions whenever totalPicks changes —
   // but skip the very first render so persisted user-tuned caps aren't
   // clobbered on mount.
   const isFirstTotalPicksRender = useRef(true);
@@ -108,6 +140,38 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
     setCaps(defaultCaps(totalPicks));
   }, [totalPicks, setCaps]);
   const resetCapsToProportions = () => setCaps(defaultCaps(totalPicks));
+  // Penalty-step editing (over soft / over hard), clamped ≥ 0.
+  const adjPen = (key, delta) => setCapPenalty((p) => ({
+    ...p, [key]: Math.max(0, Math.round((p[key] + delta) * 100) / 100),
+  }));
+  const resetCapPenalty = () => setCapPenalty({ soft: SMART_RANK_TUNING.CAP_SOFT_STEP, hard: SMART_RANK_TUNING.CAP_HARD_STEP });
+  // Per-position minimum editing, clamped ≥ 0.
+  const adjMin = (leafId, delta) => setFloorMins((m) => ({ ...m, [leafId]: Math.max(0, (m[leafId] ?? 0) + delta) }));
+  const resetFloorMins = () => setFloorMins({ ...SMART_RANK_TUNING.FLOOR_MINS });
+  // Min-coverage trigger editing (clamped ≥ 1).
+  const adjFloorTuning = (key, delta) => setFloorTuning((t) => ({ ...t, [key]: Math.max(1, (t[key] ?? 0) + delta) }));
+  const resetFloorTuning = () => setFloorTuning({ cushionS: SMART_RANK_TUNING.FLOOR_CUSHION_S, picksStart: SMART_RANK_TUNING.FLOOR_PICKS_START });
+
+  // Backfill any DEFAULT_TOGGLES key missing from a persisted toggles blob (so
+  // toggles added later — e.g. `coverage` — default ON for existing leagues).
+  useEffect(() => {
+    setToggles((t) => {
+      let changed = false;
+      const merged = { ...t };
+      Object.keys(DEFAULT_TOGGLES).forEach((k) => {
+        if (!(k in merged)) { merged[k] = DEFAULT_TOGGLES[k]; changed = true; }
+      });
+      return changed ? merged : t;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // One-time migration: a caps blob saved before the hierarchical tree lacks the
+  // parent nodes (and used different leaf ids). Reinitialize from defaults.
+  useEffect(() => {
+    if (capsNeedMigration(caps)) setCaps(defaultCaps(totalPicks));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Draft demands (page-level controls mirror leagueSettings — already
   // per-league via the league_settings localStorage key).
@@ -294,21 +358,48 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
   }, [allMyPicks, demandsOn]);
   const remaining = budget - spent;
 
-  // Cap status from allMyPicks
+  // Cap status from allMyPicks — per cap-tree NODE. Each pick increments its
+  // leaf AND every ancestor (subtree counts), so parents (Pitchers/Hitters/
+  // INF/OF) carry the running total of their descendants. `cap` is 0 for no-max
+  // ("open") nodes so capGroupPenalty treats them as unpenalized.
   const capStatus = useMemo(() => {
+    const counts = {};
+    allMyPicks.forEach((d) => {
+      // Charge each pick at the cap leaf the board stamped on it (_primaryLeaf =
+      // hardest-tier eligible position), incrementing that leaf and all its
+      // ancestors. Fall back to the listed position for un-enriched API picks.
+      const leaf = d._primaryLeaf || POS_TO_LEAF[String(d.meta?.pos || d.POS || d.Position || "").replace("*", "")];
+      if (!leaf) return;
+      (LEAF_CHAINS[leaf] || [leaf]).forEach((nodeId) => { counts[nodeId] = (counts[nodeId] || 0) + 1; });
+    });
     const status = {};
-    CAP_GROUPS.forEach((g) => {
-      const picked = allMyPicks.filter((d) => {
-        const pos = d.meta?.pos || d.POS || d.Position || "";
-        return g.positions.includes(pos);
-      }).length;
-      status[g.id] = { picked, cap: caps[g.id], pct: caps[g.id] > 0 ? picked / caps[g.id] : 0 };
+    CAP_TREE_WALK.forEach((n) => {
+      const raw = caps[n.id];
+      const open = raw === "open" || raw == null;
+      const soft = open ? 0 : (raw.soft || 0);
+      const hard = open ? 0 : (raw.hard || soft);
+      const picked = counts[n.id] || 0;
+      status[n.id] = { picked, soft, hard, open };
     });
     return status;
   }, [allMyPicks, caps]);
 
-  // draftContext: surface what applySmartRank's cap + signability helpers need.
-  const draftContext = useMemo(() => ({ capStatus, budget, spent, demandsOn }), [capStatus, budget, spent, demandsOn]);
+  // Remaining picks (the floor's picks-net) — total picks minus those already made.
+  const picksLeft = useMemo(() => Math.max(0, totalPicks - allMyPicks.length), [totalPicks, allMyPicks]);
+  // Coverage-floor context: per-leaf min-coverage bonus, precomputed once over the
+  // available pool (signability-weighted supply). Null when Min Coverage is off.
+  const floorCtx = useMemo(() => (
+    toggles.coverage !== false
+      ? computeCoverageFloorContext(availablePool, {
+          capStatus, picksLeft, floorMins,
+          cushionS: floorTuning.cushionS, picksStart: floorTuning.picksStart,
+          demandsOn, budget, spent,
+        })
+      : null
+  ), [toggles.coverage, availablePool, capStatus, picksLeft, floorMins, floorTuning, demandsOn, budget, spent]);
+
+  // draftContext: surface what applySmartRank's cap + signability + floor helpers need.
+  const draftContext = useMemo(() => ({ capStatus, capPenalty, budget, spent, demandsOn, floorCtx }), [capStatus, capPenalty, budget, spent, demandsOn, floorCtx]);
 
   // Custom sort for the demand-related columns:
   // - DEM (_demSort): Impossible has no numeric demand but should sort as the
@@ -333,7 +424,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
     [availablePool, debouncedSearch, posFilter, sort, toggles, orgNeed, curveSettings, draftContext, demandSortCols]);
 
   const { paged, totalPages } = paginateRows(displayPool, page, PER_PAGE);
-  const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.posCaps || toggles.signability || toggles.injury || toggles.intangibles;
+  const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.posCaps || toggles.signability || toggles.injury || toggles.intangibles || toggles.coverage !== false;
   const signabilityAvailable = demandsOn && budget > 0;
 
   return (
@@ -548,7 +639,12 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
               <span style={{ minWidth: 22, textAlign: "center", fontWeight: 700, color: "#e2e8f0", fontSize: 13 }}>{totalPicks}</span>
               <button onClick={() => setTotalPicks((n) => Math.max(1, n + 1))} style={STEP_BTN} title="Increase total picks" aria-label="Increase total picks">+</button>
             </div>
-            <button onClick={resetCapsToProportions} style={{ ...S.pillBtn, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+            <button onClick={() => { resetCapsToProportions(); resetFloorMins(); }} style={{ ...S.pillBtn, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+            <button onClick={() => setEditCaps((v) => !v)}
+              style={{ ...S.pillBtn, borderColor: editCaps ? "#3b82f6" : "#334155", color: editCaps ? "#93c5fd" : "#94a3b8", background: editCaps ? "rgba(59,130,246,0.12)" : "transparent" }}
+              title={editCaps ? "Done editing caps" : "Edit soft / hard caps"} aria-label="Edit caps" aria-pressed={editCaps}>
+              {editCaps ? "✓ Done" : "✎ Edit"}
+            </button>
           </>
         }>
           {myDraftSlots.length > 0 && (
@@ -556,40 +652,156 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
               Auto-detected <strong style={{ color: "#94a3b8" }}>{myDraftSlots.length}</strong> picks for {myTeam} from the draft order.
             </div>
           )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
-            {CAP_GROUP_DISPLAY_ORDER.map((id) => {
-              const g = CAP_GROUPS.find((cg) => cg.id === id);
-              if (!g) return null;
-              const s = capStatus[g.id] || { picked: 0, cap: 0, pct: 0 };
-              const atCap = s.cap > 0 && s.picked >= s.cap;
-              const nearCap = s.pct >= 0.75 && !atCap;
-              const fillPct = Math.min(100, s.pct * 100);
-              const barColor = atCap ? "#ef4444" : nearCap ? "#eab308" : "#22c55e";
-              const valueColor = atCap ? "#f87171" : nearCap ? "#fbbf24" : "#86efac";
-              const adjustCap = (delta) => setCaps((c) => ({ ...c, [g.id]: Math.max(0, (c[g.id] ?? 0) + delta) }));
-              const stepBtn = STEP_BTN;
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 4px", fontSize: 9, color: "#475569" }}>
+            <span style={{ width: 104 }} />
+            <span style={{ width: 18, textAlign: "center" }}>#</span>
+            <span style={{ width: 46, textAlign: "center", color: "#60a5fa" }}>min</span>
+            <span style={{ flex: 1 }}>fill (green ≤ soft · amber overage · red over)</span>
+            <span style={{ width: 46, textAlign: "center" }}>soft</span>
+            <span style={{ width: 46, textAlign: "center", fontWeight: 700, color: "#94a3b8" }}>hard</span>
+            <span style={{ width: 20 }} />
+          </div>
+          {editCaps && (() => {
+            const penStepper = (val, dec, inc, color, lbl, weight = 700) => (
+              <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <button onClick={dec} style={STEP_BTN} title={`Decrease over-${lbl} penalty`} aria-label={`Decrease over-${lbl} penalty`}>−</button>
+                <span style={{ minWidth: 30, textAlign: "center", fontSize: 11, fontWeight: weight, color }}>{fmt(val, 2)}</span>
+                <button onClick={inc} style={STEP_BTN} title={`Increase over-${lbl} penalty`} aria-label={`Increase over-${lbl} penalty`}>+</button>
+              </div>
+            );
+            return (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", margin: "0 0 6px", background: "rgba(59,130,246,0.07)", border: "1px solid #1e3a5f", borderRadius: 4, fontSize: 10, color: "#94a3b8" }}>
+                <span style={{ fontWeight: 600 }}>WAR penalty / pick over —</span>
+                <span>soft</span>
+                {penStepper(capPenalty.soft, () => adjPen("soft", -0.25), () => adjPen("soft", 0.25), "#cbd5e1", "soft", 500)}
+                <span style={{ marginLeft: 4, fontWeight: 700, color: "#cbd5e1" }}>hard</span>
+                {penStepper(capPenalty.hard, () => adjPen("hard", -0.5), () => adjPen("hard", 0.5), "#e2e8f0", "hard", 800)}
+                <button onClick={resetCapPenalty} style={{ ...S.pillBtn, marginLeft: "auto", padding: "1px 8px", fontSize: 10, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+              </div>
+            );
+          })()}
+          {editCaps && (() => {
+            const tuneStepper = (val, dec, inc, lbl) => (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+                <button onClick={dec} style={STEP_BTN} title={`Decrease ${lbl}`} aria-label={`Decrease ${lbl}`}>−</button>
+                <span style={{ minWidth: 16, textAlign: "center", fontSize: 11, fontWeight: 700, color: "#93c5fd" }}>{val}</span>
+                <button onClick={inc} style={STEP_BTN} title={`Increase ${lbl}`} aria-label={`Increase ${lbl}`}>+</button>
+              </span>
+            );
+            return (
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, padding: "5px 8px", margin: "0 0 6px", background: "rgba(59,130,246,0.07)", border: "1px solid #1e3a5f", borderRadius: 4, fontSize: 10, color: "#94a3b8" }}>
+                <span style={{ fontWeight: 600, color: "#60a5fa" }}>Min coverage — start nudging when</span>
+                <span>a position has ≤</span>
+                {tuneStepper(floorTuning.cushionS, () => adjFloorTuning("cushionS", -1), () => adjFloorTuning("cushionS", 1), "players-left trigger")}
+                <span>quality players left, or you have ≤</span>
+                {tuneStepper(floorTuning.picksStart, () => adjFloorTuning("picksStart", -1), () => adjFloorTuning("picksStart", 1), "picks-left trigger")}
+                <span>of your picks left</span>
+                <button onClick={resetFloorTuning} style={{ ...S.pillBtn, marginLeft: "auto", padding: "1px 8px", fontSize: 10, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+              </div>
+            );
+          })()}
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {CAP_TREE_WALK.map((n) => {
+              const s = capStatus[n.id] || { picked: 0, soft: 0, hard: 0, open: true };
+              const isOpen = s.open;
+              const over = !isOpen && s.picked > s.hard;
+              const inOverage = !isOpen && !over && s.picked > s.soft;
+              // Min-coverage target for this leaf (0 = no floor). When the floor is
+              // active and the minimum isn't met yet, the count reads RED (urgency).
+              const minVal = floorMins[n.id] ?? 0;
+              const unmetFloor = toggles.coverage !== false && minVal > 0 && s.picked < minVal;
+              // Red if the floor is unmet; else neutral until you've drafted one; no-max
+              // rows are always green; otherwise green ≤ soft, amber overage, red over hard.
+              const valueColor = unmetFloor ? "#f87171"
+                : s.picked === 0 ? "#64748b"
+                : isOpen ? "#86efac"
+                : over ? "#f87171" : inOverage ? "#fbbf24" : "#86efac";
+              const hard = s.hard || 1;
+              const adjustSoft = (delta) => setCaps((c) => {
+                const v = c[n.id]; if (v === "open" || !v) return c;
+                const soft = Math.max(1, Math.min(v.hard, v.soft + delta));
+                return { ...c, [n.id]: { soft, hard: Math.max(soft, v.hard) } };
+              });
+              const adjustHard = (delta) => setCaps((c) => {
+                const v = c[n.id]; if (v === "open" || !v) return c;
+                return { ...c, [n.id]: { ...v, hard: Math.max(v.soft, v.hard + delta) } };
+              });
+              const toggleOpen = () => setCaps((c) => c[n.id] === "open"
+                ? { ...c, [n.id]: { soft: Math.max(1, Math.ceil((n.softPct ?? 0.10) * totalPicks)),
+                                    hard: Math.max(1, Math.ceil((n.hardPct ?? 0.12) * totalPicks)) } }
+                : { ...c, [n.id]: "open" });
+              const stepper = (val, dec, inc, color, lbl, weight = 700) => (
+                <div style={{ width: 46, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                  <button onClick={dec} style={STEP_BTN} title={`Decrease ${n.label} ${lbl} cap`} aria-label={`Decrease ${n.label} ${lbl} cap`}>−</button>
+                  <span style={{ minWidth: 12, textAlign: "center", fontSize: 11, fontWeight: weight, color }}>{val}</span>
+                  <button onClick={inc} style={STEP_BTN} title={`Increase ${n.label} ${lbl} cap`} aria-label={`Increase ${n.label} ${lbl} cap`}>+</button>
+                </div>
+              );
               return (
-                <div key={g.id} style={{
-                  background: "rgba(15,23,42,0.4)",
-                  border: `1px solid ${atCap ? "#7f1d1d" : nearCap ? "#854d0e" : "#1e293b"}`,
-                  borderRadius: 6,
-                  padding: "6px 8px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 5,
+                <div key={n.id} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "3px 6px", borderRadius: 4,
+                  background: n.isLeaf ? "transparent" : "rgba(30,41,59,0.45)",
                 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1" }}>{g.label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: valueColor }}>{s.picked}/{caps[g.id] ?? 0}</span>
+                  <span style={{ width: 104, paddingLeft: n.depth * 14, boxSizing: "border-box", fontSize: 11, fontWeight: n.isLeaf ? 600 : 700, color: n.isLeaf ? "#cbd5e1" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.label}</span>
+                  <span style={{ width: 18, textAlign: "center", fontSize: 11, fontWeight: 700, color: valueColor }}>{s.picked}</span>
+                  {/* minimum-coverage target (left of the bar): the floor MIN-puller, edited
+                      like soft/hard. Leaves only; 0 shows as "—". */}
+                  {!n.isLeaf ? (
+                    <span style={{ width: 46 }} />
+                  ) : editCaps ? (
+                    <div style={{ width: 46, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                      <button onClick={() => adjMin(n.id, -1)} style={STEP_BTN} title={`Decrease ${n.label} minimum`} aria-label={`Decrease ${n.label} minimum`}>−</button>
+                      <span style={{ minWidth: 12, textAlign: "center", fontSize: 11, fontWeight: 600, color: minVal > 0 ? "#93c5fd" : "#475569" }}>{minVal}</span>
+                      <button onClick={() => adjMin(n.id, 1)} style={STEP_BTN} title={`Increase ${n.label} minimum`} aria-label={`Increase ${n.label} minimum`}>+</button>
+                    </div>
+                  ) : (
+                    <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 600, color: minVal > 0 ? "#93c5fd" : "#475569" }}>{minVal > 0 ? minVal : "—"}</span>
+                  )}
+                  {/* zoned fill bar (green ≤ soft, amber overage, red over hard) with a soft-cap tick */}
+                  <div style={{ flex: 1, minWidth: 30 }}>
+                    {isOpen ? (
+                      <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: 1.5 }}>NO MAX</div>
+                    ) : (
+                      <div style={{ position: "relative", height: 6, background: "#0f172a", borderRadius: 2, overflow: "hidden" }}>
+                        {/* whole fill tracks the status zone (matches the # color):
+                            green ≤ soft, amber soft→hard, red over hard; width fills
+                            to the hard cap (clamped) so it reads as a status meter. */}
+                        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0,
+                          width: `${Math.min(s.picked, hard) / hard * 100}%`,
+                          background: over ? "#ef4444" : inOverage ? "#f59e0b" : "#22c55e",
+                          transition: "width 120ms ease, background 120ms ease" }} />
+                        {/* soft-cap reference tick */}
+                        <div style={{ position: "absolute", top: 0, bottom: 0, left: `${s.soft / hard * 100}%`, width: 1, background: "#94a3b8" }} />
+                      </div>
+                    )}
                   </div>
-                  <div style={{ height: 4, background: "#0f172a", borderRadius: 2, overflow: "hidden" }}>
-                    <div style={{ width: `${fillPct}%`, height: "100%", background: barColor, borderRadius: 2, transition: "width 0.2s" }} />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
-                    <button onClick={() => adjustCap(-1)} style={stepBtn} title="Decrease cap" aria-label={`Decrease ${g.label} cap`}>−</button>
-                    <span style={{ fontSize: 9, color: "#64748b", letterSpacing: 0.3 }}>CAP</span>
-                    <button onClick={() => adjustCap(1)} style={stepBtn} title="Increase cap" aria-label={`Increase ${g.label} cap`}>+</button>
-                  </div>
+                  {/* caps: read-only (view) or steppers + no-max toggle (edit mode via the ✎ pencil) */}
+                  {editCaps ? (
+                    <>
+                      {isOpen
+                        ? <span style={{ width: 92 }} />
+                        : <>
+                            {stepper(s.soft, () => adjustSoft(-1), () => adjustSoft(1), "#cbd5e1", "soft", 500)}
+                            {stepper(s.hard, () => adjustHard(-1), () => adjustHard(1), "#e2e8f0", "hard", 800)}
+                          </>}
+                      <button onClick={toggleOpen} style={{ ...STEP_BTN, color: isOpen ? "#38bdf8" : "#64748b" }}
+                        title={isOpen ? `Set caps for ${n.label}` : `Remove caps (no max) for ${n.label}`}
+                        aria-label={isOpen ? `Set caps for ${n.label}` : `Remove caps for ${n.label}`}>{isOpen ? "＋" : "∞"}</button>
+                    </>
+                  ) : isOpen ? (
+                    <>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, color: "#475569" }}>—</span>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, color: "#475569" }}>—</span>
+                      <span style={{ width: 20 }} />
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 500, color: "#cbd5e1" }}>{s.soft}</span>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 800, color: "#e2e8f0" }}>{s.hard}</span>
+                      <span style={{ width: 20 }} />
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -601,6 +813,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
             <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
             <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
             <Toggle label="Position Caps" description="Penalize players whose eligible positions are filling up — falls off as they have alternative landing spots" checked={toggles.posCaps} onChange={() => setToggle("posCaps")} />
+            <Toggle label="Min Coverage" description="Nudge toward securing at least one at scarce premium spots (C / MI / CF). Fires as the position thins out or your picks run low — stays off the top of the draft." checked={toggles.coverage !== false} onChange={() => setToggle("coverage")} />
             <Toggle
               label="Signability"
               description={signabilityAvailable

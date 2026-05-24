@@ -6,11 +6,12 @@ import { resolveContractYear } from "./contracts.js";
 import { detectSeasonDay, detectLimbo, detectArbSigned, projectSuperTwo } from "./service.js";
 import { parseContractStatus, calcR5Projection, calcMLFA, getOptionsInfo } from "./eligibility.js";
 
-// Pitcher _war for roster planning uses the SCALED best-of-role value so that
-// downstream sort / FV calc / crunch decisions are on a single comparable
-// scale. Display surfaces (CompactPlayerRow rotation/bullpen panels) override
-// this with role-locked raw values via depth.js. Falls back to legacy
-// SP-eligibility logic if Dashboard enrichment is missing (e.g. unit tests).
+// Pitcher _war for roster planning uses the best-of-role value for downstream
+// sort / FV calc / crunch decisions. RP values are unscaled under WAR
+// (scaleRpWarP is a no-op, kept as the WAA seam). Display surfaces
+// (CompactPlayerRow rotation/bullpen panels) override this with role-locked raw
+// values via depth.js. Falls back to legacy SP-eligibility logic if Dashboard
+// enrichment is missing (e.g. unit tests).
 function getPlayerWar(p) {
   if (p._type === "pitcher" || p.meta?.isPitcher) {
     if (p._warSort != null) return p._warSort;

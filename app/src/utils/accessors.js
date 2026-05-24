@@ -352,20 +352,22 @@ export const scaleRpWaaP = (v, threshold = RP_SCALE_THRESHOLD) => {
   return v * (1 + (ratio - 1) * t);
 };
 
-// WAR equivalent — identical scaling logic. Replacement-level WAR for RP
-// is still 0, so "negative WAR" still means "below replacement" — the same
-// negative-only ramp applies.
-export const scaleRpWarP = scaleRpWaaP;
+// WAR is intentionally NOT scaled for relief pitchers. WAR's replacement-runs
+// term already gives SPs ~3x more credit than RPs at full-time IP, so the
+// WAA-era negative-value ramp is redundant under WAR. This passthrough is the
+// seam: scaleRpWaaP above remains the live WAA scaler for a future "show WAA"
+// toggle. Do not re-alias to scaleRpWaaP.
+export const scaleRpWarP = (v) => v;
 
 // Best-of-role decision for a pitcher. Returns:
 //   role        — 'sp' or 'rp'
-//   war,warP    — RAW WAR values for display (positive RP unscaled per scaleRpWarP rule)
-//   warSort     — scaled-to-SP WAR, used as sort key (rp -> scaled, sp -> raw)
-//   warPSort    — scaled-to-SP WAR P, used as sort key
-//   floorSort   — scaled-to-SP floor WAR (for the chosen role) — vestigial
+//   war,warP    — RAW WAR values for display
+//   warSort     — WAR used as sort key (raw for both sp and rp; scaleRpWarP is a no-op)
+//   warPSort    — WAR P used as sort key (raw)
+//   floorSort   — floor WAR for the chosen role (raw) — vestigial
 //   devPct      — pitcher's percentile of cur-WAR within age cohort (from devCurves[role])
 //   devCurve    — the cohort dev curve used for percentile lookup
-//   fv          — always on SP scale (RP FV is computed from scaled inputs)
+//   fv          — risk-adjusted future value from raw cur/pot
 //
 // roleHint: 'best' (default) | 'sp' | 'rp'. 'sp' falls back to RP if the
 // player has no SP eligibility data.
@@ -376,13 +378,16 @@ export const scaleRpWarP = scaleRpWaaP;
 //
 // Why WAR (not WAA): WAR's replacement-runs term gives SPs ~3× more credit
 // than RPs at full-time IP, which is the structural fix for SP-vs-RP value
-// comparisons. Best-role decision now uses WAR P, which means more SPs win
-// the SP-vs-RP race for their best role.
+// comparisons. Because WAR already encodes that, the WAA-era negative-value
+// scaling is gone — scaleRpWarP is now a no-op, so the *Scaled locals below
+// equal their raw RP WAR values. Best-role decision uses WAR P directly.
 export const pickPitcherRole = (p, devCurves = null, curveSettings = null, roleHint = 'best') => {
   const spWar = getSpWar(p);
   const spWarP = getSpWarP(p);
   const rpWar = getRpWar(p);
   const rpWarP = getRpWarP(p);
+  // *Scaled names retained as the seam for a future WAA toggle; scaleRpWarP is
+  // an identity passthrough under WAR, so these are the raw RP WAR values.
   const rpWarScaled = scaleRpWarP(rpWar);
   const rpWarPScaled = scaleRpWarP(rpWarP);
   const spFloor = getSpFloorWar(p);

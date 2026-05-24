@@ -101,32 +101,87 @@ export const DEV_CURVE_RANGES = {
   bandwidth:     { min: 0.1,  max: 1.5,  step: 0.05 },
 };
 
-// Cap group defaults — Phase-2 calibration (2026-05-19), validated via
-// 42-draft simulation across 5 leagues (BLM-ATL/COL/MIA/NYM + SSB 3 classes).
-// Percentages sum to 100%. Each cap is an independent ceiling — a player's
-// primary position counts against ONE cap (no double-counting). The cap
-// penalty system uses player eligibility to find the best "landing spot."
-// Removed DH (effectively never drafted; 1B/DH-eligible prospects fall under
-// CI). Split former CI group into separate 3B/1B caps (asymmetric value:
-// 3B premium, 1B abundant).
-export const CAP_GROUPS = [
-  { id: "SP",  label: "SP",         positions: ["SP"],       pct: 0.30 },
-  { id: "RP",  label: "RP",         positions: ["RP"],       pct: 0.18 },
-  { id: "C",   label: "C",          positions: ["C"],        pct: 0.10 },
-  { id: "MI",  label: "MI (SS/2B)", positions: ["SS", "2B"], pct: 0.12 },
-  { id: "3B",  label: "3B",         positions: ["3B"],       pct: 0.06 },
-  { id: "1B",  label: "1B",         positions: ["1B"],       pct: 0.04 },
-  { id: "CF",  label: "CF",         positions: ["CF"],       pct: 0.12 },
-  { id: "COF", label: "Corner OF",  positions: ["LF", "RF"], pct: 0.09 },
-];
+// Position-cap TREE (2026-05-23) — caps derived from the 26-man MLB roster you're
+// trying to fill. Each capped node carries its roster count; SOFT cap pct =
+// roster/26 (the roster share / target), HARD cap pct = soft × CAP_HARD_MULT
+// (+20%, the "normal talent overage" buffer since you can't draft exactly to
+// need). SP/MI/CF are no-max (failed starters become RP; up-the-middle shifts
+// down the spectrum) and bind only via their parent. Integer caps =
+// ceil(pct × totalPicks). A pick counts into its leaf AND every ancestor; its
+// penalty is the MAX over the chain of a two-tier per-player rule (see
+// SMART_RANK_TUNING / capGroupPenalty). Roster: P13{SP5,RP8} / H13{C2,
+// INF6{MI3,1B1,3B1}, OF5{CF2,cOF2}}. Validated via Leftovers/draft-cap-sim/.
+export const ROSTER_SIZE = 26;
+export const CAP_HARD_MULT = 1.20;
+export const CAP_TREE = {
+  id: "ALL", label: "All", children: [
+    { id: "P", label: "Pitchers", roster: 13, children: [
+      { id: "SP",  label: "SP",         positions: ["SP"],       noMax: true },
+      { id: "RP",  label: "RP",         positions: ["RP"],       roster: 8 },
+    ] },
+    { id: "H", label: "Hitters", roster: 13, children: [
+      { id: "C",   label: "C",          positions: ["C"],        roster: 2 },
+      { id: "INF", label: "INF", roster: 6, children: [
+        { id: "MI",  label: "MI (SS/2B)", positions: ["SS", "2B"], noMax: true },
+        { id: "1B",  label: "1B",         positions: ["1B"],       roster: 1 },
+        { id: "3B",  label: "3B",         positions: ["3B"],       roster: 1 },
+      ] },
+      { id: "OF", label: "OF", roster: 5, children: [
+        { id: "CF",  label: "CF",         positions: ["CF"],       noMax: true },
+        { id: "cOF", label: "Corner OF",  positions: ["LF", "RF"], roster: 2 },
+      ] },
+    ] },
+  ],
+};
 
-// Display order for the Draft Board's Position Caps chip strip — defensive
-// spectrum first (hardest position), corners next, pitchers at the end.
-export const CAP_GROUP_DISPLAY_ORDER = ["C", "CF", "MI", "3B", "COF", "1B", "SP", "RP"];
+// ---- Derived views of CAP_TREE (built once at module load) ----
+// CAP_TREE_WALK: depth-first node list with depth/isLeaf + softPct/hardPct (null
+//   for no-max nodes) for the indented UI + defaultCaps.
+// CAP_LEAVES: leaf nodes (have `positions`) — the per-position relief groups.
+// POS_TO_LEAF: OOTP position string -> leaf id (DH folds into 1B).
+// LEAF_CHAINS: leaf id -> [leaf id, ...ancestor ids] (excludes ALL root) — the
+//   cap chain whose MAX penalty applies to a pick at that leaf.
+export const CAP_TREE_WALK = [];
+export const CAP_LEAVES = [];
+export const POS_TO_LEAF = {};
+export const LEAF_CHAINS = {};
+(function buildCapTreeDerived() {
+  const walk = (node, depth, ancestors) => {
+    const isLeaf = !node.children;
+    const capped = node.id !== "ALL" && !node.noMax && node.roster != null;
+    const softPct = capped ? node.roster / ROSTER_SIZE : null;
+    const hardPct = capped ? softPct * CAP_HARD_MULT : null;
+    if (node.id !== "ALL") {
+      CAP_TREE_WALK.push({ id: node.id, label: node.label, depth, isLeaf,
+        roster: node.roster ?? null, softPct, hardPct,
+        noMax: !capped, positions: node.positions ?? null });
+    }
+    const chain = node.id === "ALL" ? [] : [...ancestors, node.id];
+    if (isLeaf) {
+      CAP_LEAVES.push(node);
+      (node.positions || []).forEach((pos) => { POS_TO_LEAF[pos] = node.id; });
+      LEAF_CHAINS[node.id] = chain;
+    } else {
+      (node.children || []).forEach((c) => walk(c, node.id === "ALL" ? 0 : depth + 1, chain));
+    }
+  };
+  walk(CAP_TREE, 0, []);
+  POS_TO_LEAF.DH = POS_TO_LEAF.DH ?? "1B"; // DH-primary bats fold into 1B
+})();
 
 // Smart-rank tuning. All values are WAR-unit deltas — see applySmartRank.
 // Defaults are first-pass estimates; expect to retune after a real draft.
 export const SMART_RANK_TUNING = {
+  // RP-role adjustment scale. RP WAR/FV is raw and compressed since the 2026-05-23 removal of the
+  // "scaled negative WAR" ramp (a star reliever's FV ceiling is ~+0.6 vs a hitter's ~+6), so the
+  // HIT/SP-calibrated deltas below would swamp a reliever's tiny value. We shrink the talent-relative
+  // deltas (org need, prone, intangibles) for RP-role pitchers by this factor in applySmartRank.
+  // Factor = the IP ratio IP_RP/IP_SP = 69.55/185.47 ≈ 0.375 — the structural cause of the SP-vs-RP
+  // WAR-scale gap. Position caps, signability, and the coverage floor are NOT scaled (roster/budget-
+  // structural; floor is C/MI/CF-only). Derivation + 2-league data:
+  // Leftovers/rp-smart-rank-adjustments/RP_ADJUSTMENT_CALIBRATION.md.
+  RP_ADJUST_SCALE: 0.375,
+
   // Org Positional Need — bonus = scale × maxNeed. As of the 2026-05-19
   // strength rebuild, calcOrgNeed returns need = max(0, -z): 0 at/above league
   // average (no more phantom bonus for average positions), 1.0 at z=-1, 2.0 at
@@ -136,19 +191,25 @@ export const SMART_RANK_TUNING = {
   // formula artificially compressed the deep-weakness tail).
   ORG_NEED_BONUS_SCALE: 0.12,
 
-  // Position Caps — additive penalty driven by the player's best landing spot
-  // (min fill across their eligible cap groups). Gentle slope between START
-  // and 1.0; steep slope past 1.0.
-  // Phase-2 tuning (2026-05-19), revised after 42-draft simulation across
-  // 5 leagues × 7 draft classes: middle-ground curve — start penalizing at
-  // 50% fill (gentle ramp), 0.30 WAR at exactly cap, 2.5 WAR per unit over.
-  // Yields 53% pitcher split (close to 50/50 target) with moderate but
-  // permissive enforcement. Allows talent-driven lean: ~3 WAR gap lets you
-  // go 2-3 over a cap; 5+ WAR gap supports the full 80/20 lopsided scenario.
-  CAP_START: 0.5,
-  CAP_GENTLE_WAR: 0.30,
-  CAP_STEEP_WAR: 2.5,
-  CAP_MAX_WAR: 4.0,
+  // Position Caps — RELIEF model with SOFT/HARD guardrails (2026-05-23).
+  // A player's smart-rank value is the MAX over their eligible cap leaves of
+  // (that leaf's FV − the leaf's CHAIN penalty): they keep the value of their
+  // best eligible position whose cap chain isn't busted (an SS slides his value
+  // to LF when MI is full). The pick COUNTS against his PRIMARY position. 1B/DH
+  // are excluded from relief unless primary (near-universal eligibility).
+  //
+  // Two-tier per-player penalty (calibrated to the other smart-rank deltas:
+  // intangibles ±0.45, Fragile +0.9, Wrecked +2.0, signability ≤3.0):
+  //   below SOFT cap          → 0   (best-player-available; draft to roster share)
+  //   in the soft→hard band   → CAP_SOFT_STEP per player over soft   (gentle ~0.5;
+  //                              the "normal talent overage" zone, easily overridden)
+  //   past the HARD cap       → CAP_HARD_STEP per player over hard    (harsh ~3.0;
+  //                              hard-zone-ONLY — the band cost does NOT carry over)
+  // Evaluated on (alreadyDrafted+1) so the cap-EXCEEDING pick is the one
+  // penalized. Per-player (not cap-relative) so the big guardrails actually bind.
+  // The penalty for a pick = MAX over its leaf→parent chain.
+  CAP_SOFT_STEP: 0.5,
+  CAP_HARD_STEP: 3.0,
 
   // Signability — penalty grows with demand share of *remaining* budget past
   // a no-penalty threshold. Using remaining (not total) means the formula
@@ -216,6 +277,24 @@ export const SMART_RANK_TUNING = {
   // bonus is naturally capped at 3.0 × 0.15 = 0.45 WAR — no separate clamp
   // needed.
   INT_BONUS_WAR: 0.15,
+
+  // Coverage Floor — the MIN-puller that complements the cap MAX-limiter. A small
+  // per-leaf WAR bonus (≤ FLOOR_MAX_BONUS) is added to candidates whose PRIMARY leaf
+  // is still under its minimum, so the board nudges you to secure ≥1 at scarce
+  // premium spots (C / MI / CF) without distorting the top of the draft. Driven by a
+  // DECOUPLED two-cushion urgency, validated in Leftovers/draft-cap-sim/
+  // (coverage_floor_sweep.md): the SCARCITY trigger fires as the WAR-P>0 supply at the
+  // leaf thins toward FLOOR_CUSHION_S; the PICKS net fires as your remaining picks
+  // fall toward FLOOR_PICKS_START. The ramp reaches the full bonus at HALF the fire
+  // point, and the bonus stops once the minimum is met. Tuning locked after the
+  // K=10,000 sweep: lifts MI/CF coverage (whiff ~37→24% / ~27→17% at 20 rounds) while leaving
+  // the first four picks essentially untouched (≤0.3% flipped). FLOOR_MINS is the
+  // default per-position target; the Draft Board persists user overrides.
+  FLOOR_MINS: { C: 1, MI: 1, CF: 1 },
+  FLOOR_CUSHION_S: 12,
+  FLOOR_PICKS_START: 10,
+  FLOOR_MAX_BONUS: 0.5,
+  FLOOR_POWER: 0.5,
 };
 
 // `requires` names a key in dashMeta.csvPresence that must be true for the

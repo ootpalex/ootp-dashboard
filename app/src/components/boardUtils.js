@@ -4,18 +4,66 @@
 import {
   getMaxWar,
   getMaxWarP,
+  getWar,
+  getWarP,
+  getRunsP,
   getRpWar,
+  getRpWarP,
+  getSpWar,
+  getSpWarP,
+  scaleRpWarP,
   isEligible,
   genericSort,
   pickPitcherRole,
   passesPositionFilter,
 } from "../utils/accessors.js";
 import { searchFilter } from "../utils/helpers.js";
-import { HITTER_POS } from "../utils/constants.js";
+import { HITTER_POS, CAP_LEAVES, POS_TO_LEAF, DEF_TIERS } from "../utils/constants.js";
 import {
   applySmartRank,
   devPercentileRank,
 } from "../utils/futureValue.js";
+
+// Cap-charge position for a hitter = the RunsP-best position within the HARDEST
+// defensive tier they're ELIGIBLE in. Unlike _bestPos/calcBestPos there is NO
+// down-tier demotion: a CF-eligible OF charges CF even if he grades better in a
+// corner (he's eligible at CF, so he fills a CF slot, keeping the premium caps
+// engaged). RunsP only breaks ties WITHIN the tier (a 2B/3B guy lands at the one
+// he fields best — e.g. Chris Hall -> 3B).
+function bestPosByTier(h) {
+  for (const tier of DEF_TIERS) {
+    let best = -Infinity, bestPos = null;
+    for (const pos of tier) {
+      if (!isEligible(h, pos)) continue;
+      const v = getRunsP(h, pos);
+      const vv = v == null ? -Infinity : v;
+      if (bestPos === null || vv > best) { best = vv; bestPos = pos; }
+    }
+    if (bestPos !== null) return bestPos;
+  }
+  if (isEligible(h, "DH")) return "DH";
+  return h.meta?.pos ?? h.POS ?? "DH";
+}
+
+// Per-leaf FV inputs for the position-cap RELIEF model: for each cap-tree LEAF
+// the hitter is eligible in, the (cur, pot) WAR of the highest-potential
+// eligible position in that leaf. applySmartRank turns these into per-leaf FVs
+// and keeps the best one whose cap chain isn't full. (The 1B/DH-relief
+// exclusion + chain penalty are enforced in applySmartRank, not here.)
+function hitterGroupFvInputs(h) {
+  const out = {};
+  CAP_LEAVES.forEach((leaf) => {
+    if (!leaf.positions) return;
+    let bestPot = null, bestCur = null;
+    leaf.positions.forEach((pos) => {
+      if (!isEligible(h, pos)) return;
+      const pot = getWarP(h, pos);
+      if (pot != null && (bestPot == null || pot > bestPot)) { bestPot = pot; bestCur = getWar(h, pos); }
+    });
+    if (bestPot != null || bestCur != null) out[leaf.id] = { cur: bestCur, pot: bestPot };
+  });
+  return out;
+}
 
 // `devCurves` is `data.meta.devCurve` ({hit, sp, rp}, WAR-keyed). When supplied,
 // each pool entry gets `_devPct` precomputed for the optional Dev% display column.
@@ -37,18 +85,30 @@ export function buildBoardPool(data, hitterFilter, pitcherFilter, extraFields) {
       _baseValDisplay: maxWARP ?? 0, _currentValDisplay: maxWAR,
       _devPct: devPct, _devCurve: hitCurve,
       _eligiblePositions: eligPos, _poolType: "hitter",
+      _groupFvInputs: hitterGroupFvInputs(h),
+      // Charge against the hardest-tier ELIGIBLE position (keeps premium caps
+      // engaged — a CF-eligible guy charges CF, not a corner), RunsP breaking
+      // ties within the tier (a 2B/3B guy lands at his better glove).
+      _primaryLeaf: POS_TO_LEAF[bestPosByTier(h)] ?? null,
       ...(extraFields ? extraFields(h) : {}),
     };
   });
   const pitPool = data.pitchers.filter(pitcherFilter).map((p) => {
-    // pickPitcherRole returns raw display + scaled sort/floor + role flag.
-    // _baseVal/_currentVal stay scaled (used by applySmartRank + sort).
-    // _baseValDisplay/_currentValDisplay are raw (board cell renderers).
+    // pickPitcherRole returns raw display + sort/floor keys + role flag. Under
+    // WAR the sort keys are raw too (scaleRpWarP is a no-op), so _baseVal/
+    // _currentVal and the *Display fields now carry the same unscaled RP WAR.
     const r = pickPitcherRole(p, devCurves, null, 'best');
     const useRpRole = r.role === 'rp';
-    const baseVal = r.warPSort ?? 0;            // scaled potential
-    const currentVal = r.warSort ?? r.war ?? 0; // scaled current (or raw fallback)
+    const baseVal = r.warPSort ?? 0;            // potential WAR (raw)
+    const currentVal = r.warSort ?? r.war ?? 0; // current WAR (raw)
     const rawRpWar = getRpWar(p);
+    // Per-group inputs for the relief cap model: SP from SP WAR, RP from RP WAR.
+    // scaleRpWarP is an identity passthrough under WAR (kept as the WAA seam).
+    const spWarP = getSpWarP(p);
+    const groupFvInputs = {};
+    if (spWarP != null) groupFvInputs.SP = { cur: getSpWar(p), pot: spWarP };
+    const rpWarPScaled = scaleRpWarP(getRpWarP(p));
+    if (rpWarPScaled != null) groupFvInputs.RP = { cur: scaleRpWarP(rawRpWar), pot: rpWarPScaled };
     return {
       ...p,
       _baseVal: baseVal, _currentVal: currentVal,
@@ -59,6 +119,8 @@ export function buildBoardPool(data, hitterFilter, pitcherFilter, extraFields) {
       _role: r.role,
       _rawCurrentVal: useRpRole ? rawRpWar : null,
       _eligiblePositions: [p.meta?.pos ?? p.POS], _poolType: "pitcher",
+      _groupFvInputs: groupFvInputs,
+      _primaryLeaf: POS_TO_LEAF[String(p._bestPos ?? p.meta?.pos ?? p.POS ?? "").replace("*", "")] ?? (useRpRole ? "RP" : "SP"),
       ...(extraFields ? extraFields(p) : {}),
     };
   });

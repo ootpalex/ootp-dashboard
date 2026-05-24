@@ -21,7 +21,7 @@
 // late-developing high-pot prospects (who don't follow median trajectory).
 // Power-law's gentler shape is preferred for prospect ranking.
 // ============================================================================
-import { DEV_CURVE_DEFAULTS, SMART_RANK_TUNING, CAP_GROUPS } from "./constants.js";
+import { DEV_CURVE_DEFAULTS, SMART_RANK_TUNING, LEAF_CHAINS } from "./constants.js";
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -168,38 +168,67 @@ function computeOrgNeedBonus(player, orgNeed) {
   return SMART_RANK_TUNING.ORG_NEED_BONUS_SCALE * maxNeed;
 }
 
-// Position-cap penalty driven by *this player's* eligible cap groups.
-// bestFill = min(picked/cap across groups the player can land in). A player
-// with no eligible group (rare — e.g. coachless DH outside the DH group)
-// gets 0 penalty. The piecewise shape: 0 below CAP_START, gentle slope to
-// 1.0, steep slope past 1.0. Capped at CAP_MAX_WAR.
-function computeCapPenalty(player, capStatus) {
-  if (!capStatus) return 0;
-  const elig = player._eligiblePositions;
-  if (!Array.isArray(elig) || elig.length === 0) return 0;
+// Two-tier per-player penalty for ONE cap node. Evaluated on the count this pick
+// WOULD create (status.picked + 1), so the cap-EXCEEDING pick is the one
+// penalized. ZERO at/below the SOFT cap (draft to roster share freely); a gentle
+// CAP_SOFT_STEP per player through the soft→hard overage band; past the HARD cap
+// a harsh CAP_HARD_STEP per player over hard — "hard-zone-only" (the band cost
+// does NOT carry over). Per-player (not cap-relative) so the big guardrails bind.
+// No-max / capless nodes (no soft cap) contribute 0.
+// `steps` ({soft, hard}) lets the Draft Board override the calibrated default
+// step magnitudes (SMART_RANK_TUNING.CAP_SOFT_STEP / CAP_HARD_STEP) live.
+function capGroupPenalty(status, steps) {
+  if (!status || !status.soft) return 0;
+  const count = status.picked + 1;
+  const softStep = steps?.soft ?? SMART_RANK_TUNING.CAP_SOFT_STEP;
+  const hardStep = steps?.hard ?? SMART_RANK_TUNING.CAP_HARD_STEP;
+  const hard = status.hard || status.soft;
+  if (count > hard) return hardStep * (count - hard);
+  if (count > status.soft) return softStep * (count - status.soft);
+  return 0;
+}
 
-  let bestFill = Infinity;
-  CAP_GROUPS.forEach((g) => {
-    const overlaps = g.positions.some((p) => elig.includes(p));
-    if (!overlaps) return;
-    const s = capStatus[g.id];
-    if (!s || !s.cap) return;
-    const fill = s.picked / s.cap;
-    if (fill < bestFill) bestFill = fill;
-  });
-  if (!Number.isFinite(bestFill)) return 0;
-
-  const { CAP_START, CAP_GENTLE_WAR, CAP_STEEP_WAR, CAP_MAX_WAR } = SMART_RANK_TUNING;
-  if (bestFill <= CAP_START) return 0;
-
-  const gentleRange = 1.0 - CAP_START;
-  let penalty;
-  if (bestFill <= 1.0) {
-    penalty = ((bestFill - CAP_START) / gentleRange) * CAP_GENTLE_WAR;
-  } else {
-    penalty = CAP_GENTLE_WAR + (bestFill - 1.0) * CAP_STEEP_WAR;
+// CHAIN penalty for landing at a cap-tree leaf: the MAX penalty along the leaf's
+// chain (leaf → parent → ... e.g. cOF → OF → Hitters). So a pick is penalized
+// once ANY level it occupies is over its cap — SP only once Pitchers binds, cOF
+// at the first of cOF / OF / Hitters. No-max / capless nodes contribute 0.
+function chainPenalty(leafId, capStatus, steps) {
+  const chain = LEAF_CHAINS[leafId];
+  if (!chain) return capGroupPenalty(capStatus[leafId], steps);
+  let pen = 0;
+  for (const nodeId of chain) {
+    const p = capGroupPenalty(capStatus[nodeId], steps);
+    if (p > pen) pen = p;
   }
-  return Math.max(0, Math.min(CAP_MAX_WAR, penalty));
+  return pen;
+}
+
+// Position-cap RELIEF value. The player keeps the value of their best eligible
+// position whose cap CHAIN isn't full: for each eligible leaf, (that leaf's FV
+// − the leaf's chain penalty), take the max. 1B/DH are excluded from the relief
+// set unless 1B is the player's primary (1B eligibility is near-universal junk
+// and must not grant relief). The pick still COUNTS against the primary leaf
+// (handled by the board's capStatus, which counts each pick into its leaf and
+// all ancestors). `useFv` = the devAdj toggle; leaf FV is calcFutureValue(cur,
+// pot) when on, else the leaf's potential. Falls back to the headline value
+// when the player has no contributing leaf. Mirrors the sim's
+// my_value_and_landing().
+function computeCappedReliefValue(player, capStatus, useFv, cs, steps) {
+  const groups = player._groupFvInputs;
+  const headline = useFv
+    ? calcFutureValue(player._currentVal, player._baseVal, player._age, cs)
+    : (player._baseVal ?? 0);
+  if (!groups || !capStatus) return headline;
+  const primary = player._primaryLeaf;
+  let best = -Infinity;
+  for (const gid of Object.keys(groups)) {
+    if (gid === "1B" && primary !== "1B") continue; // junk 1B/DH relief excluded
+    const { cur, pot } = groups[gid];
+    const gfv = useFv ? calcFutureValue(cur, pot, player._age, cs) : (pot ?? cur ?? 0);
+    const v = gfv - chainPenalty(gid, capStatus, steps);
+    if (v > best) best = v;
+  }
+  return Number.isFinite(best) ? best : headline;
 }
 
 // Expected signing cost for a player — the OOTP-stated demand discounted by
@@ -245,6 +274,58 @@ function computeSignabilityPenalty(player, ctx) {
   return Math.max(0, Math.min(SIG_MAX_WAR, penalty));
 }
 
+// ============================================================================
+// COVERAGE FLOOR — minimum-coverage nudge for scarce premium leaves (C/MI/CF).
+// The caps are a MAX-limiter; this is the matching MIN-puller. Decoupled
+// two-cushion urgency with a ramp that reaches the full bonus at HALF the fire
+// point — validated in Leftovers/draft-cap-sim (coverage_floor_sweep.md).
+//
+//   ramp(x, fire) = clamp(2·(fire − x)/fire, 0, 1)
+//   need   = min − have ;  fireP = PICKS_START + need ;  fireS = CUSHION_S + need
+//   bonus  = MAX_BONUS · max(ramp(picksLeft, fireP), ramp(supply, fireS))^POWER
+//
+// supply = remaining primaries at the leaf with potential WAR > 0, each weighted
+// by (1 − signabilityPenalty/SIG_MAX_WAR) so a player who'd eat your budget counts
+// as less real supply (raw count when demands are off). Computed ONCE per render;
+// applySmartRank adds floorCtx[player._primaryLeaf] to each candidate. Returns null
+// when no leaf has a positive minimum.
+//   ctx = { capStatus, picksLeft, floorMins, cushionS?, picksStart?, demandsOn, budget, spent }
+// `cushionS` / `picksStart` override the calibrated FLOOR_CUSHION_S / FLOOR_PICKS_START
+// defaults when the Draft Board passes user-tuned values.
+// ============================================================================
+export function computeCoverageFloorContext(pool, ctx) {
+  if (!ctx || !ctx.floorMins) return null;
+  const mins = ctx.floorMins;
+  const leaves = Object.keys(mins).filter((l) => (mins[l] ?? 0) > 0);
+  if (leaves.length === 0) return null;
+  const { FLOOR_CUSHION_S, FLOOR_PICKS_START, FLOOR_MAX_BONUS, FLOOR_POWER, SIG_MAX_WAR } = SMART_RANK_TUNING;
+  const cushionS = ctx.cushionS ?? FLOOR_CUSHION_S;
+  const picksStart = ctx.picksStart ?? FLOOR_PICKS_START;
+
+  const supply = {};
+  leaves.forEach((l) => { supply[l] = 0; });
+  for (const p of pool) {
+    const l = p._primaryLeaf;
+    if (supply[l] === undefined) continue;       // not a floored leaf
+    if (!((p._baseVal ?? 0) > 0)) continue;       // WAR-P > 0 only (keeps high-upside young guys)
+    const w = clamp(1 - computeSignabilityPenalty(p, ctx) / SIG_MAX_WAR, 0, 1);
+    supply[l] += w;
+  }
+
+  const picksLeft = ctx.picksLeft ?? Infinity;
+  const out = {};
+  for (const l of leaves) {
+    const need = (mins[l] ?? 0) - (ctx.capStatus?.[l]?.picked ?? 0);
+    if (need <= 0) { out[l] = 0; continue; }      // minimum already met → no nudge
+    const fireP = picksStart + need;
+    const fireS = cushionS + need;
+    const tP = clamp(2 * (fireP - picksLeft) / fireP, 0, 1);
+    const tS = clamp(2 * (fireS - supply[l]) / fireS, 0, 1);
+    out[l] = FLOOR_MAX_BONUS * Math.pow(Math.max(tP, tS), FLOOR_POWER);
+  }
+  return out;
+}
+
 // Injury proneness — straight lookup. Negative entries (Iron Man, Durable)
 // act as a bonus because we *subtract* the penalty from score.
 function computeInjuryPenalty(player) {
@@ -265,22 +346,42 @@ function computeIntangiblesBonus(player) {
 }
 
 export function applySmartRank(player, toggles, orgNeed, curveSettings = null, draftContext = null) {
-  // Baseline: FV (when devAdj on) or raw potential.
+  const cs = curveSettings || { ...DEV_CURVE_DEFAULTS };
+  const useFv = !!(toggles.devAdj && player._age != null);
+
+  // RP-role adjustment scale. RP WAR/FV is raw and compressed (scaleRpWarP is now a no-op), so the
+  // HIT/SP-calibrated talent-relative deltas below would swamp a reliever's ~+0.6 FV ceiling. We
+  // shrink org-need / prone / intangibles for RP-role pitchers by the IP ratio (≈0.375). Caps,
+  // signability, and the coverage floor are left at full strength. See SMART_RANK_TUNING.RP_ADJUST_SCALE.
+  const adjScale = player._role === 'rp' ? SMART_RANK_TUNING.RP_ADJUST_SCALE : 1;
+
+  // Baseline value. With Position Caps on, the cap penalty isn't a flat
+  // subtraction — it's baked into the per-position RELIEF value (best surviving
+  // eligible-position FV). Otherwise the baseline is the headline FV / potential.
+  // _currentVal/_baseVal are pre-stamped by buildBoardPool; for RP-role pitchers these carry the
+  // raw (unscaled) RP WAR — which is why the deltas, not the baseline, get the RP scaling.
   let score;
-  if (toggles.devAdj && player._age != null) {
-    const cs = curveSettings || { ...DEV_CURVE_DEFAULTS };
-    // _currentVal/_baseVal pre-stamped by buildBoardPool.
-    // For RP-role pitchers all WAR fields are pre-scaled to SP-equivalent units.
+  if (toggles.posCaps && draftContext?.capStatus) {
+    score = computeCappedReliefValue(player, draftContext.capStatus, useFv, cs, draftContext.capPenalty);
+  } else if (useFv) {
     score = calcFutureValue(player._currentVal, player._baseVal, player._age, cs);
   } else {
     score = player._baseVal ?? 0;
   }
 
-  if (toggles.orgNeed) score += computeOrgNeedBonus(player, orgNeed);
-  if (toggles.posCaps) score -= computeCapPenalty(player, draftContext?.capStatus);
+  if (toggles.orgNeed) score += adjScale * computeOrgNeedBonus(player, orgNeed);
+  // Coverage floor: per-leaf min-coverage bonus (precomputed in draftContext.floorCtx),
+  // added to candidates whose primary leaf is still under its minimum. On by default
+  // (`!== false`) so saved toggles predating the key still get it; explicit off respected.
+  // Not RP-scaled (only C/MI/CF have floors, so it never applies to an RP-role pitcher anyway).
+  if (toggles.coverage !== false && draftContext?.floorCtx) {
+    score += draftContext.floorCtx[player._primaryLeaf] ?? 0;
+  }
+  // Signability is NOT RP-scaled — budget is a shared opportunity cost (same dollars hurt the draft
+  // equally regardless of role) and the cap already encodes a hard affordability wall.
   if (toggles.signability) score -= computeSignabilityPenalty(player, draftContext);
-  if (toggles.injury) score -= computeInjuryPenalty(player);
-  if (toggles.intangibles) score += computeIntangiblesBonus(player);
+  if (toggles.injury) score -= adjScale * computeInjuryPenalty(player);
+  if (toggles.intangibles) score += adjScale * computeIntangiblesBonus(player);
 
   return score;
 }
