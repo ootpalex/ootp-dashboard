@@ -270,8 +270,12 @@ def _compute_baserunning(
     run = pd.to_numeric(df["RUN"], errors="coerce")
 
     # --- SB% (single value, not split) ---
+    # Bounded to [0, 1]: SB% is a success rate, so the linear rating model can't extrapolate an elite
+    # base-stealer past 100% (which would make sb > sbat ⇒ negative caught-stealing). Matches the
+    # pitcher-side cap in pitchers.py. With the calibration intercept (sb_pct.c0 ≈ −0.133) this only binds
+    # for the extreme tail (STE≈95+); it's a defensive guard, not a re-baseline.
     sb_pct_poly = reg.sb_pct.c0 + reg.sb_pct.c1 * (ste - lg.avg_steal)
-    sb_pct = (sb_pct_poly + lg.sb_pct).clip(lower=0)
+    sb_pct = (sb_pct_poly + lg.sb_pct).clip(lower=0.0, upper=1.0)
 
     # --- SBA rate (no cap on STE) ---
     sba_poly = reg.sba.c0 + reg.sba.c1 * (ste - lg.avg_steal)

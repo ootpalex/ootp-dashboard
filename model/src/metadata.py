@@ -363,7 +363,10 @@ def load_metadata_inputs(
 # Caching
 # ---------------------------------------------------------------------------
 
-_CACHE_VERSION = 2
+# v3: out_value (inf_out/of_out) now derived per league in compute_hitting_constants (BIZ OF-hit mix)
+# and the baserunning c0 fallbacks corrected — both are code changes not captured by the input-data hash,
+# so the version bump invalidates stale on-disk caches that still hold the old 0.75/0.90 / Excel intercepts.
+_CACHE_VERSION = 3
 _CACHE_FILENAME = ".metadata_cache.json"
 
 

@@ -236,6 +236,7 @@ def main() -> None:
     ballpark_path = paths["ballpark_path"]
     output_path = paths["output_path"]
     metadata_dir = paths["metadata_dir"]
+    regressions_dir = paths.get("regressions_dir")  # sims dir; None in legacy mode → hardcoded coeffs
 
     # Validate inputs exist
     if not player_dir.is_dir():
@@ -418,6 +419,7 @@ def main() -> None:
             settings, player_dir, ballpark_path, metadata_dir,
             contracts, salary_reports, players_extra,
             statsplus_game_date=current_date if statsplus_url else None,
+            regressions_dir=regressions_dir,
         )
         elapsed = time.time() - t0
     except FileNotFoundError as e:

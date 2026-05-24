@@ -84,7 +84,12 @@ class TestBug2STECap:
         return pd.DataFrame([cols])
 
     def test_sb_pct_increases_beyond_80(self):
-        """SB% at STE=90 should be higher than at STE=80."""
+        """SB% at STE=90 should be higher than at STE=80.
+
+        SB% is bounded to [0, 1] (a success rate can't exceed 100%), but with the calibration
+        intercept it only saturates for the extreme tail (STE≈95+), so STE 80 vs 90 both sit
+        below 1.0 and the rating above 80 still increases SB%.
+        """
         park_deltas = neutral_park_deltas()
         park_adj = neutral_adjustments()
 

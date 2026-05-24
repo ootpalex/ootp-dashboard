@@ -78,6 +78,52 @@ def _compute_rating_averages_hitting(
     }
 
 
+_OF_POSITIONS = ("lf", "cf", "rf")
+_INF_OUT_FALLBACK = 0.75
+_OF_OUT_FALLBACK = 0.90
+
+
+def _derive_out_values(fielding_data, woba: dict, agg: dict) -> tuple[float, float]:
+    """Per-league fielding out-values: the run value of a PREVENTED hit, above an out.
+
+    ``inf_out`` — single-above-out. Infielders prevent ~only singles (a ball past the IF that
+    goes for extra bases is an *outfield* play), so ``inf_out = run_1b + runs_minus`` (the league's
+    own linear-weight value of a single above an out). Textbook; no assumption.
+
+    ``of_out`` — the OF-prevented-hit-mix-weighted hit value above out. Outfielders prevent a *mix*
+    of 1B/2B/3B, so ``of_out`` must weight the run values by that mix. We recover the mix from OOTP's
+    BIZ ball-in-zone accounting: ``OF (Plays A − Plays M) − Errors = OF hits``; ~all 2B/3B are
+    outfield events, so ``OF-1B = OF hits − (2B + 3B)`` and the mix is ``OF-1B : 2B : 3B``. See
+    ``Leftovers/oaa-fielding-model/OUT_VALUE_V2_FINDINGS.md`` (three validation identities).
+
+    Falls back to (0.75, 0.90) when the BIZ ball-accounting isn't present or doesn't reconcile.
+    """
+    rm = woba["runs_minus"]
+    rv1b = woba["run_1b"] + rm
+    rv2b = woba["run_2b"] + rm
+    rv3b = woba["run_3b"] + rm
+    inf_out = rv1b  # IF prevents singles → single-above-out
+
+    if not fielding_data:
+        return _INF_OUT_FALLBACK, _OF_OUT_FALLBACK
+    am = e = 0.0  # Σ(Plays A − Plays M) and Σ errors over the OF zones
+    for pos in _OF_POSITIONS:
+        df = fielding_data.get(pos)
+        if df is None or not {"Plays A", "Plays M"}.issubset(df.columns):
+            return _INF_OUT_FALLBACK, _OF_OUT_FALLBACK  # BIZ buckets absent → fall back
+        am += (pd.to_numeric(df["Plays A"], errors="coerce").fillna(0.0).sum()
+               - pd.to_numeric(df["Plays M"], errors="coerce").fillna(0.0).sum())
+        if "E" in df.columns:
+            e += pd.to_numeric(df["E"], errors="coerce").fillna(0.0).sum()
+    of_hits = am - e
+    of_1b = of_hits - (agg["2B"] + agg["3B"])  # all XBH are outfield events
+    if of_hits <= 0 or of_1b < 0:
+        return _INF_OUT_FALLBACK, _OF_OUT_FALLBACK  # accounting didn't reconcile → fall back
+    f1, f2, f3 = of_1b / of_hits, agg["2B"] / of_hits, agg["3B"] / of_hits
+    of_out = f1 * rv1b + f2 * rv2b + f3 * rv3b
+    return inf_out, of_out
+
+
 def compute_hitting_constants(inputs) -> HitterLeagueParams:
     """Compute all HitterLeagueParams from raw hitting data + batter ratings."""
     # Step 1: Aggregate counting stats
@@ -85,6 +131,9 @@ def compute_hitting_constants(inputs) -> HitterLeagueParams:
 
     # Step 2: wOBA derivation
     woba = _compute_woba_from_aggregates(agg)
+
+    # Step 2b: per-league fielding out-values from the league's own linear weights + BIZ hit mix
+    inf_out, of_out = _derive_out_values(getattr(inputs, "fielding_data", None), woba, agg)
 
     # Step 3: Matchup splits
     splits = _compute_matchup_splits_from_ratings(
@@ -134,8 +183,8 @@ def compute_hitting_constants(inputs) -> HitterLeagueParams:
         run_cs=woba["run_cs"],
         wsb=woba["lg_wsb"],
         hbp_rate=woba["hbp_rate"],
-        inf_out=0.75,
-        of_out=0.90,
+        inf_out=inf_out,
+        of_out=of_out,
         r_per_pa=woba["r_per_pa"],
         bpk_woba=0.32576,  # From main workbook, not metadata
 

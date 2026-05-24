@@ -59,6 +59,7 @@ class RegressionInputs:
     rp_br: pd.DataFrame          # ~224 rows: pitching split_id=1 (has sb/cs) + RP ratings
     fielding: dict[str, pd.DataFrame]  # keyed by position: "c", "1b", "2b", ...
     team_dp_rates: dict | None = None  # team_id → {"dp_2b_ip", "dp_ss_ip"}
+    fielding_baselines: dict | None = None  # pos → {bucket: conversion rate}, full-pop, for the OAA target
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +235,23 @@ def load_regression_inputs(regressions_dir: Path | str) -> RegressionInputs:
     fielding_sims = _concat_sims(regressions_dir, "fielding")
     fielding_by_pos = _aggregate_fielding_by_position(fielding_sims)
 
+    # Per-position per-bucket OAA conversion baselines, from the FULL sim population (before the
+    # answer-key filter). Makeable buckets 0-4 (bucket 5 = impossible). Used as the rating->OAA target's
+    # expected-outs reference; fit happens on the answer-key subset below (mirrors the PM% fit).
+    _MAKEABLE = (0, 1, 2, 3, 4)
+    fielding_baselines: dict[str, dict[int, float]] = {}
+    for pos_name, pos_df in fielding_by_pos.items():
+        if pos_name == "c":
+            continue  # catcher is framing/arm — no range OAA
+        rates = {}
+        for b in _MAKEABLE:
+            opp = pd.to_numeric(pos_df.get(f"opps_{b}"), errors="coerce").fillna(0).sum() \
+                if f"opps_{b}" in pos_df.columns else 0.0
+            made = pd.to_numeric(pos_df.get(f"opps_made_{b}"), errors="coerce").fillna(0).sum() \
+                if f"opps_made_{b}" in pos_df.columns else 0.0
+            rates[b] = made / opp if opp > 0 else 0.0
+        fielding_baselines[pos_name] = rates
+
     # Join ALL fielding positions with hitter ratings (C FRM, C ARM, IF RNG, etc.)
     fielding_joined = {}
     fielding_ids = answer_keys.get("fielding_reg_players", {})
@@ -257,6 +275,7 @@ def load_regression_inputs(regressions_dir: Path | str) -> RegressionInputs:
         rp_br=rp_br,
         fielding=fielding_joined,
         team_dp_rates=team_dp_rates,
+        fielding_baselines=fielding_baselines,
     )
 
 
@@ -515,6 +534,17 @@ def _compute_linear_as_cubic(
     return CubicCoeffs(c0=intercept, c1=slope)
 
 
+# Canonical baserunning intercepts (calibration values from data_points.py). These cubics are applied
+# downstream as `poly + lg.rate`, where lg.rate is the *pooled* league rate (attempt-weighted, so inflated
+# by the elite base-stealers who run most). c0 is the offset that places the AVERAGE-rated player at their
+# true (lower) success rate — verified against the sims (avg STE≈48 → SB%≈0.65 vs pooled 0.78, so
+# sb_pct.c0≈−0.133). It depends on the league avg_steal/sb_pct constants the regression module doesn't have,
+# and `_compute_linear_as_cubic` centers the outcome so it always returns c0≈0 — so we keep the recompute's
+# (validated) slope but restore the calibration intercept. NOT a centering bug; see data_points.py note.
+def _with_canonical_intercept(computed: CubicCoeffs, canonical: CubicCoeffs) -> CubicCoeffs:
+    return CubicCoeffs(c0=canonical.c0, c1=computed.c1, c2=computed.c2, c3=computed.c3)
+
+
 # ---------------------------------------------------------------------------
 # Stat rate formulas — Hitting
 # ---------------------------------------------------------------------------
@@ -658,6 +688,14 @@ def _fielding_rto_rate(df: pd.DataFrame) -> np.ndarray:
 def _fielding_pm_rate(df: pd.DataFrame) -> np.ndarray:
     """PM% = PM / PA (play opportunities)"""
     return (df["pm"] / df["pa"]).values
+
+
+def _fielding_oaa_rate(df: pd.DataFrame, baselines: dict[int, float]) -> np.ndarray:
+    """OAA rate = (PM − Σ_b baseline_b · opps_b) / PA — clean outs above difficulty-expected, per
+    opportunity. Difficulty-adjusted replacement for PM% (makeable buckets 0-4)."""
+    expected = sum(baselines[b] * pd.to_numeric(df[f"opps_{b}"], errors="coerce").fillna(0.0)
+                   for b in (0, 1, 2, 3, 4))
+    return ((df["pm"] - expected) / df["pa"]).values
 
 
 def _fielding_err_rate_ip(df: pd.DataFrame) -> np.ndarray:
@@ -816,6 +854,12 @@ def compute_hitting_regressions(inputs: RegressionInputs) -> HittingRegressionCo
         br_run, _hitting_ubr_rate(br), br_weight,
     )
 
+    # Restore the calibration intercepts (the centered fit returns c0≈0; see _with_canonical_intercept).
+    _canon = HittingRegressionCoeffs()
+    sba = _with_canonical_intercept(sba, _canon.sba)
+    sb_pct = _with_canonical_intercept(sb_pct, _canon.sb_pct)
+    ubr = _with_canonical_intercept(ubr, _canon.ubr)
+
     return HittingRegressionCoeffs(
         eye=eye,
         power=power,
@@ -903,6 +947,12 @@ def compute_pitching_regressions(inputs: RegressionInputs) -> PitchingRegression
     # SBA is shared between SP and RP (same coefficients from SP data)
     sba = sp_sba
 
+    # Restore the calibration intercepts (the centered fit returns c0≈0; see _with_canonical_intercept).
+    _canon = PitchingRegressionCoeffs()
+    sp_sb_pct_coeffs = _with_canonical_intercept(sp_sb_pct_coeffs, _canon.sp_sb_pct)
+    rp_sb_pct_coeffs = _with_canonical_intercept(rp_sb_pct_coeffs, _canon.rp_sb_pct)
+    sba = _with_canonical_intercept(sba, _canon.sba)
+
     return PitchingRegressionCoeffs(
         sp_con=sp_con_coeffs,
         sp_hrr=sp_hrr_coeffs,
@@ -940,9 +990,21 @@ def _parse_height_cm(ht_series: pd.Series) -> np.ndarray:
 
 
 def compute_fielding_regressions(inputs: RegressionInputs) -> FieldingRegressionCoeffs:
-    """Compute all fielding regression coefficients."""
+    """Compute all fielding regression coefficients.
+
+    The range target is **OAA** (difficulty-adjusted outs above average) when per-position bucket
+    baselines are available (`inputs.fielding_baselines`); otherwise it falls back to raw PM%. Errors,
+    double plays, OF arm, and catcher framing/SBA/RTO are unchanged.
+    """
     fd = inputs.fielding
     coeffs = {}
+    _base = inputs.fielding_baselines
+
+    def _range_target(df, pos):
+        # OAA (difficulty-adjusted) when baselines present; else raw PM% (legacy/no-baseline fallback)
+        if _base and pos in _base:
+            return _fielding_oaa_rate(df, _base[pos])
+        return _fielding_pm_rate(df)
 
     # ── Catcher ────────────────────────────────────────────────────────────
     if "c" in fd:
@@ -986,8 +1048,8 @@ def compute_fielding_regressions(inputs: RegressionInputs) -> FieldingRegression
         b1_rng = _safe_rating(b1_df, "IF RNG")
         b1_ht = _parse_height_cm(b1_df["HT"]) if "HT" in b1_df.columns else _safe_rating(b1_df, "HT CM")
 
-        # PM%: 2-variable OLS (filter NaN from pm_rate)
-        b1_pm_rate = _fielding_pm_rate(b1_df)
+        # Range target (OAA, fallback PM%): 2-variable OLS (filter NaN)
+        b1_pm_rate = _range_target(b1_df, "1b")
         valid = np.isfinite(b1_rng) & np.isfinite(b1_ht) & np.isfinite(b1_pm_rate)
         v_rng, v_ht, v_pm = b1_rng[valid], b1_ht[valid], b1_pm_rate[valid]
         avg_rng = np.mean(v_rng)
@@ -1020,8 +1082,8 @@ def compute_fielding_regressions(inputs: RegressionInputs) -> FieldingRegression
         arm = _safe_rating(df, "IF ARM")
         err_rating = _safe_rating(df, "IF ERR")
 
-        # PM%: 2-variable OLS (IF RNG + IF ARM), filter NaN
-        pm_rate = _fielding_pm_rate(df)
+        # Range target (OAA, fallback PM%): 2-variable OLS (IF RNG + IF ARM), filter NaN
+        pm_rate = _range_target(df, pos_key)
         valid = np.isfinite(rng) & np.isfinite(arm) & np.isfinite(pm_rate)
         v_rng, v_arm, v_pm = rng[valid], arm[valid], pm_rate[valid]
         avg_rng = np.mean(v_rng)
@@ -1076,9 +1138,9 @@ def compute_fielding_regressions(inputs: RegressionInputs) -> FieldingRegression
         err_rating = _safe_rating(df, "OF ERR")
         arm_rating = _safe_rating(df, "OF ARM")
 
-        # PM%: single OLS on OF RNG
+        # Range target (OAA, fallback PM%): single OLS on OF RNG
         pm_int, pm_slope = _compute_single_ols_coeffs(
-            rng, _fielding_pm_rate(df)
+            rng, _range_target(df, pos_key)
         )
         coeffs[f"{pos_prefix}_pm_const"] = pm_int
         coeffs[f"{pos_prefix}_pm_slope"] = pm_slope
@@ -1125,7 +1187,10 @@ def compute_regressions(
 # Caching
 # ---------------------------------------------------------------------------
 
-_CACHE_VERSION = 1
+_CACHE_VERSION = 3  # bump when the regression CODE changes (cache keys on data hash, not code).
+#                     v2: fielding range target switched PM% → OAA (difficulty-adjusted).
+#                     v3: baserunning intercepts (sb_pct/sba/ubr, sp/rp_sb_pct, sba) restored to the
+#                         calibration values via _with_canonical_intercept (the centered fit returns c0≈0).
 _CACHE_FILENAME = ".regressions_cache.json"
 
 

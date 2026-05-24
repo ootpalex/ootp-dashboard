@@ -161,6 +161,16 @@ class HittingRegressionCoeffs:
         l_slope= 0.00190816378408937,
     )
 
+    # Baserunning (sba/sb_pct/ubr) are applied as poly + lg.rate (hitters.py 273-282), so c0 is the offset
+    # an AVERAGE-rated runner sits at RELATIVE to lg.rate. c0 is NOT ~0: lg.sb_pct (≈0.78) is the *pooled*
+    # league rate (attempt-weighted, so dominated by elite base-stealers who run the most), but a player at
+    # the average steal RATING (STE≈48) actually succeeds only ~0.65 — verified directly from the calibration
+    # sims (STE 45-51 → SB% 0.654). So sb_pct.c0 = 0.65 − 0.78 ≈ −0.133 is CORRECT, not a bug. (An earlier
+    # rollout briefly zeroed these after the OLS recompute returned 0 — but _compute_linear_as_cubic CENTERS
+    # the outcome, so it returns intercept 0 for *any* data and structurally cannot recover this offset; the
+    # offset also depends on the league avg_steal/sb_pct, which the regression module doesn't have. So these
+    # intercepts are the canonical calibration values, kept here and re-applied over the recompute.)
+
     # Regressions Data Points rows 15–16: hSBA / X  (cubic; c2=c3=0)
     sba: CubicCoeffs = CubicCoeffs(
         c0= 0.009116895606791357,
@@ -218,10 +228,12 @@ class FieldingRegressionCoeffs:
 
     # ── 1B regressions ───────────────────────────────────────────────────────
 
-    # K9/L9/M9: 1B PM% (range slope + height slope)
-    first_pm_const:      float = -0.00013829707080036154
-    first_pm_rng_slope:  float =  0.001002977655284526
-    first_pm_ht_slope:   float =  0.0003878808525983733
+    # 1B RANGE: rating → OAA (difficulty-adjusted outs above avg). These *_pm_* slots are the no-metadata
+    # FALLBACK; the live build recomputes them from the sims (regressions.py, cached). OAA replaces raw
+    # PM% (old: rng 0.001003, ht 0.000388); centered fit ⇒ const ≈ 0.
+    first_pm_const:      float =  0.0
+    first_pm_rng_slope:  float =  0.0009151949948855174
+    first_pm_ht_slope:   float =  0.0003446133761910427
 
     # K11/L11: 1B E%
     first_err_const:     float =  3.1813551428886712e-06
@@ -229,10 +241,10 @@ class FieldingRegressionCoeffs:
 
     # ── 2B regressions ───────────────────────────────────────────────────────
 
-    # K13/L13/M13: 2B PM% (range slope + arm slope)
-    second_pm_const:     float = -0.0006665319324097758
-    second_pm_rng_slope: float =  0.003755662891497341
-    second_pm_arm_slope: float =  0.0003164084844450831
+    # 2B RANGE: rating → OAA (fallback; live path recomputes). Old PM%: rng 0.003756, arm 0.000316.
+    second_pm_const:     float =  0.0
+    second_pm_rng_slope: float =  0.003771573807995789
+    second_pm_arm_slope: float =  0.0002608155997936609
 
     # K15/L15: 2B E% — Excel intercept corrected. The "Fielding Reg IF" sheet's
     # AP column subtracted $AC$118 (zone-rating total) instead of $AD$118 (errors
@@ -248,10 +260,10 @@ class FieldingRegressionCoeffs:
 
     # ── 3B regressions ───────────────────────────────────────────────────────
 
-    # K19/L19/M19: 3B PM% (range slope + arm slope)
-    third_pm_const:      float =  0.000719492935506303
-    third_pm_rng_slope:  float =  0.001378193769108611
-    third_pm_arm_slope:  float =  0.001363238840270162
+    # 3B RANGE: rating → OAA (fallback; live path recomputes). Old PM%: rng 0.001378, arm 0.001363.
+    third_pm_const:      float =  0.0
+    third_pm_rng_slope:  float =  0.0013281949738248523
+    third_pm_arm_slope:  float =  0.0013505282900773128
 
     # K21/L21: 3B E%
     third_err_const:     float = -2.5281452967541396e-05
@@ -259,10 +271,10 @@ class FieldingRegressionCoeffs:
 
     # ── SS regressions ───────────────────────────────────────────────────────
 
-    # K23/L23/M23: SS PM% (range slope + arm slope)
-    ss_pm_const:         float =  0.00030513686251716285
-    ss_pm_rng_slope:     float =  0.004131565657882439
-    ss_pm_arm_slope:     float =  0.001612025228173002
+    # SS RANGE: rating → OAA (fallback; live path recomputes). Old PM%: rng 0.004132, arm 0.001612.
+    ss_pm_const:         float =  0.0
+    ss_pm_rng_slope:     float =  0.004070699981202805
+    ss_pm_arm_slope:     float =  0.0016142481737371167
 
     # K25/L25: SS E% — Excel intercept corrected. Two centering bugs in the
     # "Fielding Reg IF" SS block: AP subtracted $AC$197 (zone-rating total) not
@@ -278,9 +290,9 @@ class FieldingRegressionCoeffs:
 
     # ── LF regressions ───────────────────────────────────────────────────────
 
-    # K27/L27: LF PM%
-    lf_pm_const:         float = -0.0007672700043974061
-    lf_pm_slope:         float =  0.0031340210977502145
+    # LF RANGE: rating → OAA (fallback; live path recomputes). Old PM% slope 0.003134.
+    lf_pm_const:         float =  0.0
+    lf_pm_slope:         float =  0.003075472379586414
 
     # K29/L29: LF E%
     lf_err_const:        float = -3.4462774109098156e-05
@@ -292,9 +304,9 @@ class FieldingRegressionCoeffs:
 
     # ── CF regressions ───────────────────────────────────────────────────────
 
-    # K33/L33: CF PM%
-    cf_pm_const:         float = -1.8703467838143693e-05
-    cf_pm_slope:         float =  0.005035728341437425
+    # CF RANGE: rating → OAA (fallback; live path recomputes). Old PM% slope 0.005036 → OAA de-steepens CF.
+    cf_pm_const:         float =  0.0
+    cf_pm_slope:         float =  0.0045637585735488935
 
     # K35/L35: CF E%
     cf_err_const:        float =  2.1654252079945865e-05
@@ -306,9 +318,9 @@ class FieldingRegressionCoeffs:
 
     # ── RF regressions ───────────────────────────────────────────────────────
 
-    # K39/L39: RF PM%
-    rf_pm_const:         float =  6.927675313855852e-05
-    rf_pm_slope:         float =  0.0029065972864713956
+    # RF RANGE: rating → OAA (fallback; live path recomputes). Old PM% slope 0.002907 → OAA de-steepens RF.
+    rf_pm_const:         float =  0.0
+    rf_pm_slope:         float =  0.0027589731643906353
 
     # K41/L41: RF E%
     rf_err_const:        float = -7.722203634869723e-05
@@ -395,6 +407,11 @@ class PitchingRegressionCoeffs:
         l_slope=-0.0008043027593096815,
     )
 
+    # Pitcher baserunning (sp_sb_pct/rp_sb_pct/sba) is applied as poly + lg_rate (pitchers.py 344-349). As on
+    # the hitter side, c0 is the average-hold pitcher's offset relative to the *pooled* lg rate and is NOT ~0
+    # (the recompute returns 0 only because the fit centers the outcome — see HittingRegressionCoeffs note).
+    # These are the canonical calibration intercepts, kept here and re-applied over the recompute.
+
     # Regressions Data Points rows 23–24: SP SB% / X  (cubic; c2=c3=0)
     sp_sb_pct: CubicCoeffs = CubicCoeffs(
         c0=-0.01179124984884817,
@@ -402,14 +419,12 @@ class PitchingRegressionCoeffs:
     )
 
     # Regressions Data Points rows 27–28: RP SB% / X  (cubic; c2=c3=0)
-    # Same slope as SP, different intercept (back-derived from spreadsheet values)
     rp_sb_pct: CubicCoeffs = CubicCoeffs(
         c0=-0.007441413482453901,
         c1=-0.00254143972877271,
     )
 
-    # Regressions Data Points rows 25–26: SBA / X  (cubic; c2=c3=0)
-    # Shared between SP and RP
+    # Regressions Data Points rows 25–26: SBA / X  (cubic; c2=c3=0). Shared SP/RP.
     sba: CubicCoeffs = CubicCoeffs(
         c0= 0.0007224917422994285,
         c1=-0.0017724275964245081,

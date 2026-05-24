@@ -14,6 +14,7 @@ import pytest
 
 from src.metadata import (
     _CACHE_FILENAME,
+    _CACHE_VERSION,
     _aggregate_hitting,
     _aggregate_pitching,
     _build_fielding_helper,
@@ -854,7 +855,7 @@ class TestCache:
             tmp_path, use_cache=True, force_recompute=True)
         assert isinstance(h, HitterLeagueParams)
         # Cache should now be valid
-        assert json.loads((tmp_path / _CACHE_FILENAME).read_text())["version"] == 2
+        assert json.loads((tmp_path / _CACHE_FILENAME).read_text())["version"] == _CACHE_VERSION
 
     def test_use_cache_false(self, tmp_path):
         """use_cache=False never creates a cache file."""
@@ -884,7 +885,7 @@ class TestCache:
         assert isinstance(h, HitterLeagueParams)
         # Cache should be overwritten with correct version
         refreshed = json.loads(cache_path.read_text())
-        assert refreshed["version"] == 2
+        assert refreshed["version"] == _CACHE_VERSION
 
 
 # ---------------------------------------------------------------------------

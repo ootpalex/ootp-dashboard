@@ -83,3 +83,44 @@ The gzipped JSON typically lands at 2–4 MB, which the SPA loads cleanly. Remai
 
 ### Open work
 - Wire `compute_regressions()` output into `data_points.py` automatically based on `LeagueConfig.ootpVersion` so that new-version leagues don't require a manual constant-merge step. See [`../../docs/MULTI_LEAGUE.md`](../../docs/MULTI_LEAGUE.md) for the current OOTP-version migration workflow.
+
+> **Update (2026-05-24, OAA rollout):** the auto-wire is now **done**. `_detect_metadata` (`export.py`)
+> calls `generate_regression_coefficients(regressions_dir)` — which computes *all* hitting/pitching/fielding
+> coefficients from the sims in `data/regressions/ootp<ver>/` and caches them (`.regressions_cache.json`,
+> keyed on a data hash + a `_CACHE_VERSION`; recomputes only when the sim data changes or the version is
+> bumped) — and injects them via `compose_data_points(...)`. The hardcoded `data_points.py` coefficients are
+> now only the **no-sims fallback**. A new OOTP version no longer needs a manual constant-merge: drop the
+> sim CSVs into `data/regressions/ootp<ver>/` and the build computes from them. (Remaining nicety: surface
+> the per-version regressions dir purely from `ootp_version` everywhere; today it resolves via
+> `regressions_dir_for(config.ootp_version)`.)
+
+---
+
+## 5. SB% modeling for high steal ratings (STE ≳ 76) — saturating curve
+
+**Priority:** Low–Medium — the model is correctly centered and coherent; only the extreme tail is crude.
+**Source:** `src/hitters.py:273-278`, `src/pitchers.py:344-345`; noted during the 2026-05-24 OAA rollout
+(the original creator's long-standing "steal ratings above 80 don't model well").
+
+SB% (a success *rate*, bounded [0,1]) is modeled as a **linear** function of the steal rating:
+`sb_pct = c0 + c1·(STE − avg_steal) + lg.sb_pct`. A line is unbounded, so very high STE overshoots 1.0.
+
+### Current state (correct, with a guard)
+- The intercept is the calibration value (`sb_pct.c0 ≈ −0.133`) and is **correct** — `lg.sb_pct ≈ 0.78` is
+  the *pooled* league rate, but an average-*rated* runner actually succeeds ≈0.65 in the sims, so the offset
+  is real. (A rollout pass briefly zeroed it on a faulty "centering" argument and inflated BsR ~13 pp; that
+  was caught and reverted. See `Spreadsheet/docs/KNOWN_BUGS.md` "Non-Bug 14".)
+- A `[0,1]` clip (`hitters.py:278`, matching the pitcher side) guards against `sb_pct > 1.0` (which would
+  make `sb > sbat` ⇒ negative caught-stealing). With the correct intercept this only binds at STE ≈ 95+.
+
+### What's still imperfect (the residual tail)
+- The linear form mildly overestimates the very top: STE 80 → ~0.90 (fine), but STE ~95+ extrapolates to
+  >1.0 and gets clipped to 100% — so a handful of extreme runners lose discrimination and sit slightly high
+  (real elite ~85–90%). Small population, small effect, but not physically faithful at the tail.
+
+### Proposed direction
+Replace the linear SB% with a **logit-linear / logistic** form, `sb_pct = sigmoid(b0 + b1·(STE − avg))`,
+fit on the `data/regressions/ootp26` sims so the average → its true (sub-pooled) rate and the asymptote → a
+realistic ceiling (<1). Smooth, monotonic, bounded by construction (drops the need for the clip), and
+discriminates among elite ratings. Apply the same to the pitcher SB%-allowed model, and add the symmetric
+lower clip the pitcher side currently lacks (`pitchers.py:345` clips only the upper bound).

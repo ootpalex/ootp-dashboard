@@ -175,9 +175,11 @@ def _prepare_prospect_pitchers(players: pd.DataFrame) -> pd.DataFrame:
 
 
 # Reliever WAA scaling — mirrors app/src/utils/accessors.js:scaleRpWaaP.
-# IP_SP / IP_RP from app/src/utils/constants.js. Single source of truth in JS;
-# replicated here so the empirical progressCurve uses the same metric the
-# frontend formula will use at runtime. If those constants change, update both.
+# PRESERVED BUT CURRENTLY UNUSED. The WAR cohort curves below intentionally pass
+# scale=False (WAR's replacement-runs term already handles SP-vs-RP credit, so the
+# WAA-era negative ramp is redundant under WAR). Retained for a future WAA-valuation
+# toggle so the WAA path can scale exactly as the frontend scaleRpWaaP does — do not
+# delete. IP_SP / IP_RP from app/src/utils/constants.js; keep both in sync.
 _IP_SP = 185.47
 _IP_RP = 69.55
 _RP_SCALE_THRESHOLD = -0.50
@@ -335,8 +337,9 @@ def _compute_dev_curve_from_dicts(
 ) -> list[dict]:
     """Build empirical dev-signal-by-age percentile curve for one cohort.
 
-    For hitters: dev signal is batR.wtd. For pitchers: cur-WAA.wtd (sp.wtd.waa
-    for SP, rp.wtd.waa for RP — RP scaled via _scale_rp_waa).
+    For hitters: dev signal is maxWar.wtd. For pitchers: cur-WAR.wtd (sp.wtd.war
+    for SP, rp.wtd.war for RP). RP is no longer scaled (scale defaults to False);
+    pass scale=True only for a WAA-based curve (see _scale_rp_waa).
 
     Walks the already-built JSON player dicts, extracts (age, devSignal),
     kernel-smoothed percentiles by age 14–27, then PAV-smoothes each percentile
@@ -1353,8 +1356,8 @@ def _build_prospect_pitcher(
 def _build_floor_pitcher(idx: int, floor_stats: pd.DataFrame | None) -> dict:
     """Build floor sub-dict for a pitcher (raw WAA/WAR, unscaled).
 
-    Frontend applies scaleRpWaaP / scaleRpWarP to RP values consistently with
-    cur and pot.
+    The frontend reads RP floor WAR raw (scaleRpWarP is a no-op under WAR); the
+    WAA path would still apply scaleRpWaaP consistently with cur and pot.
     """
     if floor_stats is None or idx not in floor_stats.index:
         return {"sp": {"waa": None, "war": None}, "rp": {"waa": None, "war": None}}
@@ -1426,10 +1429,16 @@ def _build_pitcher_dict(
 def _detect_metadata(
     metadata_dir: Path | str | None,
     settings: PipelineSettings | None = None,
+    regressions_dir: Path | str | None = None,
 ) -> tuple | None:
     """Auto-detect custom metadata inputs and compute data points.
 
     Returns (HitterDataPoints, PitcherDataPoints) if inputs found, else None.
+
+    Regression coefficients (rating → stat) are **computed** from the calibration sims in
+    ``regressions_dir`` via ``generate_regression_coefficients`` (cached; recomputed only when that data
+    changes). When ``regressions_dir`` is absent/invalid/unreadable they fall back to the hardcoded
+    defaults in ``compose_data_points``.
     """
     if metadata_dir is None:
         return None
@@ -1457,7 +1466,22 @@ def _detect_metadata(
 
     hitting, pitching, fielding = generate_data_points(
         metadata_dir, season_weights=season_weights, **blend_kw)
-    return compose_data_points(hitting, pitching, fielding)
+
+    # Compute the regression coefficients from the calibration sims (cached); fall back to the hardcoded
+    # defaults if no regressions dir is available or the compute fails.
+    hitting_reg = pitching_reg = fielding_reg = None
+    if regressions_dir is not None and Path(regressions_dir).is_dir():
+        try:
+            from src.regressions import generate_regression_coefficients
+            hitting_reg, pitching_reg, fielding_reg = generate_regression_coefficients(Path(regressions_dir))
+            print("Computed regression coefficients from", regressions_dir)
+        except Exception as e:
+            print(f"   (regression recompute failed, using hardcoded coeffs): {e}")
+
+    return compose_data_points(
+        hitting, pitching, fielding,
+        hitting_reg=hitting_reg, pitching_reg=pitching_reg, fielding_reg=fielding_reg,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1525,6 +1549,7 @@ def build_dashboard(
     salary_reports: dict | None = None,
     players_extra: dict | None = None,
     statsplus_game_date: str | None = None,
+    regressions_dir: str | Path | None = None,
 ) -> dict:
     """Full pipeline: load → compute → build JSON dict.
 
@@ -1575,7 +1600,7 @@ def build_dashboard(
     pitcher_players = players[is_pitcher].copy()
 
     # Auto-detect custom metadata or fall back to hardcoded defaults
-    custom = _detect_metadata(metadata_dir, settings)
+    custom = _detect_metadata(metadata_dir, settings, regressions_dir)
     if custom is not None:
         dp_h, dp_p = custom
         print("Using custom metadata from", metadata_dir)
@@ -1773,11 +1798,11 @@ def build_dashboard(
     lp_p = dp_p.league
 
     # Empirical median-progress-by-age curves per cohort (hit / sp / rp). Used by
-    # the FV formula as midpoint(age). RP cohort uses scaled WAA so the curve
-    # matches the metric the frontend computes from scaled cur/pot/floor.
-    # Progress curves use WAR paths. Mathematically identical to WAA paths
-    # (the replacement-runs constant cancels in (cur - floor) / (pot - floor)),
-    # but consistent with the WAR-based frontend lookup.
+    # the FV formula as midpoint(age). RP cohort uses raw rp.wtd.war like SP — the
+    # WAA-era negative scaling was dropped under WAR, matching the frontend's
+    # now-unscaled cur/pot/floor. Progress curves use WAR paths; mathematically
+    # identical to WAA paths (the replacement-runs constant cancels in
+    # (cur - floor) / (pot - floor)), but consistent with the WAR-based lookup.
     progress_curve_hit = _compute_progress_curve_from_dicts(
         hitter_dicts,
         cur_path=("maxWar", "wtd"),
@@ -1796,7 +1821,6 @@ def build_dashboard(
         cur_path=("rp", "wtd", "war"),
         pot_path=("prospect", "rp", "war"),
         floor_path=("floor", "rp", "war"),
-        scale=True,
         role_filter="rp",
     )
 
@@ -1804,7 +1828,9 @@ def build_dashboard(
     # by age. Used purely for the Dev% display column on tables (not in the
     # FV formula). Unified on cur-WAR across all three cohorts: hitters use
     # `maxWar.wtd` (their cur-WAR across positions), pitchers use role-specific
-    # cur-WAR (sp.wtd.war for SP, scaled rp.wtd.war for RP).
+    # cur-WAR (sp.wtd.war for SP, raw rp.wtd.war for RP). The RP distribution must
+    # stay unscaled so it matches the raw RP cur the frontend looks up against it
+    # (pickPitcherRole -> devPercentileRank); scaling only one side breaks Dev%.
     dev_curve_hit = _compute_dev_curve_from_dicts(
         hitter_dicts,
         dev_path=("maxWar", "wtd"),
@@ -1817,7 +1843,6 @@ def build_dashboard(
     dev_curve_rp = _compute_dev_curve_from_dicts(
         pitcher_dicts,
         dev_path=("rp", "wtd", "war"),
-        scale=True,
         role_filter="rp",
     )
 
@@ -1842,7 +1867,6 @@ def build_dashboard(
         pitcher_dicts,
         cur_path=("rp", "wtd", "war"),
         pot_path=("prospect", "rp", "war"),
-        scale=True,
         role_filter="rp",
     )
 
