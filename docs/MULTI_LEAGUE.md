@@ -58,7 +58,7 @@ exist, the flat `metadata/` is used as a single season exactly as before.
 | Metadata CSVs | Per league | Computed from each league's actual ratings |
 | `dashboard.json.gz` | Per league | Each league produces its own output |
 | Regressions (`data/regressions/ootp<version>/`) | Per OOTP version | Calibrated against the OOTP simulator's mechanics, which are version-specific |
-| `data_points.py` constants | Per OOTP version | Compiled from regressions |
+| Regression coefficients | Per OOTP version | Computed from that version's sims at build time and injected; `data_points.py` holds the shared no-sims fallback |
 
 The frontend namespaces these localStorage keys per league: `ssb_my_team`, `ssb_game_date`, `league_settings`, `ssb_roster_plan`, `ssb_roster_plan_order`, `ssb_roster_r5_threshold`, `ssb_iafa_signed`, and `prospect_board_settings`. Each league remembers its own selected team, game date, roster moves, and so on.
 
@@ -91,21 +91,21 @@ OOTP simulator mechanics change between major versions. New mechanics produce di
 
    These come from running the OOTP simulator with a baseline ratings sheet over many sim seasons. See [`model/docs/pipelines/REGRESSIONS_IMPLEMENTATION.md`](../model/docs/pipelines/REGRESSIONS_IMPLEMENTATION.md) for the calibration methodology.
 
-2. **Run the regression pipeline** against the new directory. From `model/`:
+2. **Configure your new-version league** with `ootpVersion: "27"` in `league.json`. The pipeline routes regressions from `data/regressions/ootp27/` automatically based on this field.
+
+3. **Run the build.** That's it — there's no manual coefficient merge. At build time `export._detect_metadata` calls `generate_regression_coefficients(regressions_dir)`, which fits *all* hitting/pitching/fielding coefficients from the new sims and injects them via `compose_data_points`. The fit is cached in a new `.regressions_cache.json` next to the inputs (keyed on a data hash + cache version), so only the first build on the new version pays the cost. The hardcoded OOTP 26 values in `data_points.py` stay put as the **no-sims fallback** — you don't edit them.
+
+   (You can pre-warm / sanity-check the fit without a full build, from `model/`:
    ```bash
    python3 -c "from src.regressions import generate_regression_coefficients; from pathlib import Path; generate_regression_coefficients(Path('../data/regressions/ootp27'))"
    ```
-   The coefficients land in a new `.regressions_cache.json` next to the inputs.
+   )
 
-3. **Update `data_points.py`** to load the new coefficients (or fork it as `data_points_v27.py` and switch on `LeagueConfig.ootp_version`). The current `data_points.py` hardcodes OOTP 26 values that originally came from the Excel workbook; for OOTP 27 you'll either replace those constants with the regression output or load them dynamically.
-
-4. **Configure your new-version league** with `ootpVersion: "27"` in `league.json`. The pipeline routes regressions from `data/regressions/ootp27/` automatically.
-
-OOTP 26 is the only version this project ships with calibrated coefficients for. OOTP 27 calibration is a future task.
+OOTP 26 is the only version this project ships with calibration sims for. OOTP 27 calibration (producing those sims) is a future task.
 
 ## Sharing data between leagues on different OOTP versions
 
-There's no automatic sharing. Each version gets its own `data/regressions/ootp<version>/` and its own `data_points.py` constants. Leagues on the same version share regressions transparently; leagues on different versions are fully independent.
+There's no automatic sharing. Each version gets its own `data/regressions/ootp<version>/`, and its coefficients are computed from those sims at build time (the hardcoded `data_points.py` values are a shared no-sims fallback, not per-version constants). Leagues on the same version share regressions transparently; leagues on different versions are fully independent.
 
 ## Common pitfalls
 

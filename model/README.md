@@ -60,7 +60,7 @@ Each league has its own `leagues/<slug>/csv/ballparks.csv` with one row per team
 
 ### 3. Calibration Data (Optional)
 
-The pipeline ships with hardcoded OOTP 26 defaults that work out of the box. These optional calibration steps refine accuracy for your specific save.
+The pipeline ships with the bundled OOTP 26 calibration sims (`data/regressions/ootp26/`), so the rating→stat regression coefficients are **computed** out of the box; the hardcoded values in `data_points.py` are the fallback for when no sims are present. These optional steps refine accuracy for your specific save.
 
 #### 3a. Metadata — League Parameters (Per-league)
 
@@ -72,9 +72,9 @@ Computes league-average parameters (wOBA weights, stat rates, fielding averages,
 
 #### 3b. Regressions — Rating-to-Stat Curves (Per OOTP version)
 
-Calibrates the 60 regression slopes that convert player ratings (e.g., POW 65) into projected stats (e.g., HR/PA). Calibration is **per OOTP version** — leagues on the same OOTP version share regressions automatically.
+Calibrates the 60 regression slopes that convert player ratings (e.g., POW 65) into projected stats (e.g., HR/PA). When the sims for the active OOTP version are present, the coefficients are computed at build time and injected into the data points automatically (no hand-merge into `data_points.py`). Calibration is **per OOTP version** — leagues on the same OOTP version share regressions automatically.
 
-- **Source:** `25 Regressions.xlsx` (OOTP 26) → extract to `data/regressions/ootp26/` CSVs. For OOTP 27+, drop new sim CSVs into `data/regressions/ootp27/` and re-run `regressions.py` against that path.
+- **Source:** `25 Regressions.xlsx` (OOTP 26) → extract to `data/regressions/ootp26/` CSVs. For OOTP 27+, drop new sim CSVs into `data/regressions/ootp27/`; the pipeline fits and uses them automatically for leagues on that version.
 - **When to update:** Only when changing OOTP versions. See [`../docs/MULTI_LEAGUE.md`](../docs/MULTI_LEAGUE.md) for the new-version workflow.
 - **Cache:** `.regressions_cache.json` next to the inputs short-circuits subsequent runs unless the input hash changes.
 
@@ -126,10 +126,10 @@ python -m pytest tests/ -v
 
 ## OOTP Compatibility
 
-Built for **OOTP 26**, with the multi-league architecture in place to support future versions. The hardcoded defaults in `data_points.py` work out of the box for OOTP 26 saves. For other environments:
+Built for **OOTP 26**, with the multi-league architecture in place to support future versions. The bundled OOTP 26 calibration sims make it work out of the box (regression coefficients are computed from them); the hardcoded `data_points.py` values are the fallback when sims are absent. For other environments:
 
 - **League parameters:** Extract your save's metadata CSVs to `leagues/<slug>/metadata/` to recompute wOBA weights, league averages, and fielding baselines (see §3a above).
-- **Regression coefficients (new OOTP version):** Drop sim CSVs into `data/regressions/ootp<version>/` and run `regressions.py`. See [`../docs/MULTI_LEAGUE.md`](../docs/MULTI_LEAGUE.md) for the workflow.
+- **Regression coefficients (new OOTP version):** Drop sim CSVs into `data/regressions/ootp<version>/`; the pipeline fits and injects them automatically for leagues on that version. See [`../docs/MULTI_LEAGUE.md`](../docs/MULTI_LEAGUE.md) for the workflow.
 
 ## Credits
 

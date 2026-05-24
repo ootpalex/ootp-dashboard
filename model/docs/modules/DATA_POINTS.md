@@ -4,14 +4,17 @@
 
 Central constants library for the entire evaluation pipeline. Contains all regression coefficients (rating-to-stat mappings), league averages, wOBA weights, position adjustments, and calibration parameters. These values are derived from 50 years of simulated OOTP 26 baseline data (10 sims x 5 years) and define how player ratings translate to projected stats.
 
-There are two ways to get constants: hardcoded singletons (`DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP`) for quick use, or dynamically computed via `metadata.py` for league-specific calibration.
+There are two ways to get constants: hardcoded singletons (`DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP`) for quick use, or dynamically computed for league-specific calibration. In the dynamic path the **league averages / wOBA weights / out-values come from `metadata.py`** (per league) and the **rating→stat regression coefficients are computed from the calibration sims via `regressions.py`** (`generate_regression_coefficients`, cached) and injected through `compose_data_points`. The hardcoded values in `data_points.py` are the **fallback** used when no metadata / no sims are available.
+
+> **Note (2026-05-24 OAA rollout):** the fielding `*_pm_*` slots now hold **OAA** (difficulty-adjusted outs above average) range coefficients, not raw PM%, and the fielding out-values (`inf_out`/`of_out`) are derived **per league** from each league's own linear weights rather than the old fixed 0.75/0.90.
 
 ## Inputs Required
 
 | Input | Source | Description |
 |-------|--------|-------------|
-| None (hardcoded) | `src/data_points.py` | OOTP 26 defaults baked into dataclass field values |
+| None (hardcoded fallback) | `src/data_points.py` | OOTP 26 defaults baked into dataclass field values — used only when metadata / sims are unavailable |
 | Metadata CSVs (optional) | `leagues/<slug>/metadata/*.csv` | Raw OOTP rating CSVs for league-specific constant computation via `src/metadata.py` |
+| Calibration sims (optional) | `data/regressions/ootp<version>/` | Sim CSVs that `src/regressions.py` fits the rating→stat coefficients from at build time |
 
 ## How to Use (Public API)
 
@@ -61,7 +64,7 @@ bpk_constants = DEFAULT_HITTER_DP.league.to_ballpark_constants()
 |-----------|--------|---------|
 | `HittingRegressionCoeffs` | `eye`, `power`, `k`, `babip`, `gap`, `speed` (LinearCoeffs) + `sba`, `sb_pct`, `ubr` (CubicCoeffs) | Rating-to-stat delta mappings for hitters |
 | `PitchingRegressionCoeffs` | `sp_con/hrr/stu/babip` + `rp_con/hrr/stu/babip` (LinearCoeffs) + `sba`, `sp_sb_pct`, `rp_sb_pct` (CubicCoeffs) | Rating-to-stat delta mappings for pitchers |
-| `FieldingRegressionCoeffs` | Per-position const/slope pairs for PM%, ERR, DP, ARM, FRM, SBA, RTO | Fielding rating-to-stat mappings |
+| `FieldingRegressionCoeffs` | Per-position const/slope pairs for range (OAA; PM% is the fallback), ERR, DP, ARM, FRM, SBA, RTO | Fielding rating-to-stat mappings |
 | `HitterLeagueParams` | Rating averages, wOBA weights, matchup splits, stat rates | League calibration for hitters |
 | `PitcherLeagueParams` | SP/RP rating averages, SP/RP wOBA weights, workload, RA/9 baselines | League calibration for pitchers |
 | `FieldingParams` | Position adjustments, rating averages (full precision), scaling constants | Fielding calibration per position |

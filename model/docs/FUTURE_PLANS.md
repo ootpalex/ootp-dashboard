@@ -78,11 +78,11 @@ The gzipped JSON typically lands at 2–4 MB, which the SPA loads cleanly. Remai
 ### What's wired (v0.1.0)
 - `build_dashboard()` accepts an optional `metadata_dir` parameter. When `leagues/<slug>/metadata/` contains CSV files, the pipeline auto-calls `generate_data_points()` → `compose_data_points()` to compute league-specific calibration. SHA-256 hash caching via `.metadata_cache.json` short-circuits unchanged inputs. Falls back to `DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP` when the directory is empty.
 
-### What's still manual
-- Regression coefficient regeneration for new OOTP versions. Today the OOTP 26 coefficients are hardcoded in `data_points.py` (originally Excel-derived). For OOTP 27, you drop sim CSVs into `data/regressions/ootp27/` and run `regressions.py` against that path; the resulting coefficients still need to be hand-merged into `data_points.py` (or a future `data_points_v27.py`).
+### What's still manual _(superseded by the 2026-05-24 OAA rollout — see Update below)_
+- Regression coefficient regeneration for new OOTP versions. Originally the OOTP 26 coefficients were hardcoded in `data_points.py` (Excel-derived), and a new version meant hand-merging fresh fits into `data_points.py` (or a `data_points_v27.py`). This is no longer the case — the coefficients are now computed from the sims and injected automatically (see Update).
 
-### Open work
-- Wire `compute_regressions()` output into `data_points.py` automatically based on `LeagueConfig.ootpVersion` so that new-version leagues don't require a manual constant-merge step. See [`../../docs/MULTI_LEAGUE.md`](../../docs/MULTI_LEAGUE.md) for the current OOTP-version migration workflow.
+### Open work _(resolved — see Update below)_
+- Wire the computed regression output into the data points automatically based on `LeagueConfig.ootpVersion` so that new-version leagues don't require a manual constant-merge step. See [`../../docs/MULTI_LEAGUE.md`](../../docs/MULTI_LEAGUE.md) for the current OOTP-version migration workflow.
 
 > **Update (2026-05-24, OAA rollout):** the auto-wire is now **done**. `_detect_metadata` (`export.py`)
 > calls `generate_regression_coefficients(regressions_dir)` — which computes *all* hitting/pitching/fielding

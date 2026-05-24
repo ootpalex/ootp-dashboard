@@ -242,7 +242,7 @@ Four stackable toggles:
 
 Pipeline outputs (`model/src/export.py`, embedded in `data.meta`):
 - `progressCurve.{hit,sp,rp}` — kernel-smoothed median-progress-by-age. **Load-bearing** for the empirical-overlay chart in CurveTuningPanel (parametric `creditAge` plotted against `1 − progressCurve.p50`).
-- `devCurve.{hit,sp,rp}` — **v21: dev signal unified on cur-WAA across all three cohorts** (hitter `maxWaa.wtd`, SP `sp.wtd.waa`, RP scaled `rp.wtd.waa`). Used purely for the Dev% display column on tables — not in the FV formula. (Pre-v21 used batR for hitters; switched to cur-WAA for unified semantics.)
+- `devCurve.{hit,sp,rp}` — dev signal unified on **cur-WAR** across all three cohorts (hitter `maxWar.wtd`, SP `sp.wtd.war`, RP **raw** `rp.wtd.war`). Used purely for the Dev% display column on tables — not in the FV formula. (Under WAR the RP distribution is left **unscaled** so it matches the raw RP cur the frontend looks up against it; pre-v21 used batR for hitters, then cur-WAA before the WAR migration.)
 - `gapDist.{hit,sp,rp}` — embedded diagnostic. Not used by the FV formula.
 
 ### `devPercentileRank(devCurve, age, devValue)`

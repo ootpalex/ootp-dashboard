@@ -279,7 +279,7 @@ For each eligible position, compute defensive value. Ineligible positions get Na
 - ARMAA = `(const + slope*(OF_ARM - avg)) * scale`
 - RunsP = `(PMAA - EAA) * of_out + ARMAA`
 
-Key scaling constants: `inf_out = 0.75`, `of_out = 0.9`, `ip_c = 1000` (catcher IP), `ip = 1200` (full-season IP).
+Key scaling constants: `ip_c = 1000` (catcher IP), `ip = 1200` (full-season IP). The fielding out-values `inf_out` / `of_out` are now **derived per league** (from each league's own linear weights + outfield-hit mix in `hit_aggregator`); `0.75` / `0.90` remain only as the no-data fallback. Range (PMAA) is fit against an **OAA** target (difficulty-adjusted outs above average), with raw PM% as the fallback — the `(const + slope·(rating − avg))` shape is unchanged.
 
 ### Phase 7: WAA Per Position — COMPLETE
 

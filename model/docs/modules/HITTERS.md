@@ -69,5 +69,5 @@ players["is_two_way"] = refine_two_way(players, eligibility)
 - **Position eligibility rules**: C (FRM>=45), 1B (HT>179cm AND IF RNG>20), 2B (IF RNG>=50 AND throws R AND TDP>=45), 3B (IF RNG>=40 AND IF ARM>=50 AND throws R), SS (IF RNG>=60 AND IF ARM>=50 AND throws R), LF (OF RNG>=50), CF (OF RNG>=60), RF (OF RNG>=50), DH (always).
 - **Catcher WAA**: Uses PA=500 (not 600) with inline BatR recalculation and a park adjustment scaled proportionally.
 - **DH WAA**: No fielding component; BSR discounted by 0.98; uses DH-specific wOBA (0.98 non-HR discount + SO*0.02 PA adjustment).
-- **Max WAA**: The best WAA across all eligible positions, computed per split (vR, vL, wtd). This is the player's headline value.
+- **Max WAA / Max WAR**: The best value across all eligible positions, computed per split (vR, vL, wtd). WAA (Wins Above Average) is the per-position intermediate; **Max WAR** (which adds the per-league replacement-runs term) is the player's **headline value** since the WAR migration. WAA is retained as a secondary metric.
 - **GAP regression**: Unlike other stats, XBH-HR uses the *same* high-model coefficients (h_const/h_slope) for all rating values.

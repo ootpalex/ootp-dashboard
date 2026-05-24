@@ -26,6 +26,21 @@ The Sheet Hitters.xlsx / The Sheet Pitchers.xlsx
 
 The `Data Points` sheet constants are the key bridge from the external sheets. When implementing in Python, these values will be hardcoded from the spreadsheets (and should be updatable per league/season).
 
+> **⚠ Historical reverse-engineering record.** This document describes the original Excel workbooks
+> and the first Python translation. The live pipeline has since diverged in several places — the tables
+> and constants below are the *Excel-derived* values, not necessarily what runs today:
+> - **Regression coefficients are computed from the calibration sims and injected at build time**
+>   (`export._detect_metadata` → `generate_regression_coefficients` → `compose_data_points`); the
+>   hardcoded `data_points.py` values are the no-sims fallback.
+> - **Fielding range target is OAA** (difficulty-adjusted outs above average), not raw PM% — so the
+>   fielding *range* slopes differ from the PM% tables here.
+> - **Fielding out-values (`inf_out`/`of_out`) are derived per league** from each league's own linear
+>   weights, not the fixed `0.75`/`0.90` shown below.
+> - **WAR (with a per-league replacement-runs term) is the headline value metric**; WAA is retained as
+>   a secondary metric.
+>
+> See `CLAUDE.md`, `pipelines/REGRESSIONS_IMPLEMENTATION.md`, and `modules/DATA_POINTS.md` for current behavior.
+
 ---
 
 ## Workbook: `25 Regressions.xlsx`

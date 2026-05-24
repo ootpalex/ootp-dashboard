@@ -45,7 +45,7 @@ flowchart TD
   COPY --> IDX[leagues.json index refreshed]
 ```
 
-The version-shared regression CSVs at `data/regressions/ootp<version>/` feed `regressions.compute_regressions` for OOTP-version calibration; `data_points.py` ships with hardcoded constants for OOTP 26 derived from those calibration runs.
+The version-shared regression CSVs at `data/regressions/ootp<version>/` feed `regressions.generate_regression_coefficients` for OOTP-version calibration; the resulting rating→stat coefficients are computed at build time and injected into the data points (via `export._detect_metadata` → `compose_data_points`). The hardcoded constants in `data_points.py` are the fallback used when no sims are present.
 
 Key invariants:
 
