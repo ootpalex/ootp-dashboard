@@ -547,6 +547,58 @@ class HitterLeagueParams:
         )
 
 
+# ---------------------------------------------------------------------------
+# Frozen positional adjustments (multi-year blended spectrum, per universe)
+# ---------------------------------------------------------------------------
+# Computed from each league's full career history in
+# Leftovers/positional-adjustments/pos_adj_grid.json:
+#   - method   : ½ Zimmerman defensive position-switcher on ZR + ½ offense, with
+#                catcher and DH from offense only (the switcher can't rate them
+#                — multi-position catchers are a self-selected non-representative
+#                sample; see Leftovers/positional-adjustments/SAMPLE_SIZE_AUDIT.md).
+#   - def recency : H_def = 5, cut_def = 20 (widened 2026-05-29 from H=2.5/cut=8
+#                   per the per-position-pair bootstrap-SE audit — the switcher
+#                   has FAR fewer effective obs per pair than the offense method,
+#                   and the locked window left 3-4 adjacent-pair differences in
+#                   the noise floor).
+#   - off recency : H_off = 2.5, cut_off = 8 (unchanged — offense has ~10× the
+#                   switcher's data and was never the sample-size concern).
+#   - DH rule  : DH = min(spec[k] for all 9) — tie DH to the lowest position unless
+#                DH itself is already lowest (locked 2026-05-28).
+#   - anchor   : field-8 mean = 0 — the 8 defensive positions average to zero, DH
+#                sits below as the no-defense deficit (Zimmerman 2014 / FanGraphs
+#                convention; see Leftovers/positional-adjustments/POSITIONAL_ADJUSTMENTS.md:96-98).
+# Lookup key = league's statsplus_url (Project/leagues/<slug>/league.json). The 6
+# league dashboards fold into 2 underlying universes: the 4 BLM-* slugs all share
+# statsplus.net/blm/, and SSB + default share atl-01.statsplus.net/ssb/.
+# Re-derive periodically from the grid; do NOT hand-edit.
+# Validated end-to-end in Leftovers/posadj-bestpos-impact/IMPACT.md.
+# Units: runs/162.
+_FROZEN_POS_ADJ_BY_URL: dict[str, dict[str, float]] = {
+    "https://statsplus.net/blm/": {  # BLM (BLM-ATL, BLM-COL, BLM-MIA, BLM-NYM)
+        "C":  16.1, "1B": -13.1, "2B":  -2.3, "3B":  -0.7, "SS":  9.6,
+        "LF":  -8.4, "CF":  5.1, "RF":  -6.2, "DH": -13.1,
+    },
+    "https://atl-01.statsplus.net/ssb/": {  # SSB, default
+        "C":  21.0, "1B": -12.4, "2B":  -0.3, "3B":  -1.0, "SS": 10.4,
+        "LF": -12.0, "CF":  2.3, "RF":  -8.1, "DH": -13.0,
+    },
+}
+# Fallback for unknown league URLs: BLM spectrum (most-tested, most-data-supported
+# — 42 yrs vs SSB's 22). Also matches the FieldingParams pos_* dataclass defaults.
+_FROZEN_POS_ADJ_DEFAULT: dict[str, float] = _FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"]
+
+
+def get_frozen_pos_adj(statsplus_url: str | None) -> dict[str, float]:
+    """Return the frozen 9-position spectrum (runs/162) for a league.
+
+    Looks up by `statsplus_url` (from `Project/leagues/<slug>/league.json`).
+    Falls back to the BLM spectrum for unknown / missing URLs.
+    """
+    key = (statsplus_url or "").strip()
+    return dict(_FROZEN_POS_ADJ_BY_URL.get(key, _FROZEN_POS_ADJ_DEFAULT))
+
+
 @dataclass(frozen=True)
 class FieldingParams:
     """
@@ -558,16 +610,23 @@ class FieldingParams:
     Scaling constants (PA/IP per position, league PM%, E%, etc.) from column T.
     """
 
-    # ── Position adjustments — WAR/162 (Metadata col O rows 2–10) ───────────
-    pos_c:   float = 12.84   # Metadata O2  — full: 12.839550837570107
-    pos_1b:  float = -8.12   # Metadata O3  — full: -8.116195826069795
-    pos_2b:  float = 5.65    # Metadata O4  — full: 5.653105502358827
-    pos_3b:  float = 1.08    # Metadata O5  — full: 1.0791782884564385
-    pos_ss:  float = 11.97   # Metadata O6  — full: 11.969035177371818
-    pos_lf:  float = -7.16   # Metadata O7  — full: -7.157189587696185
-    pos_cf:  float = -4.41   # Metadata O8  — full: -4.4137949883625325
-    pos_rf:  float = -7.16   # Metadata O9  — full: -7.157189587696185
-    pos_dh:  float = -8.34   # Metadata O10 — full: -8.337227920039583
+    # ── Position adjustments — runs/162 ─────────────────────────────────────
+    # Frozen from the multi-year blended defensive-switcher spectrum at H=2.5 / cutoff=8y
+    # (Leftovers/positional-adjustments/pos_adj_grid.json). DH-tied-to-lowest rule applied,
+    # then re-centered to FIELD-8 MEAN = 0 (Zimmerman 2014 / FanGraphs convention: the 8
+    # defensive positions average to zero; DH sits below as a no-defense deficit).
+    # Defaults below are the BLM spectrum; SSB has its own via _FROZEN_POS_ADJ_BY_URL.
+    # The live path (compute_fielding_constants → _compute_position_adjustments) looks up
+    # by statsplus_url; these defaults are the no-sims / unknown-league fallback.
+    pos_c:   float =  16.1
+    pos_1b:  float = -13.1
+    pos_2b:  float =  -2.3
+    pos_3b:  float =  -0.7
+    pos_ss:  float =   9.6
+    pos_lf:  float =  -8.4
+    pos_cf:  float =   5.1
+    pos_rf:  float =  -6.2
+    pos_dh:  float = -13.1
 
     # ── Primary fielding rating averages (P column) ──────────────────────────
     avg_frm_c:  float = 62.69286389219835    # P3  — C framing rating avg

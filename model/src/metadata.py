@@ -120,6 +120,10 @@ class MetadataInputs:
     rp_ratings_vl: pd.DataFrame | None = None  # RP ratings when facing LH batters
     pitcher_ratings_vr: pd.DataFrame | None = None  # all pitchers, BF = RH-faced
     pitcher_ratings_vl: pd.DataFrame | None = None  # all pitchers, BF = LH-faced
+    # League identity. Read from ../league.json by load_metadata_inputs; used by
+    # compute_fielding_constants to look up the frozen positional-adjustment spectrum
+    # in data_points._FROZEN_POS_ADJ_BY_URL. None for ad-hoc / no-league contexts.
+    statsplus_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +333,22 @@ def load_metadata_inputs(
         fielding_data[pos] = _normalize_fielding_data_frame(
             pd.read_csv(d / f"fielding_data_{pos}.csv"))
 
+    # League identity: walk up from the metadata dir to find league.json
+    # (`<slug>/league.json` for flat layouts and `<slug>/league.json` for pooled
+    # season subdirs like `<slug>/metadata/2042/`). Used by compute_fielding_constants
+    # → data_points.get_frozen_pos_adj for the per-universe positional-adjustment
+    # spectrum. Optional — if no league.json is found / it's malformed, leave URL
+    # as None and the frozen-pos-adj lookup falls back to its default spectrum.
+    statsplus_url: str | None = None
+    for ancestor in (d, *d.parents):
+        league_json = ancestor / "league.json"
+        if league_json.is_file():
+            try:
+                statsplus_url = json.loads(league_json.read_text()).get("statsplusUrl")
+            except (json.JSONDecodeError, OSError):
+                pass
+            break
+
     # Pitcher ratings: the new 2-file combined format (pitcher_ratings_vr/vl)
     # takes precedence; otherwise fall back to the legacy 4-file per-role format.
     if (d / "pitcher_ratings_vr.csv").is_file():
@@ -355,6 +375,7 @@ def load_metadata_inputs(
         rp_data=_normalize_pitching_frame(pd.read_csv(d / "rp_data.csv")),
         fielding_data=fielding_data,
         fielding_ratings=_normalize_fielding_ratings_frame(pd.read_csv(d / "fielding_ratings.csv")),
+        statsplus_url=statsplus_url,
         **pitcher_kwargs,
     )
 
@@ -366,7 +387,13 @@ def load_metadata_inputs(
 # v3: out_value (inf_out/of_out) now derived per league in compute_hitting_constants (BIZ OF-hit mix)
 # and the baserunning c0 fallbacks corrected — both are code changes not captured by the input-data hash,
 # so the version bump invalidates stale on-disk caches that still hold the old 0.75/0.90 / Excel intercepts.
-_CACHE_VERSION = 3
+# v4: positional adjustments replaced with the per-universe frozen blended spectrum at H=2.5/cut=8y
+# (FANGRAPHS / Zimmerman field-8-mean-0 anchor; DH-tied-to-lowest rule). Constants change; existing
+# caches still hold the old offense-derived per-season values, so they need to be invalidated.
+# v5: defensive half of the blend widened to H_def=5/cut_def=20 (offense unchanged at H=2.5/cut=8)
+# per the per-position-pair bootstrap-SE audit (Leftovers/positional-adjustments/SAMPLE_SIZE_AUDIT.md).
+# Constants change; bump invalidates v4 caches that still hold the narrower-window values.
+_CACHE_VERSION = 5
 _CACHE_FILENAME = ".metadata_cache.json"
 
 

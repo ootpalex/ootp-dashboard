@@ -176,95 +176,26 @@ def _compute_fielding_rating_averages(fielding_helper: pd.DataFrame,
     return result
 
 
-def _compute_position_adjustments(pos_adj_helper: pd.DataFrame,
-                                  fielding_data: dict[str, pd.DataFrame]) -> dict:
-    """Compute position adjustments (WAR/162) from POS Adj Calc logic.
+def _compute_position_adjustments(statsplus_url: str | None) -> dict[str, float]:
+    """Return the frozen multi-year blended defensive-switcher spectrum (runs/162).
 
-    Formula:
-        1. ip_per_bf = SUM(IP Clean) / SUM(PA) across all players
-        2. For each player: PAIP = PA × ip_per_bf
-           DH IP = MAX(PAIP - IP_Clean, 0)
-           effective_denom = MAX(IP_Clean, PAIP)
-        3. For each position: P_OFF = OFF × P_IP / effective_denom
-           DH_OFF = OFF × DH_IP / effective_denom
-        4. pos_adj[P] = -SUM(P_OFF) / (SUM(Fielding_P_raw_IP) / std_IP)
-           where std_IP = 1000 for C, 1200 for all others
-        5. LF and RF: pos_adj[LF] = pos_adj[RF] = average of standalone values
+    Replaces the prior per-season offense-allocation method, which was broken in
+    three measurable ways: noisy season-to-season, sample-artifact sign-flips on
+    premium positions (SSB CF wrongly negative), and a DH-collapse (54% of BLM
+    hitters had maxWar=DH because the offense-derived DH floated above the corners).
+
+    The replacement is the per-universe spectrum computed in
+    ``Leftovers/positional-adjustments/pos_adj_grid.json`` at H=2.5 / cutoff=8y,
+    with the locked DH-tie-to-lowest rule and the field-8-mean=0 anchor
+    (Zimmerman 2014 / FanGraphs convention) — frozen in
+    ``data_points._FROZEN_POS_ADJ_BY_URL`` and looked up here by the league's
+    ``statsplusUrl`` (4 BLM-* slugs share one URL; SSB + default share another).
+    Unknown URLs fall back to BLM.
+
+    See ``Leftovers/posadj-bestpos-impact/IMPACT.md`` for end-to-end validation.
     """
-    helper = pos_adj_helper.copy()
-    for col in helper.columns:
-        if col != "ID":
-            helper[col] = pd.to_numeric(helper[col], errors="coerce").fillna(0)
-
-    total_ip = helper["IP Clean"].sum()
-    total_pa = helper["PA"].sum()
-    ip_per_bf = total_ip / total_pa if total_pa > 0 else 0.0
-
-    helper["PAIP"] = helper["PA"] * ip_per_bf
-    helper["DH IP"] = np.maximum(helper["PAIP"] - helper["IP Clean"], 0)
-
-    denom = np.maximum(helper["IP Clean"], helper["PAIP"])
-    denom = np.where(denom == 0, 1, denom)  # avoid division by zero
-
-    pos_ip_cols = ["C IP", "1B IP", "2B IP", "3B IP", "SS IP",
-                   "LF IP", "CF IP", "RF IP"]
-    pos_names_field = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"]
-
-    pos_off = {}
-    for col, name in zip(pos_ip_cols, pos_names_field):
-        allocated = np.where(
-            helper[col] > 0,
-            helper["OFF"] * helper[col] / denom,
-            0.0
-        )
-        pos_off[name] = allocated.sum()
-
-    pos_off["DH"] = np.where(
-        helper["DH IP"] > 0,
-        helper["OFF"] * helper["DH IP"] / denom,
-        0.0
-    ).sum()
-
-    # Get raw IP totals from fielding data (the "IP" column, NOT "IP Clean").
-    # The raw IP uses OOTP encoding (0.1=1/3 inn, 0.2=2/3 inn) which differs
-    # from IP Clean. This difference is what makes the formula work.
-    raw_ip = {}
-    for pos_key, pos_name in [("c", "C"), ("1b", "1B"), ("2b", "2B"), ("3b", "3B"),
-                               ("ss", "SS"), ("lf", "LF"), ("cf", "CF"), ("rf", "RF")]:
-        if pos_key in fielding_data:
-            df = fielding_data[pos_key]
-            ip_col = [c for c in df.columns if c.strip() == "IP" and "Clean" not in c]
-            if ip_col:
-                raw_ip[pos_name] = pd.to_numeric(df[ip_col[0]], errors="coerce").sum()
-            else:
-                raw_ip[pos_name] = pd.to_numeric(
-                    df["IP Clean"], errors="coerce").sum()
-        else:
-            raw_ip[pos_name] = 0.0
-
-    # Standardized IP per season: 1000 for C, 1200 for all others
-    std_ip = {"C": 1000, "1B": 1200, "2B": 1200, "3B": 1200, "SS": 1200,
-              "LF": 1200, "CF": 1200, "RF": 1200, "DH": 1200}
-
-    # pos_adj = -SUM(P_OFF) / (SUM(raw_IP) / std_IP)
-    result = {}
-    for name in ["C", "1B", "2B", "3B", "SS", "CF"]:
-        team_seasons = raw_ip[name] / std_ip[name]
-        result[name] = -pos_off[name] / team_seasons if team_seasons > 0 else 0.0
-
-    # LF and RF: compute standalone values then average (corner OF)
-    lf_adj = -pos_off["LF"] / (raw_ip["LF"] / std_ip["LF"]) if raw_ip["LF"] > 0 else 0.0
-    rf_adj = -pos_off["RF"] / (raw_ip["RF"] / std_ip["RF"]) if raw_ip["RF"] > 0 else 0.0
-    cof_adj = (lf_adj + rf_adj) / 2.0
-    result["LF"] = cof_adj
-    result["RF"] = cof_adj
-
-    # DH: uses DH IP from the pos_adj computation (not fielding data)
-    dh_ip_total = helper["DH IP"].sum()
-    dh_team_seasons = dh_ip_total / std_ip["DH"]
-    result["DH"] = -pos_off["DH"] / dh_team_seasons if dh_team_seasons > 0 else 0.0
-
-    return result
+    from src.data_points import get_frozen_pos_adj
+    return get_frozen_pos_adj(statsplus_url)
 
 
 def compute_fielding_constants(inputs,
@@ -273,22 +204,17 @@ def compute_fielding_constants(inputs,
 
     Args:
         inputs: MetadataInputs with raw data
-        woba_intermediates: Dict from _compute_woba_from_aggregates() with hitting
-            wOBA weights/constants needed for OFF computation. If None, computed
-            internally from hitting_data.
+        woba_intermediates: Unused since the 2026-05 pos-adj overhaul (positional
+            adjustments are now a per-league frozen lookup, no longer offense-derived).
+            Kept for backward compatibility with external callers.
     """
-    if woba_intermediates is None:
-        hit_agg = _aggregate_hitting(inputs.hitting_data)
-        woba_intermediates = _compute_woba_from_aggregates(hit_agg)
-
+    del woba_intermediates  # no longer needed; see _compute_position_adjustments
     fielding_helper = _build_fielding_helper(inputs.fielding_data, inputs.fielding_ratings)
-    pos_adj_helper = _build_pos_adj_helper(
-        inputs.hitting_data, inputs.fielding_data, woba_intermediates)
 
     agg = _compute_fielding_aggregates(inputs.fielding_data)
     rating_avgs = _compute_fielding_rating_averages(
         fielding_helper, inputs.fielding_ratings)
-    pos_adj = _compute_position_adjustments(pos_adj_helper, inputs.fielding_data)
+    pos_adj = _compute_position_adjustments(inputs.statsplus_url)
 
     # Helper to get aggregate value
     def ga(pos: str, stat: str) -> float:

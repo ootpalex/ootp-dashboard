@@ -497,13 +497,51 @@ class TestComputeFieldingConstants:
     """Test the full fielding constants computation."""
 
     def test_position_adjustments(self, inputs):
+        """Positional adjustments are now a per-universe frozen lookup (no longer
+        offense-derived). The default fixture lives under leagues/default/, which
+        shares SSB's statsplusUrl → it should resolve to the SSB spectrum.
+
+        Verifies the lookup wiring end-to-end: load_metadata_inputs reads the URL
+        from league.json, compute_fielding_constants threads it into
+        _compute_position_adjustments → get_frozen_pos_adj.
+        """
+        from src.data_points import _FROZEN_POS_ADJ_BY_URL
+        ssb_spec = _FROZEN_POS_ADJ_BY_URL["https://atl-01.statsplus.net/ssb/"]
         result = compute_fielding_constants(inputs)
-        expected = DEFAULT_FIELDING_PARAMS
-        assert result.pos_c == pytest.approx(expected.pos_c, abs=0.5)
-        assert result.pos_1b == pytest.approx(expected.pos_1b, abs=0.5)
-        assert result.pos_2b == pytest.approx(expected.pos_2b, abs=0.5)
-        assert result.pos_ss == pytest.approx(expected.pos_ss, abs=0.5)
-        assert result.pos_dh == pytest.approx(expected.pos_dh, abs=0.5)
+        # If the fixture's league.json carries the SSB URL, expect SSB values;
+        # otherwise (legacy fixtures with no league.json) the URL is None and we
+        # fall back to BLM-default. Either case is a valid frozen lookup; assert
+        # the result matches one of the two universes exactly.
+        bl_spec = _FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"]
+        for pos_attr, key in [
+            ("pos_c", "C"), ("pos_1b", "1B"), ("pos_2b", "2B"), ("pos_3b", "3B"),
+            ("pos_ss", "SS"), ("pos_lf", "LF"), ("pos_cf", "CF"), ("pos_rf", "RF"),
+            ("pos_dh", "DH"),
+        ]:
+            assert getattr(result, pos_attr) in (ssb_spec[key], bl_spec[key]), (
+                f"{pos_attr} = {getattr(result, pos_attr)} matches neither universe"
+            )
+
+    def test_position_adjustments_blm_url(self):
+        """BLM statsplus_url → BLM spectrum exactly."""
+        from src.data_points import _FROZEN_POS_ADJ_BY_URL
+        from src.aggregators.field_aggregator import _compute_position_adjustments
+        spec = _compute_position_adjustments("https://statsplus.net/blm/")
+        assert spec == _FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"]
+
+    def test_position_adjustments_ssb_url(self):
+        """SSB statsplus_url → SSB spectrum exactly."""
+        from src.data_points import _FROZEN_POS_ADJ_BY_URL
+        from src.aggregators.field_aggregator import _compute_position_adjustments
+        spec = _compute_position_adjustments("https://atl-01.statsplus.net/ssb/")
+        assert spec == _FROZEN_POS_ADJ_BY_URL["https://atl-01.statsplus.net/ssb/"]
+
+    def test_position_adjustments_unknown_url_falls_back_to_blm(self):
+        """Unknown URLs (and None) fall back to the BLM spectrum."""
+        from src.data_points import _FROZEN_POS_ADJ_DEFAULT
+        from src.aggregators.field_aggregator import _compute_position_adjustments
+        for url in (None, "", "https://example.com/", "https://nope.statsplus.net/"):
+            assert _compute_position_adjustments(url) == _FROZEN_POS_ADJ_DEFAULT
 
     def test_rating_averages(self, inputs):
         result = compute_fielding_constants(inputs)

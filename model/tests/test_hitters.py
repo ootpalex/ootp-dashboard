@@ -93,6 +93,13 @@ class TestPositionEligibility:
         assert compute_position_eligibility(p20)["1B Elig"].iloc[0] is np.bool_(False)
         assert compute_position_eligibility(p21)["1B Elig"].iloc[0] is np.bool_(True)
 
+    def test_first_base_needs_if_err_above_20(self):
+        """1B needs IF ERR > 20 (strict) — worst-hands guard added 2026-05-25."""
+        p20 = make_player(HT="6' 2'", **{"IF RNG": 25, "IF ERR": 20})
+        p21 = make_player(HT="6' 2'", **{"IF RNG": 25, "IF ERR": 21})
+        assert compute_position_eligibility(p20)["1B Elig"].iloc[0] is np.bool_(False)
+        assert compute_position_eligibility(p21)["1B Elig"].iloc[0] is np.bool_(True)
+
     def test_second_base_throws_r(self):
         """2B requires throws R."""
         p_r = make_player(T="R", **{"IF RNG": 50, "TDP": 45})
@@ -128,6 +135,13 @@ class TestPositionEligibility:
         assert compute_position_eligibility(p59)["SS Elig"].iloc[0] is np.bool_(False)
         assert compute_position_eligibility(p60)["SS Elig"].iloc[0] is np.bool_(True)
 
+    def test_shortstop_tdp_boundary(self):
+        """SS needs TDP >= 45 — matched to 2B's turn-DP floor 2026-05-25."""
+        p44 = make_player(**{"IF RNG": 60, "IF ARM": 50, "TDP": 44})
+        p45 = make_player(**{"IF RNG": 60, "IF ARM": 50, "TDP": 45})
+        assert compute_position_eligibility(p44)["SS Elig"].iloc[0] is np.bool_(False)
+        assert compute_position_eligibility(p45)["SS Elig"].iloc[0] is np.bool_(True)
+
     def test_cf_rng_boundary(self):
         """CF needs OF RNG >= 60."""
         p59 = make_player(**{"OF RNG": 59})
@@ -136,15 +150,15 @@ class TestPositionEligibility:
         assert compute_position_eligibility(p60)["CF Elig"].iloc[0] is np.bool_(True)
 
     def test_lf_rf_rng_boundary(self):
-        """LF/RF need OF RNG >= 50."""
-        p49 = make_player(**{"OF RNG": 49})
-        p50 = make_player(**{"OF RNG": 50})
-        e49 = compute_position_eligibility(p49)
-        e50 = compute_position_eligibility(p50)
-        assert e49["LF Elig"].iloc[0] is np.bool_(False)
-        assert e50["LF Elig"].iloc[0] is np.bool_(True)
-        assert e49["RF Elig"].iloc[0] is np.bool_(False)
-        assert e50["RF Elig"].iloc[0] is np.bool_(True)
+        """LF/RF need OF RNG >= 45 (lowered from 50 on 2026-05-25)."""
+        p44 = make_player(**{"OF RNG": 44})
+        p45 = make_player(**{"OF RNG": 45})
+        e44 = compute_position_eligibility(p44)
+        e45 = compute_position_eligibility(p45)
+        assert e44["LF Elig"].iloc[0] is np.bool_(False)
+        assert e45["LF Elig"].iloc[0] is np.bool_(True)
+        assert e44["RF Elig"].iloc[0] is np.bool_(False)
+        assert e45["RF Elig"].iloc[0] is np.bool_(True)
 
     def test_dh_always_eligible(self):
         """DH should always be True regardless of ratings."""

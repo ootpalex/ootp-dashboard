@@ -409,21 +409,33 @@ def compute_position_eligibility(
 
     Returns a DataFrame with 9 boolean columns (C/1B/2B/3B/SS/LF/CF/RF/DH Elig).
 
-    Rules (from The Sheet Hitters.xlsx columns BJ–BQ):
+    Rules (originally The Sheet Hitters.xlsx cols BJ–BQ; 1B/SS/LF/RF tuned
+    2026-05-25 against real IP-weighted position usage — see
+    Leftovers/fielding-eligibility-usage/):
         C:  C FRM >= 45
-        1B: HT (cm) > 179 AND IF RNG > 20
+        1B: HT (cm) > 179 AND IF RNG > 20 AND IF ERR > 20
         2B: IF RNG >= 50 AND throws R AND TDP >= 45
         3B: IF RNG >= 40 AND IF ARM >= 50 AND throws R
-        SS: IF RNG >= 60 AND IF ARM >= 50 AND throws R
-        LF: OF RNG >= 50
+        SS: IF RNG >= 60 AND IF ARM >= 50 AND throws R AND TDP >= 45
+        LF: OF RNG >= 45
         CF: OF RNG >= 60
-        RF: OF RNG >= 50
+        RF: OF RNG >= 45
         DH: always True
+
+    Calibration notes (real-usage audit, pooled BLM-MIA + SSB 2041/2042):
+      - LF/RF lowered 50 -> 45: the old gate excluded ~18% of real LF innings
+        (and ~7% of RF); the corner-OF talent mass starts at range 45. At 45
+        only ~3% of real corner innings remain excluded.
+      - 1B + IF ERR > 20: guards against literal worst-hands gloves; excludes
+        only 1 real first baseman (0.01% of 1B innings).
+      - SS + TDP >= 45: matches 2B's turn-DP floor (was asymmetric); excludes
+        12 low-inning SS (0.28% of SS innings), no serious starter.
     """
     ht_cm = parse_height_cm(players["HT"])
     c_frm = pd.to_numeric(players["C FRM"], errors="coerce")
     if_rng = pd.to_numeric(players["IF RNG"], errors="coerce")
     if_arm = pd.to_numeric(players["IF ARM"], errors="coerce")
+    if_err = pd.to_numeric(players["IF ERR"], errors="coerce")
     tdp = pd.to_numeric(players["TDP"], errors="coerce")
     of_rng = pd.to_numeric(players["OF RNG"], errors="coerce")
     throws_r = players["T"].astype(str) == "R"
@@ -431,13 +443,13 @@ def compute_position_eligibility(
     return pd.DataFrame(
         {
             "C Elig": c_frm >= 45,
-            "1B Elig": (ht_cm > 179) & (if_rng > 20),
+            "1B Elig": (ht_cm > 179) & (if_rng > 20) & (if_err > 20),
             "2B Elig": (if_rng >= 50) & throws_r & (tdp >= 45),
             "3B Elig": (if_rng >= 40) & (if_arm >= 50) & throws_r,
-            "SS Elig": (if_rng >= 60) & (if_arm >= 50) & throws_r,
-            "LF Elig": of_rng >= 50,
+            "SS Elig": (if_rng >= 60) & (if_arm >= 50) & throws_r & (tdp >= 45),
+            "LF Elig": of_rng >= 45,
             "CF Elig": of_rng >= 60,
-            "RF Elig": of_rng >= 50,
+            "RF Elig": of_rng >= 45,
             "DH Elig": True,
         },
         index=players.index,

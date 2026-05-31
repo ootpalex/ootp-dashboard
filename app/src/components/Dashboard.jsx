@@ -54,8 +54,9 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
     return excluded;
   }, [autoExcluded, leagueSettings.manualExclusions, leagueSettings.manualInclusions]);
 
-  // Process data with current exclusions
-  const data = useMemo(() => processData(rawHitters, rawPitchers, filteredOrgs), [rawHitters, rawPitchers, filteredOrgs]);
+  // Process data with current exclusions. `currentLeague` (slug) routes the
+  // bestPos defensive-spectrum + arm-threshold lookup to the right universe.
+  const data = useMemo(() => processData(rawHitters, rawPitchers, filteredOrgs, currentLeague), [rawHitters, rawPitchers, filteredOrgs, currentLeague]);
 
   // Update browser title
   useEffect(() => { document.title = `${leagueSettings.leagueName || "SSB"} GM Dashboard`; }, [leagueSettings.leagueName]);

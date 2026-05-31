@@ -18,7 +18,13 @@ export const DEFAULT_LEAGUE_SETTINGS = {
 
 export const HITTER_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];
 export const ALL_DISPLAY_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "SP", "RP"];
-export const POS_DEF_ADJ = { C: 12.84, SS: 11.97, "2B": 5.65, "3B": 1.08, CF: -4.41, LF: -7.16, RF: -7.16, "1B": -8.12 };
+
+// WAR positional-adjustment spectrum (frozen blended at H_def=5/cut_def=20 + H_off=2.5/cut_off=8,
+// field-8 mean = 0). Mirrors Project/model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"].
+// Used by views/PlayerProfile/_shared.js:bestFieldingValue for the percentile-pool calc.
+// (The full per-universe lookup lives server-side; this is the BLM default that ships in JSON
+// via the FieldingParams dataclass.)
+export const POS_DEF_ADJ = { C: 16.1, "1B": -13.1, "2B": -2.3, "3B": -0.7, SS: 9.6, LF: -8.4, CF: 5.1, RF: -6.2 };
 export const POT_DISPLAY_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "SP", "RP"];
 export const DEF_SPECTRUM = ["C", "SS", "CF", "2B", "3B", "LF", "RF", "1B", "DH"];
 export const DEF_SPECTRUM_POT = ["C", "SS", "CF", "2B", "3B", "LF", "RF", "1B"];
@@ -359,13 +365,81 @@ export const RP_ADVANTAGE_THRESHOLD = 1.0;
 export const IP_SP = 185.47;             // Avg SP innings/season (model calibration)
 export const IP_RP = 69.55;              // Avg RP innings/season (model calibration)
 export const RP_SCALE_THRESHOLD = -0.50; // RP WAA at 10th pct of MLB relievers — full IP-ratio scaling below this
+// DEF_TIERS is still used by boardUtils.bestPosByTier (position-cap leaf assignment,
+// a separate concept from bestPos display). calcBestPos itself no longer uses it
+// (replaced 2026-05-29 with the Option B argmax-over-eligible spectrum below).
 export const DEF_TIERS = [
   ["C", "SS", "CF"],
   ["2B", "3B", "RF"],
   ["LF", "1B"],
 ];
-export const TIER_RUNSP_MIN = -15;
-export const TIER_DROP_ADVANTAGE = 15;
+
+// ── Item 2 / bestPos redesign (Option B + arm-split) ────────────────────────
+// `calcBestPos` for hitters picks the eligible position with the highest
+// (RunsP + DEF_SPECTRUM). LF/RF leaf is decided by arm-split: RF if OF arm ≥
+// the league's avg arm at RF (high bar — RF reserved for genuine strong arms),
+// else LF. DH is the eligible-nowhere fallback only.
+//
+// DEF_SPECTRUM = defensive-only switcher spectrum (NOT the blended one used for
+// WAR — offense cancels in the argmax, so blending only adds noise). Catcher
+// isn't switchable so its credit is imputed:
+//   defOnly[topField] + (blended[C] − blended[topField])
+// which gives C a value naturally higher than the defensive top while staying
+// scaled to the league's actual defensive spread. Per-universe values derived
+// from Leftovers/positional-adjustments/pos_adj_grid.json at H_def=5/cut_def=20
+// (widened 2026-05-29 per SAMPLE_SIZE_AUDIT.md — the locked H=2.5/cut=8 left
+// several adjacent-pair differences in the noise floor; widening cuts SE by
+// 25-35% and resolves most collapses).
+// DH not in spectrum — Option B never reads it.
+const BLM_DEF_SPECTRUM = {
+  "C":  19.2,    // imputed: defOnly[SS=12.7] + (blended[C=16.1] − blended[SS=9.6])
+  "1B": -10.1,
+  "2B":  -0.3,
+  "3B":  -0.5,
+  "SS":  12.7,
+  "LF":  -6.8,
+  "CF":   9.9,
+  "RF":  -4.9,
+};
+const SSB_DEF_SPECTRUM = {
+  "C":  22.5,    // imputed: defOnly[SS=11.9] + (blended[C=21.0] − blended[SS=10.4])
+  "1B":  -8.4,
+  "2B":  -0.0,
+  "3B":  -1.1,
+  "SS":  11.9,
+  "LF":  -6.3,
+  "CF":   9.4,
+  "RF":  -5.4,
+};
+// 6 dashboard slugs → 2 underlying universes (matches the WAR spectrum lookup
+// in Project/model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL).
+export const DEF_SPECTRUM_BY_SLUG = {
+  "BLM-ATL": BLM_DEF_SPECTRUM,
+  "BLM-COL": BLM_DEF_SPECTRUM,
+  "BLM-MIA": BLM_DEF_SPECTRUM,
+  "BLM-NYM": BLM_DEF_SPECTRUM,
+  "SSB":     SSB_DEF_SPECTRUM,
+  "default": SSB_DEF_SPECTRUM,
+};
+// Unknown / missing slug → BLM (most-tested, most-data-supported universe).
+export const DEF_SPECTRUM_DEFAULT = BLM_DEF_SPECTRUM;
+
+// Arm threshold for the LF/RF leaf — the league's avg OF arm among players
+// currently deployed at RF (meta.pos === "RF"). RF if ofArm ≥ threshold, else LF.
+// Measured per universe in Leftovers/posadj-bestpos-impact/impact.py.
+export const ARM_THR_BY_SLUG = {
+  "BLM-ATL": 55.2,
+  "BLM-COL": 55.2,
+  "BLM-MIA": 55.2,
+  "BLM-NYM": 55.2,
+  "SSB":     54.6,
+  "default": 54.6,
+};
+export const ARM_THR_DEFAULT = 55.2;
+
+// Iteration order for the Option B argmax — defensive spectrum (hardest → easiest)
+// so ties resolve in favor of the harder position.
+export const BESTPOS_FIELD_ORDER = ["C", "SS", "CF", "2B", "3B", "LF", "RF", "1B"];
 
 export const PLAYERS_HIT_COLS = [{ key: "Name", label: "Name", w: 170 }, { key: "_age", label: "Age", w: 45 }, { key: "POS", label: "POS", w: 45 }, { key: "_bestPos", label: "Best", w: 48 }, { key: "ORG", label: "Team", w: 130 }, { key: "Lev", label: "Lvl", w: 45 }, { key: "_fv", label: "FV", w: 60 }, { key: "Max WAR wtd", label: "WAR", w: 65 }, { key: "MAX WAR P", label: "WAR P", w: 65 }, { key: "_devPct", label: "Dev%", w: 48 }, { key: "Prone", label: "Prone", w: 65 }, { key: "_intangibles", label: "INTS", w: 48 }, { key: "Price", label: "Salary", w: 85 }];
 export const PLAYERS_PIT_COLS = [{ key: "Name", label: "Name", w: 170 }, { key: "_age", label: "Age", w: 45 }, { key: "POS", label: "POS", w: 45 }, { key: "_bestPos", label: "Best", w: 48 }, { key: "ORG", label: "Team", w: 130 }, { key: "Lev", label: "Lvl", w: 45 }, { key: "_fv", label: "FV", w: 60 }, { key: "WAR wtd", label: "SP WAR", w: 68 }, { key: "WAR wtd RP", label: "RP WAR", w: 68 }, { key: "WARP", label: "SP WARP", w: 68 }, { key: "WARP RP", label: "RP WARP", w: 68 }, { key: "_devPct", label: "Dev%", w: 48 }, { key: "STM", label: "STM", w: 42 }, { key: "Starter", label: "SP?", w: 42 }, { key: "Prone", label: "Prone", w: 65 }, { key: "_intangibles", label: "INTS", w: 48 }, { key: "Price", label: "Salary", w: 85 }];
