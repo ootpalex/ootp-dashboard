@@ -348,6 +348,14 @@ export const FG_TIER_STATS = {
   "35+": { avg: 372.643, std: 51.713 },
 };
 
+// Tier-threshold algorithm parameters (V5c). Calibrated against SSB + BLM-MIA
+// LIVE data (exact ages from each league's game date) — see
+// Leftovers/prospect-tier-thresholds/findings.md.
+// Universal constants; not exposed as UI tuning and not per-league.
+export const TIER_SEARCH_K = 1.0;        // Search range = ±K·cum_σ around FG-mean rank
+export const TIER_SNAP_T_THRESH = 1.20;  // Significance threshold for natural-break snap
+export const TIER_SNAP_WINDOW = 7;       // Context radius (SD of FVs) + Welch t-stat window
+
 export const PROSPECT_SUB_TABS = [
   { id: "board", label: "The Board" },
   { id: "farm", label: "Farm Rankings" },

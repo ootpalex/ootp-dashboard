@@ -3,7 +3,14 @@
 // ============================================================================
 import { num } from "./helpers.js";
 import { getMaxWar, getMaxWarP, pickPitcherRole } from "./accessors.js";
-import { FV_TIERS, FG_TIER_STATS, DEV_CURVE_DEFAULTS } from "./constants.js";
+import {
+  FV_TIERS,
+  FG_TIER_STATS,
+  DEV_CURVE_DEFAULTS,
+  TIER_SEARCH_K,
+  TIER_SNAP_T_THRESH,
+  TIER_SNAP_WINDOW,
+} from "./constants.js";
 import { calcFutureValue } from "./futureValue.js";
 
 export function isProspect(player) {
@@ -48,50 +55,178 @@ export function buildProspectPool(data, iafaTag, curveSettings = null) {
   return [...hitPool, ...pitPool];
 }
 
-// Convex multipliers on the lower-tier step: 80/70/65 are extrapolated from
-// the slope between thresh50 and thresh60. The 1/2.5/6 weighting reflects
-// Fangraphs' real FV→WAA scale where the gap above 70 grows faster than the
-// gap between 55 and 60. See plan: smarter "Suggest Thresholds" for 65+.
-const UPPER_TIER_MULTIPLIERS = { "80": 6, "70": 2.5, "65": 1 };
+function _sd(arr) {
+  if (arr.length < 2) return 0;
+  const m = arr.reduce((s, v) => s + v, 0) / arr.length;
+  return Math.sqrt(arr.reduce((s, x) => s + (x - m) ** 2, 0) / (arr.length - 1));
+}
 
+function _welchT(a, b) {
+  if (a.length < 2 || b.length < 2) return null;
+  const ma = a.reduce((s, v) => s + v, 0) / a.length;
+  const mb = b.reduce((s, v) => s + v, 0) / b.length;
+  const va = a.reduce((s, v) => s + (v - ma) ** 2, 0) / (a.length - 1);
+  const vb = b.reduce((s, v) => s + (v - mb) ** 2, 0) / (b.length - 1);
+  const se = Math.sqrt(va / a.length + vb / b.length);
+  if (!isFinite(se) || se === 0) return null;
+  return (ma - mb) / se;
+}
+
+// V5c: range-constrained natural-break detection. For each tier T (descending),
+// search rank window [cum_μ ± K·cum_σ] for the best natural break (max of FV-gap
+// z-score and pot-cluster Welch t-stat); snap if significant, else default to
+// round(cum_μ). One uniform rule across all tiers — no convex extrapolation.
+// Empty middle tiers receive a linearly interpolated cut between the nearest
+// non-empty anchors above and below (using FG cumulative population as the
+// x-axis). Empty top tiers (no non-empty above) use linear extrapolation
+// floored at top_FV + (top_FV − second_FV) so an empty 80 sits clearly above
+// the league's best prospect. Full investigation: Leftovers/prospect-tier-thresholds/findings.md.
 export function suggestThresholds(prospects, numTeams) {
   if (!prospects || prospects.length === 0) return {};
-  const sorted = [...prospects].sort((a, b) => (b._fv ?? b._baseVal ?? 0) - (a._fv ?? a._baseVal ?? 0));
+  const sorted = [...prospects].sort(
+    (a, b) => (b._fv ?? b._baseVal ?? 0) - (a._fv ?? a._baseVal ?? 0)
+  );
+  const N = sorted.length;
   const scale = numTeams / 30;
   const thresholds = {};
-  let cumAvg = 0;
+
+  const fvOf = (p) => p._fv ?? p._baseVal ?? 0;
+  const potOf = (p) => p._baseVal ?? p.pot ?? 0;
+
+  // Phase 1: compute bestI and store cumMu for each tier.
+  const tierStates = [];
+  let cumMu = 0;
+  let cumVar = 0;
+  let prevI = 0;
   for (const tier of FV_TIERS) {
     const stats = FG_TIER_STATS[tier.id];
     if (!stats) continue;
-    cumAvg += stats.avg * scale;
-    const cumHigh = cumAvg + 2 * stats.std * scale;
-    const idx = Math.min(Math.round(cumHigh) - 1, sorted.length - 1);
-    if (idx < 0) {
-      thresholds[tier.id] = thresholds[FV_TIERS[FV_TIERS.indexOf(tier) - 1]?.id] ?? 999;
-      continue;
+    const mu = stats.avg * scale;
+    const sg = stats.std * scale;
+    cumMu += mu;
+    cumVar += sg * sg;
+    const cumSig = Math.sqrt(cumVar);
+
+    const defaultI = Math.max(prevI, Math.min(N, Math.round(cumMu)));
+    const rLo = Math.max(prevI, Math.floor(cumMu - TIER_SEARCH_K * cumSig));
+    const rHi = Math.min(N, Math.ceil(cumMu + TIER_SEARCH_K * cumSig));
+
+    let bestI = defaultI;
+    let bestScore = -Infinity;
+
+    if (rHi > rLo) {
+      const ctxLo = Math.max(0, rLo - TIER_SNAP_WINDOW);
+      const ctxHi = Math.min(N, rHi + TIER_SNAP_WINDOW);
+      const ctxFVs = sorted.slice(ctxLo, ctxHi).map(fvOf);
+      const fvScale = Math.max(0.05, _sd(ctxFVs));
+
+      for (let i = rLo; i <= rHi && i < N; i++) {
+        if (i <= prevI) continue;
+        const fvGap = fvOf(sorted[i - 1]) - fvOf(sorted[i]);
+        const zFV = fvGap / fvScale;
+        const wLo = Math.max(prevI, i - TIER_SNAP_WINDOW);
+        const wHi = Math.min(N, i + TIER_SNAP_WINDOW);
+        const above = sorted.slice(wLo, i).map(potOf);
+        const below = sorted.slice(i, wHi).map(potOf);
+        const zPot = _welchT(above, below) ?? 0;
+        const score = Math.max(zFV, zPot);
+        if (score > bestScore) {
+          bestScore = score;
+          bestI = i;
+        }
+      }
+      if (bestScore < TIER_SNAP_T_THRESH) bestI = defaultI;
     }
-    const fv = sorted[idx]._fv ?? sorted[idx]._baseVal ?? 0;
-    thresholds[tier.id] = Math.round(fv * 100) / 100;
+    tierStates.push({ id: tier.id, bestI, prevI, cumMu });
+    prevI = bestI;
   }
 
-  // Overwrite 80/70/65 with convex extrapolation from the 50→60 slope. Top
-  // tiers are gated by absolute FV, not pool rank — a weak pool leaves them
-  // empty; a strong pool fills them.
-  const t50 = thresholds["50"];
-  const t60 = thresholds["60"];
-  if (t50 != null && t60 != null) {
-    const step = (t60 - t50) / 2;
-    if (step > 0) {
-      for (const [tierId, mult] of Object.entries(UPPER_TIER_MULTIPLIERS)) {
-        thresholds[tierId] = Math.round((t60 + mult * step) * 100) / 100;
+  // Phase 2: assign FV cuts.
+  // - Populated tiers (pop ≥ POP_STABLE): midpoint of bracketing players.
+  // - Sparse non-empty (pop 1..POP_STABLE-1): midpoint blended halfway (α=ALPHA)
+  //   toward LR_stable, clamped to keep all players in tier.
+  // - Empty topmost: top_FV blended halfway toward LR_stable.
+  // - Empty middle: LR_all (interpolation through all non-empty anchors).
+  // Player assignments from Phase 1 (bestI) are never overridden — this is
+  // purely about the displayed threshold numbers for sparse upper tiers.
+  const POP_STABLE = 5;
+  const ALPHA = 0.5;
+
+  const allAnchors = [];
+  const stableAnchors = [];
+  for (const ts of tierStates) {
+    if (ts.bestI > ts.prevI) {
+      const cutFV = (fvOf(sorted[ts.bestI - 1]) + fvOf(sorted[ts.bestI])) / 2;
+      const anchor = { cumMu: ts.cumMu, cutFV };
+      allAnchors.push(anchor);
+      if (ts.bestI - ts.prevI >= POP_STABLE) stableAnchors.push(anchor);
+    }
+  }
+
+  // Log-linear regression: cutFV = slope * log(cumMu) + intercept.
+  // Returns null if too few anchors or zero variance in log(cumMu).
+  const fitLogLinear = (anchorList) => {
+    if (anchorList.length < 2) return null;
+    const xs = anchorList.map((a) => Math.log(a.cumMu));
+    const ys = anchorList.map((a) => a.cutFV);
+    const n = anchorList.length;
+    const mx = xs.reduce((s, v) => s + v, 0) / n;
+    const my = ys.reduce((s, v) => s + v, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+      num += (xs[i] - mx) * (ys[i] - my);
+      den += (xs[i] - mx) ** 2;
+    }
+    if (den === 0) return null;
+    const slope = num / den;
+    return { slope, intercept: my - slope * mx };
+  };
+  const fitStable = fitLogLinear(stableAnchors);
+  const fitAll = fitLogLinear(allAnchors);
+  const evalFit = (fit, cumMuT) => fit.slope * Math.log(cumMuT) + fit.intercept;
+
+  const topFV = N > 0 ? fvOf(sorted[0]) : 0;
+  const minAnchorCumMu = allAnchors.length > 0
+    ? Math.min(...allAnchors.map((a) => a.cumMu))
+    : Infinity;
+
+  for (const ts of tierStates) {
+    const pop = ts.bestI - ts.prevI;
+    let cut;
+
+    if (pop >= POP_STABLE) {
+      // Populated tier — midpoint is reliable.
+      cut = (fvOf(sorted[ts.bestI - 1]) + fvOf(sorted[ts.bestI])) / 2;
+    } else if (pop >= 1) {
+      // Sparse non-empty — blend midpoint with LR_stable prediction.
+      const midpoint = (fvOf(sorted[ts.bestI - 1]) + fvOf(sorted[ts.bestI])) / 2;
+      const lowestPlayerFV = fvOf(sorted[ts.bestI - 1]);
+      if (fitStable != null) {
+        const lrPred = evalFit(fitStable, ts.cumMu);
+        const blend = midpoint + ALPHA * (lrPred - midpoint);
+        const candidate = Math.max(midpoint, blend);
+        // Don't eject the lowest player in the tier — fall back to midpoint if clamped.
+        cut = candidate <= lowestPlayerFV ? candidate : midpoint;
+      } else {
+        cut = midpoint;
+      }
+    } else {
+      // Empty tier.
+      const isTopmost = ts.cumMu < minAnchorCumMu;
+      if (isTopmost && fitStable != null) {
+        // Empty topmost — blend top_FV with LR_stable prediction.
+        const lrPred = evalFit(fitStable, ts.cumMu);
+        cut = topFV + ALPHA * (lrPred - topFV);
+      } else if (fitAll != null) {
+        // Empty middle — LR through all anchors interpolates naturally.
+        cut = evalFit(fitAll, ts.cumMu);
+      } else if (allAnchors.length === 1) {
+        cut = allAnchors[0].cutFV;
+      } else {
+        cut = topFV + 0.01; // fallback: empty league or single tier with no anchors
       }
     }
-  }
-
-  let prev = Infinity;
-  for (const tier of FV_TIERS) {
-    if (thresholds[tier.id] >= prev) thresholds[tier.id] = prev - 0.01;
-    prev = thresholds[tier.id];
+    thresholds[ts.id] = Math.round(cut * 100) / 100;
   }
   return thresholds;
 }

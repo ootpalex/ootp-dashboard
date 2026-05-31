@@ -93,23 +93,28 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
   const [page, setPage] = useState(0);
   const [configOpen, setConfigOpen] = useState(false);
 
-  // MLB reference benchmarks for threshold context
-  const mlbBenchmarks = useMemo(() => {
-    const mlbH = data.hitters.filter((h) => (h.meta?.lev ?? h.Lev) === "MLB");
-    const mlbP = data.pitchers.filter((p) => (p.meta?.lev ?? p.Lev) === "MLB");
-    const hWAR = mlbH.map((h) => getMaxWar(h)).filter((v) => v != null).sort((a, b) => b - a);
-    const pWAR = mlbP.map((p) => getSpWar(p) ?? getRpWar(p)).filter((v) => v != null).sort((a, b) => b - a);
-    const allWAR = [...hWAR, ...pWAR].sort((a, b) => b - a);
-    const pctAt = (arr, pct) => arr.length > 0 ? arr[Math.floor(arr.length * pct)] ?? arr[arr.length - 1] : 0;
-    return {
-      mlbTop5: allWAR[4] ?? 0,     // ~MVP level
-      mlbTop20: allWAR[19] ?? 0,   // ~All-Star
-      mlbTop50: allWAR[49] ?? 0,   // ~Quality starter
-      mlbMedian: pctAt(allWAR, 0.5),
-      mlbP25: pctAt(allWAR, 0.75), // bottom quartile
-      total: allWAR.length,
-    };
+  // MLB WAR distribution for per-tier rarity counts (Option B in tier table).
+  // Filter: lev === "MLB" AND on the 40-man roster. The on40 check excludes
+  // DFA'd / limbo players (still tagged MLB-level but not on the big-league
+  // squad) while keeping IL players who are officially on the roster.
+  const mlbWAR = useMemo(() => {
+    const isOnBigLeagueSquad = (p) => (p.meta?.lev ?? p.Lev) === "MLB" && p.meta?.on40 === true;
+    const mlbH = data.hitters.filter(isOnBigLeagueSquad);
+    const mlbP = data.pitchers.filter(isOnBigLeagueSquad);
+    const hWAR = mlbH.map((h) => getMaxWar(h)).filter((v) => v != null);
+    const pWAR = mlbP.map((p) => getSpWar(p) ?? getRpWar(p)).filter((v) => v != null);
+    return [...hWAR, ...pWAR].sort((a, b) => b - a);
   }, [data]);
+  const countMlbAtOrAbove = useCallback((threshold) => {
+    if (threshold == null) return null;
+    // Binary search for first index where WAR < threshold (array is desc)
+    let lo = 0, hi = mlbWAR.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (mlbWAR[mid] >= threshold) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }, [mlbWAR]);
 
   // Tier distribution stats for config table
   const tierStats = useMemo(() => {
@@ -207,17 +212,6 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
       }>
         {configOpen && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* MLB Reference Bar */}
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", padding: "10px 12px", background: "rgba(30,41,59,0.5)", borderRadius: 6, border: "1px solid #1e293b" }}>
-              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>MLB WAR Benchmarks</span>
-              <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Top 5 (MVP):</span> <span style={{ color: "#22c55e", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbTop5)}</span></span>
-              <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Top 20 (All-Star):</span> <span style={{ color: "#4ade80", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbTop20)}</span></span>
-              <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Top 50 (Starter):</span> <span style={{ color: "#86efac", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbTop50)}</span></span>
-              <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Median:</span> <span style={{ color: "#94a3b8", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbMedian)}</span></span>
-              <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>25th Pct:</span> <span style={{ color: "#fca5a5", fontWeight: 600 }}>{fmt(mlbBenchmarks.mlbP25)}</span></span>
-              <span style={{ fontSize: 11 }}><span style={{ color: "#475569" }}>Pool:</span> <span style={{ color: "#94a3b8" }}>{mlbBenchmarks.total} MLB</span></span>
-            </div>
-
             {/* Config Table */}
             <div style={S.tableWrap}>
               <table style={S.table}>
@@ -231,23 +225,13 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                   <th style={{ ...S.th, width: 35, textAlign: "right" }}>P</th>
                   <th style={{ ...S.th, width: 45, textAlign: "right" }}>Cum.</th>
                   <th style={{ ...S.th, width: 100 }}>FV Range</th>
-                  <th style={{ ...S.th, width: 200 }}>MLB Comparison</th>
+                  <th style={{ ...S.th, width: 140, textAlign: "right" }} title="Current-season MLB players whose WAR is at or above this tier's FV threshold">MLB Players ≥ FV</th>
                 </tr></thead>
                 <tbody>
                   {FV_TIERS.map((tier, ti) => {
                     const ts = tierStats[tier.id];
                     const thresh = thresholds[tier.id];
-                    // MLB comparison label
-                    let mlbLabel = "";
-                    if (thresh != null) {
-                      if (thresh >= mlbBenchmarks.mlbTop5) mlbLabel = "Above MVP level";
-                      else if (thresh >= mlbBenchmarks.mlbTop20) mlbLabel = "All-Star caliber";
-                      else if (thresh >= mlbBenchmarks.mlbTop50) mlbLabel = "Quality starter";
-                      else if (thresh >= mlbBenchmarks.mlbMedian) mlbLabel = "Above-average MLB";
-                      else if (thresh >= mlbBenchmarks.mlbP25) mlbLabel = "Below-average MLB";
-                      else if (thresh >= 0) mlbLabel = "Replacement level";
-                      else mlbLabel = "Below replacement";
-                    }
+                    const mlbCount = countMlbAtOrAbove(thresh);
                     return (
                       <tr key={tier.id} style={{ background: ti % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
                         <td style={S.td}>
@@ -281,7 +265,9 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                         <td style={{ ...S.td, color: "#475569", fontSize: 11 }}>
                           {ts.count > 0 ? `${fmt(ts.minFV)}–${fmt(ts.maxFV)}` : "—"}
                         </td>
-                        <td style={{ ...S.td, color: "#64748b", fontSize: 11, fontStyle: "italic" }}>{mlbLabel}</td>
+                        <td style={{ ...S.td, color: "#94a3b8", fontSize: 11, textAlign: "right" }}>
+                          {mlbCount == null ? "—" : `${mlbCount} of ${mlbWAR.length}`}
+                        </td>
                       </tr>
                     );
                   })}
