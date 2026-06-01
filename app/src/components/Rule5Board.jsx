@@ -65,7 +65,7 @@ function Rule5Board({ data, myTeam, strength, curveSettings, leagueSettings, das
       )}
 
       {r5Tab === "board" && <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "stretch" }}>
         <Section title="My Positional Needs">
           <PositionalStrengthTable
             team={myTeam}
@@ -80,7 +80,7 @@ function Rule5Board({ data, myTeam, strength, curveSettings, leagueSettings, das
         </Section>
 
         <Section title="Smart Rank Adjustments">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
             <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
             <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
