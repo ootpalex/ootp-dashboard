@@ -226,7 +226,7 @@ C -> SS -> CF -> 2B -> 3B -> LF -> RF -> 1B -> DH
 `assignPlayersToPositions(hitters, pitchers, depthMap, mode, waaColFn)` — Reusable cascade algorithm that returns `{ assigned: { [position]: Player[] }, unassigned: Player[] }` with actual player objects. Optional `waaColFn` overrides the WAA column accessor (used for platoon splits: `{POS} WAA vR` / `{POS} WAA vL`).
 
 ### Defensive Position Optimization
-`optimizeDefensivePositions(starters, positions)` — After WAA cascade picks the best 9 players, this function reassigns them to positions to maximize total defensive runs saved (`{POS} RunsP` columns), respecting `{POS} Eligible` flags. Greedy assignment along the defensive spectrum (hardest positions filled first). Applied to Active Roster starters, 40-Man starters, and Optimized Lineup.
+`optimizeDefensivePositions(starters, positions)` — After the WAR cascade picks the best 9 players, this function reassigns them to positions to maximize total defensive runs saved (`{POS} RunsP` columns), respecting `{POS} Eligible` flags. Greedy assignment along the defensive spectrum (hardest positions filled first). Applied to Active Roster starters, 40-Man starters, and Optimized Lineup.
 
 ## Smart Rank System (Draft Board + IAFA Board)
 Four stackable toggles:
@@ -282,7 +282,7 @@ Stores `_devPct` (0..1 percentile rank within age cohort). Null for matured play
 Players are binned by integer age using `Math.round()` — age 27.5–28.4 maps to bin 28, age 17.5–18.4 maps to bin 18, etc. Min/max age ranges auto-adjust to whatever is in the dataset (no hardcoded bounds). Age bins with fewer than 3 players are excluded from trend/threshold data. The `ageBins` memo is shared between the gap chart and the avg trend line chart.
 
 ### Dev% Column
-Shown on Draft Board, IAFA Board, and Org View Prospect Watch tables. Displays `computeDevPercentile` as an integer (e.g. "85th") with color coding via `devPctColor()`:
+Shown on Draft Board, IAFA Board, and Org View Overview roster. Displays `computeDevPercentile` as an integer (e.g. "85th") with color coding via `devPctColor()`:
 - 80-100: bright green, 60-80: light green, 40-60: neutral gray, 20-40: light red, 0-20: red
 - Shows "—" for players where `_age >= maturityAge` (from persisted curve settings)
 - Always computed against full league pool (`data.hitters`/`data.pitchers`), not board-specific
@@ -310,13 +310,12 @@ The scatter chart (thousands of data points) is wrapped in `React.memo` as `DevS
 
 ## Current Pages
 1. **My Organization** — Sub-tabbed view with:
-   - **Overview**: Positional strength z-scores (current/potential toggle), full roster by level, prospect watch (age <= 25, non-MLB)
-   - **Active Roster (26-man)**: Starting lineup (9 positions via defensive spectrum cascade), rotation (5 SP), bullpen (8 RP), bench/unassigned. Pool: Lev=MLB + ON40=Yes, plus injured MLB players (INJ=Yes).
-   - **40-Man Depth Chart**: Position columns (C through RP) showing all ON40=Yes players. Active roster starters listed first (numbered), then remaining 40-man depth sorted by WAA. Z-scores and league rank per position header.
-   - **Optimized Lineup**: Side-by-side platoon lineups (vs RHP and vs LHP). Uses `{POS} WAA vR` / `{POS} WAA vL` columns for position assignment via defensive spectrum cascade. Batting order: leadoff = highest OBP, slots 2-9 = sorted by wOBA descending (per Tom Tango's *The Book*).
-   - **Rule 5 Eligible**: Team's R5-eligible players (`R5=Yes`, `ORG=myTeam`), sorted by FV descending. Columns: Name, Age, Dev%, POS, Best, Level, FV, WAA, WAA P, Prone, B/T. "Who should I protect?" view.
-2. **All Players** — Searchable/filterable/sortable table with pagination
-3. **Free Agent Finder** — Team needs summary (z-score cards sorted weakest-first), FA board with "Gap Score" column (WAA weighted by team positional need via `calcOrgNeed`). Toggle for gap-fills-only (below league avg positions). Hitter/pitcher toggle.
+   - **Overview**: Positional strength table (full `PositionalStrengthTable` with both Now/Farm columns, click row to expand depth contributors) + paginated team roster. Roster columns include INTG (intangibles 20–80 grade) and 40M (✓ when `meta.on40` is truthy — accepts boolean or `"Yes"`).
+   - **Active Roster (26-man)**: Field-diagram redesign — an SVG baseball diamond with 9 starter chips at their defensive positions, rotation 2-col grid top-left, bullpen 4×2 grid bottom-left, bench column on the right. Each chip shows POS · name · WAR · age · injury proneness; click opens the player profile. Pool: Lev=MLB + on40, plus injured MLB players.
+   - **40-Man Depth Chart**: Position columns (C through RP) showing all on40 players. Active roster starters listed first (numbered), then remaining 40-man depth sorted by WAR.
+   - **Optimized Lineup**: Side-by-side platoon lineups (vs RHP and vs LHP). `assignPlayersToPositions(hitters, [], LINEUP_DEPTH, "current", hand)` takes a `"vR"`/`"vL"` split arg and resolves split WAR through `getWar(p, pos, split)`. Batting order: leadoff = highest OBP, slots 2-9 = sorted by wOBA descending (per Tom Tango's *The Book*).
+2. **All Players** — Searchable/filterable/sortable table with pagination. Mixed view now shows WAR + WAR P columns alongside hitter-only views (hitter enrichment sets `_war` / `_warP`, mirroring the pitcher pattern). Age filter uses the shared `NumericRangeFilter`.
+3. **Free Agent Finder** — Side-by-side **Team Positional Needs** (dense `PositionalStrengthTable`, Now mode, sorted weakest-first) + **Smart Rank Adjustments** (4-toggle subset: Future Value / Org Positional Need / Injury Proneness / Intangibles). When any toggle is on, the FA Board grows a "Smart" column at the front showing `applySmartRank(...)` value. "Gap fills only" filter narrows to weak positions. Age + Pro Yrs filters use the shared `NumericRangeFilter`.
 4. **Draft Board** — Draft class selector, live API, smart rank, position caps
 5. **IAFA Board** — Same smart rank system, filtered to Manual = "IAFA"
 6. **Dev Analysis** — Six-section page (hitter/pitcher toggle, no "all"):
@@ -330,10 +329,11 @@ The scatter chart (thousands of data points) is wrapped in `React.memo` as `DevS
 
 7. **Scout View** — Browse any team's organization with trade analysis:
    - Team selector dropdown (excludes your team)
-   - Side-by-side positional strength comparison (scouted team vs your team) with z-score cards
-   - Trade opportunity callout: positions where they're strong and you're weak
-   - Trade targets table: their players at your weak positions with positive WAA, sorted by fit score (WAA * orgNeed)
-   - Full roster browser with level/type filters, sortable, includes "Fit" column showing trade fit score
+   - **Smart Rank Adjustments** (same 4-toggle subset as IAFA/R5/FAF) drive a per-player `_rank` via `applySmartRank` against the scouted team's enriched pool (`buildBoardPool` → `buildDisplayPool`, `null` draftContext).
+   - **Positional Strength Comparison**: two side-by-side `PositionalStrengthTable`s (scouted team + your team), both sorted by *your* team's weakest position so rows align row-for-row.
+   - Trade opportunity callout: positions where they're strong and you're weak (z-gap ≥ 1.0).
+   - Trade targets table: their players at your weak positions with positive Smart Rank, sorted by `_rank` desc. Column header reads "Smart" when any toggle is on, "Fit" otherwise — mirrors Draft's "Smart" / "WAR P" pattern.
+   - Full roster browser with level/type filters, sortable; weak-pos rows highlighted green.
 8. **Player Compare** — Side-by-side comparison of 2-5 players:
    - Type-ahead search bar to find and add players (hitters or pitchers)
    - Selected players shown as removable chips
@@ -341,12 +341,9 @@ The scatter chart (thousands of data points) is wrapped in `React.memo` as `DevS
    - Stat groups: Profile, Value (hitter/pitcher-specific), Splits, Intangibles, Contract
    - Best value highlighted green, worst red for numeric stats
    - Mixed type support (hitter + pitcher) — inapplicable stats show "—"
-9. **Rule 5 Board** — League-wide R5-eligible player board (R5=Yes, excludes my team):
-   - My Positional Needs section (z-score cards sorted weakest-first)
-   - Smart Rank toggles (same 4 as IAFA/Draft Board: Org Need, Scarcity, FV, Def Spectrum)
-   - Searchable/filterable/sortable/paginated table with ORG and Level columns
-   - Columns: Smart/WAA P, Name, Age, Dev%, POS, Best, ORG, Level, FV, WAA, WAA P, Prone, Raw (when smart rank), B/T
-   - Pool built same as IAFA pattern: `_baseVal` from potential WAA, `_currentVal` from current WAA
+9. **Rule 5 Board** — Two sub-tabs:
+   - **R5 Board**: Side-by-side **My Positional Needs** (dense `PositionalStrengthTable`, Farm mode, weakest-first) + **Smart Rank Adjustments** (4-toggle subset matching IAFA/Draft: Future Value / Org Positional Need / Injury Proneness / Intangibles). Pool excludes my team. Columns: Smart/WAR P, Name, Age, Dev%, POS, Best, Team, Lvl, FV, WAR, WAR P, Prone, Raw (when smart rank), B/T. Pool built via `buildBoardPool`: `_baseVal` from potential WAR, `_currentVal` from current WAR.
+   - **40-Man Planner**: lazy-loads the full standalone `RosterPlanner` component. State syncs with the main Roster Planner page via the shared per-league `localStorage` keys (`ssb_roster_plan`, `ssb_roster_plan_order`, `ssb_roster_r5_threshold`).
 10. **Prospects** — Sub-tabbed Fangraphs-style prospect ranking page:
    - **The Board**: Organization-affiliated prospects (MLD < 45, excludes FAs/IAFAs/draft-only players via `isInOrg()`) ranked by FV with scouting-grade tier badges (80→35+, players below 35+ excluded). Config table shows thresholds, dollar values, tier counts (H/P split), FV ranges, and MLB WAA comparison labels. "Suggest Thresholds" auto-populates from Fangraphs avg tier counts scaled by league size. Filters: search, type, position, org, level, tier.
    - **Farm Rankings**: Rankings table with clickable team names (navigate to Board filtered by team) and clickable tier counts (navigate to Board filtered by team+tier). Tier count columns, scouting ratings (Ceiling/Floor/Batting/Pitching on 20-80 scale via z-score), and multi-part scouting reports. Horizontal bar chart below table sorted highest→lowest. Settings persisted to localStorage (`prospect_board_settings`).
@@ -422,9 +419,9 @@ app/
     ├── main.jsx                # React entry
     ├── App.jsx                 # Entry shell + ErrorBoundary + data load (~3 KB)
     ├── theme.js                # OOTP 20-80 color scale, posColor, waaStyle, gradeStyle
-    ├── components/             # Leaf UI primitives + remaining views (DraftBoard, IAFABoard, FreeAgentFinder, PlayersView, PlayerCompareView, ProspectsView, Rule5Board, ScoutView, Dashboard, LeagueSettingsModal, shared, boardUtils)
+    ├── components/             # Leaf UI primitives + remaining views (DraftBoard, IAFABoard, FreeAgentFinder, PlayersView, PlayerCompareView, ProspectsView, Rule5Board, ScoutView, Dashboard, LeagueSettingsModal, shared, boardUtils). `shared.jsx` exports MultiSelectDropdown, PositionFilter, LevelFilter, NumericRangeFilter (min/max range filter matching the dropdown style), Toggle, Section, SortHeader, Pagination, PillBtn, TabGroup, etc.
     ├── views/                  # Domain-split views (added Phase D)
-    │   ├── Org/                # OrgView coordinator + 5 sub-tabs (Overview, ActiveRoster, FortyMan, OptimizedLineup, R5Eligible)
+    │   ├── Org/                # OrgView coordinator + 4 sub-tabs (Overview, ActiveRoster, FortyMan, OptimizedLineup) + PositionalStrengthTable (shared component used by Overview, FA Finder, Rule 5 Board, Scout View)
     │   ├── PlayerProfile/      # PlayerProfileModal coordinator (tabbed) + _shared, BattingTab, PitchingTab, FieldingTab, BaserunningTab, ContractTab, EligiblePositionsTable, FVProjectionChart, PercentileHeader, PercentileBar. Hitter tabs: Batting/Fielding/Baserunning/Contract. Pitcher tabs: Pitching/Contract.
     │   ├── RosterPlanner/      # RosterPlanner coordinator + CompactPlayerRow, Panels, DepthChartPanels (memo'd), Rule5RiskPanel, QueuePanels, MlfaSection, SuggestionsPanel, MovesLogPanel, SuperTwoDetailModal
     │   └── DevAnalysis/        # DevAnalysisView coordinator + DevScatterChart, GapDistributionChart, WaaPercentileChart (each React.memo'd), FVImpactTable, LiveProspectPreview, CurveTuningPanel, BandwidthControl

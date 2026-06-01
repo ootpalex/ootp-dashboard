@@ -6,9 +6,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 _No unreleased changes._
 
-## [0.2.0] — 2026-05-24
+## [0.2.0] — 2026-06-01
 
-A large feature release consolidating all work since v0.1.1. WAR becomes the primary value metric; the Draft Board gains a roster-derived position-cap system plus signability/budget tracking; the metadata and fielding pipelines are reworked; and regression coefficients are now computed from the calibration sims rather than hardcoded.
+A large feature release consolidating all work since v0.1.1. WAR becomes the primary value metric; the Draft Board gains a roster-derived position-cap system plus signability/budget tracking; the metadata and fielding pipelines are reworked (now with multi-year positional adjustments and OAA-based range); regression coefficients are computed from the calibration sims rather than hardcoded; the frontend gets a Player Profile redesign, an SVG field-diagram Active Roster, smart-rank parity across every board, and a cross-page uniformity sweep.
 
 ### Changed (breaking)
 
@@ -31,17 +31,34 @@ A large feature release consolidating all work since v0.1.1. WAR becomes the pri
 - **`players/intl.csv` (optional)** — IntlComplex players can ship in a separate CSV when OOTP's "List All MLB Players" export paginates in larger leagues. Rows from `intl.csv` are concatenated with `org.csv` and tagged `source = "Organization"`, so all downstream views behave identically to a single-file export. OSA / AAA / AA pairing follows the same stem rule (`intl_osa.csv`, etc.). New `meta.csvPresence.hasIntl` flag in `dashboard.json` (informational).
 - **Young over-achievers** are now included in the Dev% and Smart Rank signals.
 - **StatsPlus integration improvements** — live game-date detection (preferred over CSV-detected Sct date), a dynamic dev proxy, and build-cache refresh handling.
+- **Multi-year positional adjustments + bestPos Option B + eligibility floors** in the fielding model. Per-league frozen posAdj uses a multi-year offense/defense blend (H_def=5 / cut_def=20, H_off=2.5 / cut_off=8). `bestPos` resolves via `RunsP + DEF_SPECTRUM[pos]` argmax over eligible field positions, with an LF/RF arm-split leaf when both corners are eligible. Position eligibility floors retuned against real IP usage: LF/RF→45, 1B+IFerr>20, SS+TDP≥45. All 6 leagues rebuilt on cache version v5.
+- **Prospect tier thresholds: V5c range-constrained natural-break detection.** Tier breaks now come from gap structure in the prospect pool rather than fixed FV cutoffs, constrained to each tier's expected FV range. The tier-config table gains a "MLB Players ≥ FV" column showing how many current MLB players sit at or above each tier's threshold.
+- **Player Profile tab redesign.** `FieldingTab` is now a compact projection table with a subtle `⤴` arm-split indicator on the LF/RF leaf and per-position peer-percentile mini-bars (RunsP rank within MLB players eligible at that position). OOTP scouting grades hoisted to the top of `BattingTab` / `BaserunningTab` / `FieldingTab`. BSR / wSB / UBR render plain white with the POT chip in green.
+- **Active Roster page: field-diagram redesign.** The three stacked lineup/rotation/bullpen tables are replaced by an SVG baseball diamond with 9 starter chips at their defensive positions (foul-line angles continue smoothly from the baselines through the foul poles). Rotation 2-col grid top-left, bullpen 4×2 grid bottom-left, bench column right. Each chip shows pos · name · WAR · age · injury proneness; click opens the player profile.
+- **Shared `PositionalStrengthTable` component** propagated to Free Agent Finder, Rule 5 Board, and Scout View. A `dense` mode (drops Age column, smaller bars) keeps the satellite views' Positional Needs sections as compact reminders. Scout View renders two side-by-side tables sorted against the user's team for row-aligned comparison.
+- **Smart Rank parity across boards.** Scout View's `Fit` rewired from the inline multiplicative formula to the additive `applySmartRank` formula used by Draft/IAFA/R5, with the same 4-toggle subset (Future Value / Org Positional Need / Injury Proneness / Intangibles). Free Agent Finder gains the same Smart Rank section + a Smart column. IAFA/R5 toggle text aligned to Draft Board verbatim.
+- **All Players mixed view gains WAR + WAR P columns.** Hitter enrichment now sets `_war` / `_warP` so the mixed-pool table renders the same columns the hitter and pitcher views already had.
+- **`NumericRangeFilter` shared component** matching the `MultiSelectDropdown` styling. Supports min-only / max-only / both. Replaces the inline `<input type="number">` pairs on PlayersView (Age) and Free Agent Finder (Age, Pro Yrs).
+- **40-Man Planner sub-tab on Rule 5 Board** now lazy-loads the full `RosterPlanner` so changes sync between the standalone Roster Planner page and the R5 sub-tab via the shared per-league `localStorage` keys.
 
 ### Changed
 
 - **RP WAR is no longer scaled** — the WAA-era negative-value ramp for relievers is redundant under WAR, so `scaleRpWarP` is now a no-op (the WAA scaler `scaleRpWaaP` is retained as the seam for a future "show WAA" toggle).
-- **Metadata cache version** bumped (2→3) so on-disk caches holding the old fixed out-values / PM% fielding coefficients are invalidated on next build.
+- **Metadata cache version** bumped (2→3) so on-disk caches holding the old fixed out-values / PM% fielding coefficients are invalidated on next build. Fielding cache version subsequently bumped to v5 by the multi-year posAdj work.
+- **Cross-page uniformity sweep**: standardized column labels and widths everywhere (Name 170 · Best 48 · Lvl 45 · Team 130 · WAR / WAR P 65 · INTG 48 · Salary 85 · Age 45 · POS 48). Section title count format unified to `(N)`. `INTS` → `INTG` everywhere (Draft Board, IAFA Board, Players View, Org Overview).
+- **My Organization → Overview**: Prospect Watch section removed (covered by the Prospects page); team roster gains pagination; INTG column added.
+- **My Organization → Rule 5 Eligible** sub-tab removed (covered by the standalone Rule 5 Board).
+- **FA Finder + Rule 5 Board layout**: Positional Needs and Smart Rank Adjustments now sit side-by-side in a `1fr 1fr` grid with stretched heights; toggles render in a single column matching the Positional Needs box height.
+- **Vite `chunkSizeWarningLimit` bumped to 600 KB** so the recharts chunk (already isolated via `manualChunks`) no longer trips the default 500 KB warning every build.
 
 ### Fixed
 
 - **2B and SS fielding error intercepts** — `second_err_const` and `ss_err_const` in `model/src/data_points.py` were imported from the original Excel "Fielding Reg IF" sheet, which had copy-paste centering bugs in the 2B/SS `E%` regression inputs (subtracting the zone-rating total instead of the errors total, and SS centering on 2B's grand total). This only corrupted the regression *intercepts* (slopes were unaffected), but those intercepts feed the errors-above-average term, adding a constant positive error bias to every 2B and SS and understating middle-infield defensive value. Corrected to the properly-centered values (≈ `-2.4e-05` / `1.2e-05`), matching the other infield positions. See `Spreadsheet/docs/KNOWN_BUGS.md` Bug 13.
 - **SB% bounded to `[0, 1]`** — a success rate can't exceed 100%, so the linear rating model is clipped (matching the pitcher side); with the calibration intercept this only binds for the extreme tail (STE ≈ 95+).
 - **Per-league state fixes** — settings reload, Draft Board persistence, startup-league selection, and game-date sync are now correctly scoped per league; a URL-param league override is no longer clobbered by the React StrictMode double-mount.
+- **Active Roster page crash** — two `fmt(waa)` references survived the WAA→WAR rename; both replaced with `fmt(war)`. Page is functional again.
+- **Optimized Lineup broken under nested JSON** — `assignPlayersToPositions` was reading flat CSV keys like `"1B WAR vR"` that don't exist on the post-v0.2.0 nested player shape. It now accepts a `split` parameter and resolves through `getWar(p, pos, split)`.
+- **40M column on the Overview roster wasn't rendering checks** because `meta.on40` is a boolean, not the string `"Yes"`. Check now accepts either.
 
 ## [0.1.1] — 2026-04-30
 

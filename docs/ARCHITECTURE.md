@@ -66,6 +66,7 @@ flowchart TD
   EN --> FV[_fv via calcFutureValue]
   EN --> MAT[_matured flag]
   EN --> INT[_intangibles via calcRawIntangibles]
+  EN --> WAR[_war / _warP — max-position WAR for hitters, best-role WAR for pitchers]
   EN --> DD[datedData object]
   DD --> V1[My Organization]
   DD --> V2[All Players]
@@ -83,7 +84,8 @@ flowchart TD
 Key invariants:
 
 - All views receive `datedData`, never raw `data`. Age recomputation is centralized.
-- Computed fields (`_devPct`, `_fv`, `_matured`, `_intangibles`) are added in `Dashboard.enrichedData` and read by views via accessor helpers (see [`../app/CLAUDE.md`](../app/CLAUDE.md) for the accessor list — never read flat column names directly).
+- Computed fields (`_devPct`, `_fv`, `_matured`, `_intangibles`, `_war`, `_warP`) are added in `Dashboard.enrichedData` and read by views via accessor helpers (see [`../app/CLAUDE.md`](../app/CLAUDE.md) for the accessor list — never read flat column names directly). Hitter enrichment mirrors the pitcher pattern so `_war` / `_warP` are present on both player types — this lets the All Players mixed view render the WAR / WAR P columns it shares with the hitter and pitcher single-type views.
+- **Smart-rank infrastructure is shared across boards.** Draft Board, IAFA Board, Rule 5 Board, Free Agent Finder, and Scout View all build their pools through `components/boardUtils.js:buildBoardPool` and apply `utils/futureValue.js:applySmartRank` for the per-row `_rank` value. The 4-toggle subset (Future Value / Org Positional Need / Injury Proneness / Intangibles) is identical across IAFA / R5 / Scout / FAF; Draft adds Position Caps / Min Coverage / Signability on top via its `draftContext`. Scout's "Fit" is the same additive formula — no longer an inline multiplicative calc.
 - The data load is one fetch + one in-memory enrichment pass. There is no client-side caching layer beyond the browser HTTP cache and React's render memoization.
 
 ## Where to put things

@@ -40,3 +40,12 @@ Pattern to copy (a worked audit + reusable harness):
   to invalidate stale caches. All 6 leagues rebuild separately.
 - **Fielding is position-specific throughout** (separate regressions, league rates, out-values,
   and offense-derived position adjustments per position).
+- **Multi-year positional adjustments.** Per-league posAdj is computed via a multi-year
+  offense + defense blend (calibration windows H_def=5 / cut_def=20, H_off=2.5 / cut_off=8)
+  and frozen into `_FROZEN_POS_ADJ_BY_URL` in `data_points.py` (keyed on `statsplus_url`).
+  Cache version v5 invalidates pre-multi-year caches.
+- **`bestPos` resolution is Option B** — `RunsP + DEF_SPECTRUM[pos]` argmax over eligible
+  field positions, with an LF/RF arm-split leaf when both corners are eligible (chooses
+  RF when OF arm ≥ per-league threshold, LF otherwise).
+- **Position eligibility floors** are retuned against real IP usage and enforced in the
+  pipeline output: LF/RF → 45 IP, 1B + IF errors > 20, SS + TDP ≥ 45.
