@@ -194,50 +194,8 @@ function BattingTab({ player }) {
 
   return (
     <div style={{ padding: "12px 18px" }}>
-      {/* Section 1 — Model projections */}
+      {/* Section 1 — OOTP scouting grades (top), Contact as parent of Avoid K + BABIP */}
       <div style={{ marginBottom: 14 }}>
-        <div style={sectionLabel}>MODEL PROJECTIONS</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
-          {/* BatR — single tile shows vL / vR / wtd / pot in the 4-quarter grid. */}
-          <ProjTile label="BatR"
-            vR={num(bvR?.batR)} vL={num(bvL?.batR)} wtd={batRcur} pot={batRpot}
-            valueFmt={(v) => fmt(v, 1)} hidePotential={matured} />
-
-          {/* Rate stats */}
-          <ProjTile label="wOBA"
-            vR={num(bvR?.woba)} vL={num(bvL?.woba)} wtd={num(bwtd?.woba)} pot={num(proB?.woba)}
-            valueFmt={fmtRate} hidePotential={matured} />
-          <ProjTile label="OBP"
-            vR={num(bvR?.obp)} vL={num(bvL?.obp)} wtd={num(bwtd?.obp)} pot={num(proB?.obp)}
-            valueFmt={fmtRate} hidePotential={matured} />
-          <ProjTile label="BABIP"
-            vR={babipVR} vL={babipVL} wtd={babipWtd} pot={babipPot}
-            valueFmt={fmtRate} hidePotential={matured} />
-
-          {/* K%, BB%, HR% */}
-          <ProjTile label="K%"
-            vR={rateOf(num(bvR?.so),  paR)}
-            vL={rateOf(num(bvL?.so),  paL)}
-            wtd={rateOf(num(bWtdCombined?.so), paW)}
-            pot={rateOf(num(proB?.so), paP)}
-            valueFmt={fmtPct} hidePotential={matured} />
-          <ProjTile label="BB%"
-            vR={rateOf(num(bvR?.ubb), paR)}
-            vL={rateOf(num(bvL?.ubb), paL)}
-            wtd={rateOf(num(bWtdCombined?.ubb), paW)}
-            pot={rateOf(num(proB?.ubb), paP)}
-            valueFmt={fmtPct} hidePotential={matured} />
-          <ProjTile label="HR%"
-            vR={rateOf(num(bvR?.hr),  paR)}
-            vL={rateOf(num(bvL?.hr),  paL)}
-            wtd={rateOf(num(bWtdCombined?.hr), paW)}
-            pot={rateOf(num(proB?.hr), paP)}
-            valueFmt={fmtPct} hidePotential={matured} />
-        </div>
-      </div>
-
-      {/* Section 2 — OOTP scouting grades, Contact as parent of Avoid K + BABIP */}
-      <div>
         <div style={sectionLabel}>OOTP SCOUTING GRADES{matured ? "" : " (vL / vR → Potential)"}</div>
 
         {/* CONTACT — full-width parent containing Avoid K + BABIP */}
@@ -276,6 +234,48 @@ function BattingTab({ player }) {
             vR={player.ratings?.vR?.eye ?? player["EYE vR"]}
             vL={player.ratings?.vL?.eye ?? player["EYE vL"]}
             pot={player.ratings?.potential?.eye ?? player["EYE P"]} />
+        </div>
+      </div>
+
+      {/* Section 2 — Model projections (bottom) */}
+      <div>
+        <div style={sectionLabel}>MODEL PROJECTIONS</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+          {/* BatR — single tile shows vL / vR / wtd / pot in the 4-quarter grid. */}
+          <ProjTile label="BatR"
+            vR={num(bvR?.batR)} vL={num(bvL?.batR)} wtd={batRcur} pot={batRpot}
+            valueFmt={(v) => fmt(v, 1)} hidePotential={matured} />
+
+          {/* Rate stats */}
+          <ProjTile label="wOBA"
+            vR={num(bvR?.woba)} vL={num(bvL?.woba)} wtd={num(bwtd?.woba)} pot={num(proB?.woba)}
+            valueFmt={fmtRate} hidePotential={matured} />
+          <ProjTile label="OBP"
+            vR={num(bvR?.obp)} vL={num(bvL?.obp)} wtd={num(bwtd?.obp)} pot={num(proB?.obp)}
+            valueFmt={fmtRate} hidePotential={matured} />
+          <ProjTile label="BABIP"
+            vR={babipVR} vL={babipVL} wtd={babipWtd} pot={babipPot}
+            valueFmt={fmtRate} hidePotential={matured} />
+
+          {/* K%, BB%, HR% */}
+          <ProjTile label="K%"
+            vR={rateOf(num(bvR?.so),  paR)}
+            vL={rateOf(num(bvL?.so),  paL)}
+            wtd={rateOf(num(bWtdCombined?.so), paW)}
+            pot={rateOf(num(proB?.so), paP)}
+            valueFmt={fmtPct} hidePotential={matured} />
+          <ProjTile label="BB%"
+            vR={rateOf(num(bvR?.ubb), paR)}
+            vL={rateOf(num(bvL?.ubb), paL)}
+            wtd={rateOf(num(bWtdCombined?.ubb), paW)}
+            pot={rateOf(num(proB?.ubb), paP)}
+            valueFmt={fmtPct} hidePotential={matured} />
+          <ProjTile label="HR%"
+            vR={rateOf(num(bvR?.hr),  paR)}
+            vL={rateOf(num(bvL?.hr),  paL)}
+            wtd={rateOf(num(bWtdCombined?.hr), paW)}
+            pot={rateOf(num(proB?.hr), paP)}
+            valueFmt={fmtPct} hidePotential={matured} />
         </div>
       </div>
     </div>

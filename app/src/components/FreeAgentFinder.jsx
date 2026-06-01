@@ -1,11 +1,15 @@
 import { useState, useMemo } from "react";
 import { S } from "../theme.js";
-import { posColor, proneColor, warStyle, devPctColor, zToColor } from "../theme.js";
+import { posColor, proneColor, warStyle, devPctColor } from "../theme.js";
 import { fmt, fmtAge, num, isTrueFA, rankSuffix, searchFilter, paginateRows } from "../utils/helpers.js";
 import { getMaxWar, getMaxWarP, genericSort, pickPitcherRole, pickFielderPos, passesPositionFilter, INF_POSITIONS, OF_POSITIONS } from "../utils/accessors.js";
 import { POT_DISPLAY_POS, PER_PAGE } from "../utils/constants.js";
-import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
+import { Section, SortHeader, PositionFilter, NumericRangeFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+import PositionalStrengthTable from "../views/Org/PositionalStrengthTable.jsx";
+import { buildBoardPool } from "./boardUtils.js";
+import { applySmartRank } from "../utils/futureValue.js";
+import { calcOrgNeed } from "../utils/strength.js";
 
 const FAF_PITCHER_FILTER_KEYS = new Set(["Pitchers", "SP", "RP"]);
 const FAF_FIELD_FILTER_KEYS = new Set(["C", "1B", "2B", "3B", "SS", "INF", "LF", "CF", "RF", "OF"]);
@@ -17,23 +21,20 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
   const [gapOnly, setGapOnly] = useState(false);
   const [sort, setSort] = useState({ col: "_fv", dir: "desc" });
   const [page, setPage] = useState(0);
-  const [strengthMode, setStrengthMode] = useState("now");
-  const [ageMin, setAgeMin] = useState("");
-  const [ageMax, setAgeMax] = useState("");
-  const [proyMin, setProyMin] = useState("");
-  const [proyMax, setProyMax] = useState("");
+  const [ageRange, setAgeRange] = useState({ min: "", max: "" });
+  const [proyRange, setProyRange] = useState({ min: "", max: "" });
+  const [toggles, setToggles] = useState({ orgNeed: false, devAdj: false, injury: false, intangibles: false });
+  const setToggle = (key) => setToggles((t) => ({ ...t, [key]: !t[key] }));
+  const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.injury || toggles.intangibles;
 
-  const teamZ = strength.zScores[strengthMode]?.[myTeam] || {};
-  const teamRanks = strength.ranks[strengthMode]?.[myTeam] || {};
-  const totalTeams = data.teams.length;
+  // FAs target the MLB roster, so positional needs are read off the "Now" pool only.
+  const teamZ = strength.zScores.now?.[myTeam] || {};
+  const orgNeed = useMemo(() => myTeam ? calcOrgNeed(myTeam, strength, "now") : null, [myTeam, strength]);
 
-  const sortedNeeds = useMemo(() => {
-    return POT_DISPLAY_POS
-      .map((pos) => ({ pos, z: teamZ[pos] ?? 0, rank: teamRanks[pos] }))
-      .sort((a, b) => a.z - b.z);
-  }, [teamZ, teamRanks]);
-
-  const weakPositions = useMemo(() => new Set(sortedNeeds.filter((n) => n.z < 0).map((n) => n.pos)), [sortedNeeds]);
+  const weakPositions = useMemo(
+    () => new Set(POT_DISPLAY_POS.filter((pos) => (teamZ[pos] ?? 0) < 0)),
+    [teamZ],
+  );
 
   const iafaTag = leagueSettings?.iafaTag || "IAFA";
   // Smart value display: when the selection narrows to specific field positions
@@ -47,38 +48,54 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
     : (pitcherSel.length === 1 && pitcherSel[0] === "RP") ? "rp"
     : "best";
   const devCurves = data.meta?.devCurve ?? null;
+
+  // Enriched base pool via buildBoardPool so each player has _baseVal /
+  // _currentVal / _eligiblePositions / _groupFvInputs / _primaryLeaf — the
+  // fields applySmartRank needs.
+  const enrichedFAPool = useMemo(() => {
+    const filter = (p) => isTrueFA(p, iafaTag);
+    return buildBoardPool(data, filter, filter);
+  }, [data, iafaTag]);
+
   const faPool = useMemo(() => {
-    const hitters = data.hitters.filter((p) => isTrueFA(p, iafaTag)).map((h) => {
+    return enrichedFAPool.map((p) => {
       let war, warP, fv;
-      if (useFieldOverride) {
-        const pv = pickFielderPos(h, fieldSel, devCurves?.hit, curveSettings);
-        war = pv?.war ?? null; warP = pv?.warP ?? null; fv = pv?.fv ?? null;
+      if (p._poolType === "hitter") {
+        if (useFieldOverride) {
+          const pv = pickFielderPos(p, fieldSel, devCurves?.hit, curveSettings);
+          war = pv?.war ?? null; warP = pv?.warP ?? null; fv = pv?.fv ?? null;
+        } else {
+          war = getMaxWar(p); warP = getMaxWarP(p); fv = p._fv;
+        }
       } else {
-        war = getMaxWar(h); warP = getMaxWarP(h); fv = h._fv;
+        const role = pitcherRoleHint === "best"
+          ? { war: p._war, warP: p._warP, fv: p._fv, warSort: p._warSort, warPSort: p._warPSort, role: p._role }
+          : pickPitcherRole(p, devCurves, curveSettings, pitcherRoleHint);
+        war = role.war; warP = role.warP; fv = role.fv;
       }
-      return { ...h, _war: war, _warP: warP, _fv: fv, _warSort: war, _warPSort: warP };
-    });
-    const pitchers = data.pitchers.filter((p) => isTrueFA(p, iafaTag)).map((p) => {
-      const role = pitcherRoleHint === "best"
-        ? { war: p._war, warP: p._warP, fv: p._fv, warSort: p._warSort, warPSort: p._warPSort, role: p._role }
-        : pickPitcherRole(p, devCurves, curveSettings, pitcherRoleHint);
+      // Re-key _baseVal / _currentVal to the (possibly position-overridden)
+      // values so the smart-rank formula reflects what the user is filtering for.
+      const baseVal = warP ?? 0;
+      const currentVal = war ?? 0;
+      const rank = anyToggle
+        ? applySmartRank({ ...p, _baseVal: baseVal, _currentVal: currentVal }, toggles, orgNeed, curveSettings, null)
+        : baseVal;
       return {
         ...p,
-        _war: role.war, _warP: role.warP, _fv: role.fv,
-        _warSort: role.warSort ?? role.war ?? null,
-        _warPSort: role.warPSort ?? role.warP ?? null,
-        _role: role.role,
+        _war: war, _warP: warP, _fv: fv,
+        _baseVal: baseVal, _currentVal: currentVal,
+        _warSort: war, _warPSort: warP,
+        _rank: rank,
       };
     });
-    return [...hitters, ...pitchers];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, iafaTag, curveSettings, posFilter, devCurves]);
+  }, [enrichedFAPool, posFilter, curveSettings, devCurves, anyToggle, toggles, orgNeed]);
 
   const filtered = useMemo(() => {
-    const mn = ageMin !== "" ? parseFloat(ageMin) : null;
-    const mx = ageMax !== "" ? parseFloat(ageMax) : null;
-    const pmn = proyMin !== "" ? parseFloat(proyMin) : null;
-    const pmx = proyMax !== "" ? parseFloat(proyMax) : null;
+    const mn = ageRange.min !== "" ? parseFloat(ageRange.min) : null;
+    const mx = ageRange.max !== "" ? parseFloat(ageRange.max) : null;
+    const pmn = proyRange.min !== "" ? parseFloat(proyRange.min) : null;
+    const pmx = proyRange.max !== "" ? parseFloat(proyRange.max) : null;
     const hasSearch = debouncedFASearch && debouncedFASearch.trim();
     let rows = hasSearch ? searchFilter([...faPool], debouncedFASearch) : [...faPool];
     rows = rows.filter((r) => {
@@ -108,39 +125,37 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
       return true;
     });
     const { col, dir } = sort;
-    genericSort(rows, col, dir, { _war: (p) => p._warSort ?? p._war, _warP: (p) => p._warPSort ?? p._warP, _fv: (p) => p._fv, _devPct: (p) => p._devPct });
+    genericSort(rows, col, dir, { _war: (p) => p._warSort ?? p._war, _warP: (p) => p._warPSort ?? p._warP, _fv: (p) => p._fv, _devPct: (p) => p._devPct, _rank: (p) => p._rank });
     return rows;
-  }, [faPool, debouncedFASearch, posFilter, gapOnly, sort, weakPositions, ageMin, ageMax, proyMin, proyMax]);
+  }, [faPool, debouncedFASearch, posFilter, gapOnly, sort, weakPositions, ageRange, proyRange]);
 
   const { paged, totalPages } = paginateRows(filtered, page, PER_PAGE);
 
-  const needsCards = useMemo(() => (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 6 }}>
-      {sortedNeeds.map(({ pos, z, rank }) => {
-        const colors = zToColor(z);
-        return (
-          <div key={pos} style={{ ...S.strengthCard, background: colors.bg, borderColor: colors.border, padding: "8px 6px" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: posColor(pos), letterSpacing: 1 }}>{pos}</div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: colors.value, marginTop: 1 }}>{rankSuffix(rank)}</div>
-            <div style={{ fontSize: 9, color: colors.label }}>z: {fmt(z, 2)}</div>
-          </div>
-        );
-      })}
-    </div>
-  ), [sortedNeeds]);
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Section title="Team Positional Needs" actions={
-        <div style={{ display: "flex", gap: 8 }}>
-          {["now", "farm"].map((m) => <PillBtn key={m} active={strengthMode === m} onClick={() => setStrengthMode(m)}>{m === "now" ? "Now (MLB)" : "Farm"}</PillBtn>)}
-        </div>
-      }>
-        {needsCards}
-        <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>
-          Sorted weakest to strongest. {weakPositions.size} position{weakPositions.size !== 1 ? "s" : ""} below league average.
-        </div>
-      </Section>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
+        <Section title="Team Positional Needs">
+          <PositionalStrengthTable
+            team={myTeam}
+            strength={strength}
+            mode="now"
+            sort="weakest"
+            dense
+          />
+          <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>
+            Sorted weakest to strongest. {weakPositions.size} position{weakPositions.size !== 1 ? "s" : ""} below league average.
+          </div>
+        </Section>
+
+        <Section title="Smart Rank Adjustments">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
+            <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
+            <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
+            <Toggle label="Intangibles" description="Bonus for elite 20-80 intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
+          </div>
+        </Section>
+      </div>
 
       <Section title={`Free Agent Board (${filtered.length})`}>
         <div style={{ marginBottom: 12 }}>
@@ -148,16 +163,8 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
           <input type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} style={S.searchInput} />
-          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#64748b" }}>Age
-            <input type="number" placeholder="min" value={ageMin} onChange={(e) => { setAgeMin(e.target.value); setPage(0); }} style={{ ...S.searchInput, width: 52, padding: "4px 6px", fontSize: 11 }} />
-            <span>–</span>
-            <input type="number" placeholder="max" value={ageMax} onChange={(e) => { setAgeMax(e.target.value); setPage(0); }} style={{ ...S.searchInput, width: 52, padding: "4px 6px", fontSize: 11 }} />
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#64748b" }}>Pro Yrs
-            <input type="number" placeholder="min" value={proyMin} onChange={(e) => { setProyMin(e.target.value); setPage(0); }} style={{ ...S.searchInput, width: 48, padding: "4px 6px", fontSize: 11 }} />
-            <span>–</span>
-            <input type="number" placeholder="max" value={proyMax} onChange={(e) => { setProyMax(e.target.value); setPage(0); }} style={{ ...S.searchInput, width: 48, padding: "4px 6px", fontSize: 11 }} />
-          </span>
+          <NumericRangeFilter label="Age" value={ageRange} onChange={(v) => { setAgeRange(v); setPage(0); }} step={1} />
+          <NumericRangeFilter label="Pro Yrs" value={proyRange} onChange={(v) => { setProyRange(v); setPage(0); }} step={1} />
           <Toggle label="Gap fills only" description="Only positions below league avg" checked={gapOnly} onChange={setGapOnly} />
         </div>
 
@@ -165,6 +172,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
           <table style={S.table}>
             <thead><tr>
               {[
+                ...(anyToggle ? [{ key: "_rank", label: "Smart", w: 70 }] : []),
                 { key: "Name", label: "Name", w: 170 },
                 { key: "Age", label: "Age", w: 45 },
                 { key: "POS", label: "POS", w: 48 },
@@ -185,6 +193,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
                 const isWeak = weakPositions.has(p.meta?.pos ?? p.POS);
                 return (
                   <tr key={p.ID + "-" + i} style={{ background: isWeak ? "rgba(239,68,68,0.04)" : i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
+                    {anyToggle && <td style={{ ...S.td, ...warStyle(p._rank), fontWeight: 700 }}>{fmt(p._rank)}</td>}
                     <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
                         onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
                     <td style={S.td}>{fmtAge(p._age)}</td>
@@ -203,7 +212,7 @@ export default function FreeAgentFinder({ data, myTeam, strength, curveSettings,
                   </tr>
                 );
               })}
-              {paged.length === 0 && <tr><td colSpan={11} style={{ ...S.td, textAlign: "center", color: "#475569" }}>No free agents found</td></tr>}
+              {paged.length === 0 && <tr><td colSpan={11 + (anyToggle ? 1 : 0)} style={{ ...S.td, textAlign: "center", color: "#475569" }}>No free agents found</td></tr>}
             </tbody>
           </table>
         </div>

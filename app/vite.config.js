@@ -66,6 +66,10 @@ export default defineConfig({
     },
   },
   build: {
+    // recharts gzips to ~159 KB which is fine over the wire; suppress the
+    // 500 KB minified-size warning since the library is already manualChunk'd
+    // and there's no further useful slimming without dropping it.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: {

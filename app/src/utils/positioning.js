@@ -2,7 +2,7 @@
 // POSITIONING — Defensive position optimization and player assignment cascade
 // ============================================================================
 import { isEligible, getRunsP, getWar, getWarP, getSpWar, getRpWar } from "./accessors.js";
-import { num, parseCSVBoolean } from "./helpers.js";
+import { parseCSVBoolean } from "./helpers.js";
 import { DEF_SPECTRUM, DEF_SPECTRUM_POT } from "./constants.js";
 
 export function optimizeDefensivePositions(starters, positions) {
@@ -58,7 +58,7 @@ export function optimizeDefensivePositions(starters, positions) {
   return positions.map((pos) => result[pos]).filter(Boolean);
 }
 
-export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "current", warColFn = null) {
+export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "current", split = "wtd") {
   const spectrum = mode === "potential" ? DEF_SPECTRUM_POT : DEF_SPECTRUM;
   const usedIds = new Set();
   const assigned = {};
@@ -67,9 +67,8 @@ export function assignPlayersToPositions(hitters, pitchers, depthMap, mode = "cu
   assigned.RP = [];
 
   const getVal = (h, pos) => {
-    if (warColFn) return num(h[warColFn(pos)]);
-    let val = mode === "current" ? getWar(h, pos) : getWarP(h, pos);
-    if (mode === "potential" && val === null) val = getWar(h, pos);
+    let val = mode === "current" ? getWar(h, pos, split) : getWarP(h, pos);
+    if (mode === "potential" && val === null) val = getWar(h, pos, split);
     return val;
   };
 

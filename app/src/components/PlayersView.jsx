@@ -4,7 +4,7 @@ import { posColor, levelColor, proneColor, warStyle, devPctColor, gradeStyle } f
 import { fmt, fmtAge, num, isTrueFA, parseCSVBoolean, searchFilter, paginateRows, rankSuffix } from "../utils/helpers.js";
 import { resolveKey, genericSort, getMaxWar, getMaxWarP, pickFielderPos, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
 import { PER_PAGE_LARGE, PLAYERS_HIT_COLS, PLAYERS_PIT_COLS, PLAYERS_MIXED_COLS } from "../utils/constants.js";
-import { SortHeader, PositionFilter, LevelFilter, MultiSelectDropdown, TwoWayBadge, Pagination } from "./shared.jsx";
+import { SortHeader, PositionFilter, LevelFilter, MultiSelectDropdown, NumericRangeFilter, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 
 const PITCHER_FILTER_KEYS = new Set(["Pitchers", "SP", "RP"]);
@@ -19,8 +19,7 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
   const [faOnly, setFaOnly] = useState(false);
   const [proneFilter, setProneFilter] = useState([]);
   const [on40Filter, setOn40Filter] = useState([]);
-  const [ageMin, setAgeMin] = useState("");
-  const [ageMax, setAgeMax] = useState("");
+  const [ageRange, setAgeRange] = useState({ min: "", max: "" });
   const [sort, setSort] = useState({ col: "_fv", dir: "desc" });
   const [page, setPage] = useState(0);
   // Column set + source derived from position filter selection
@@ -73,8 +72,8 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
 
   const filtered = useMemo(() => {
     const _iafaTag = leagueSettings?.iafaTag || "IAFA";
-    const mn = ageMin !== "" ? parseFloat(ageMin) : null;
-    const mx = ageMax !== "" ? parseFloat(ageMax) : null;
+    const mn = ageRange.min !== "" ? parseFloat(ageRange.min) : null;
+    const mx = ageRange.max !== "" ? parseFloat(ageRange.max) : null;
     const hasSearch = debouncedSearch && debouncedSearch.trim();
     let rows = hasSearch ? searchFilter([...source], debouncedSearch) : [...source];
     rows = rows.filter((r) => {
@@ -102,7 +101,7 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
       "MAX WAR P": (r) => posValForRow(r)?.warP ?? getMaxWarP(r),
     });
     return rows;
-  }, [source, debouncedSearch, posFilter, orgFilter, levelFilter, faOnly, proneFilter, on40Filter, ageMin, ageMax, sort, leagueSettings]);
+  }, [source, debouncedSearch, posFilter, orgFilter, levelFilter, faOnly, proneFilter, on40Filter, ageRange, sort, leagueSettings]);
 
   const { paged, totalPages } = paginateRows(filtered, page, PER_PAGE_LARGE);
   const cols = playerType === "hitters" ? PLAYERS_HIT_COLS : playerType === "pitchers" ? PLAYERS_PIT_COLS : PLAYERS_MIXED_COLS;
@@ -119,15 +118,11 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} style={S.searchInput} />
-        <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#64748b" }}>Age
-          <input type="number" placeholder="min" value={ageMin} onChange={(e) => { setAgeMin(e.target.value); setPage(0); }} style={{ ...S.searchInput, width: 52, padding: "4px 6px", fontSize: 11 }} />
-          <span>–</span>
-          <input type="number" placeholder="max" value={ageMax} onChange={(e) => { setAgeMax(e.target.value); setPage(0); }} style={{ ...S.searchInput, width: 52, padding: "4px 6px", fontSize: 11 }} />
-        </span>
+        <NumericRangeFilter label="Age" value={ageRange} onChange={(v) => { setAgeRange(v); setPage(0); }} step={1} />
       </div>
       <div style={{ fontSize: 11, color: "#64748b", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ color: "#94a3b8", fontWeight: 600 }}>{filtered.length.toLocaleString()} players</span>
-        {(posFilter.length > 0 || orgFilter.length > 0 || levelFilter.length > 0 || proneFilter.length > 0 || on40Filter.length > 0 || faOnly || search || ageMin !== "" || ageMax !== "") && (
+        {(posFilter.length > 0 || orgFilter.length > 0 || levelFilter.length > 0 || proneFilter.length > 0 || on40Filter.length > 0 || faOnly || search || ageRange.min !== "" || ageRange.max !== "") && (
           <span>Best Pos breakdown: {(() => {
             const counts = {};
             filtered.forEach((r) => { const bp = (r._bestPos || "").replace("*", "") || "?"; counts[bp] = (counts[bp] || 0) + 1; });
@@ -153,7 +148,8 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
               if (key === "Name") { style.fontWeight = 600; style.color = "#e2e8f0"; style.minWidth = 170; style.cursor = "pointer"; return <td key={key} style={style} onClick={() => onSelectPlayer?.(r)}>{val}<TwoWayBadge player={r} /></td>; }
               else if (key === "_fv") { const fvVal = fvForRow(r); Object.assign(style, warStyle(fvVal)); val = fmt(fvVal); }
               else if (key === "_devPct") { const m = r._ageMatured; style.color = !m && r._devPct != null ? devPctColor(r._devPct) : "#475569"; style.fontWeight = !m && r._devPct != null ? 600 : 400; val = !m && r._devPct != null ? rankSuffix(Math.round(r._devPct * 100)) : "—"; }
-              else if (key === "MAX WAR P" || key === "WARP" || key === "WARP RP") { if (r._matured) { val = "—"; style.color = "#475569"; } else { const n = num(val); Object.assign(style, warStyle(n)); val = fmt(n); } }
+              else if (key === "MAX WAR P" || key === "WARP" || key === "WARP RP" || key === "_warP") { if (r._matured) { val = "—"; style.color = "#475569"; } else { const n = num(val); Object.assign(style, warStyle(n)); val = fmt(n); } }
+              else if (key === "_war") { const n = num(val); Object.assign(style, warStyle(n)); val = fmt(n); }
               else if (key === "_age") { val = fmtAge(val); style.color = "#94a3b8"; }
               else if (key === "_bestPos") { style.color = posColor((val || "").replace("*", "")); val = val || "—"; }
               else if (key === "POS") style.color = posColor(val);

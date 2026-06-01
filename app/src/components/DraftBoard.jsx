@@ -865,7 +865,7 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
                 ...(anyToggle ? [{ key: "_baseVal", label: "Raw", w: 60 }] : []),
                 ...(demandsOn ? [{ key: "_demSort", label: "DEM", w: 75 }, { key: "sign", label: "Sign", w: 72 }] : []),
                 { key: "Prone", label: "Prone", w: 65 },
-                { key: "_intangibles", label: "INTS", w: 45 },
+                { key: "_intangibles", label: "INTG", w: 45 },
                 { key: "INT", label: "INT", w: 32 },
                 { key: "WE", label: "WE", w: 32 },
                 { key: "LEA", label: "LEA", w: 32 },

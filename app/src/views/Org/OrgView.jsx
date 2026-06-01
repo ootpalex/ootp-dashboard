@@ -5,7 +5,6 @@ import OverviewSubTab from "./OverviewSubTab.jsx";
 import ActiveRosterSubTab from "./ActiveRosterSubTab.jsx";
 import FortyManSubTab from "./FortyManSubTab.jsx";
 import OptimizedLineupSubTab from "./OptimizedLineupSubTab.jsx";
-import R5EligibleSubTab from "./R5EligibleSubTab.jsx";
 
 export default function OrgView({ data, team, strength, curveSettings, onSelectPlayer }) {
   const [orgSubTab, setOrgSubTab] = useState("overview");
@@ -23,7 +22,6 @@ export default function OrgView({ data, team, strength, curveSettings, onSelectP
     { id: "active", label: `Active Roster (${activeRosterCount})` },
     { id: "fortyman", label: "40-Man Depth" },
     { id: "lineup", label: "Optimized Lineup" },
-    { id: "r5", label: "Rule 5 Eligible" },
   ];
 
   return (
@@ -47,7 +45,6 @@ export default function OrgView({ data, team, strength, curveSettings, onSelectP
       {orgSubTab === "active" && <ActiveRosterSubTab data={data} team={team} onSelectPlayer={onSelectPlayer} />}
       {orgSubTab === "fortyman" && <FortyManSubTab data={data} team={team} strength={strength} onSelectPlayer={onSelectPlayer} />}
       {orgSubTab === "lineup" && <OptimizedLineupSubTab data={data} team={team} onSelectPlayer={onSelectPlayer} />}
-      {orgSubTab === "r5" && <R5EligibleSubTab teamHitters={teamHitters} teamPitchers={teamPitchers} onSelectPlayer={onSelectPlayer} />}
     </div>
   );
 }

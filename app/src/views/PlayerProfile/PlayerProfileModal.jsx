@@ -84,7 +84,7 @@ function HeaderTiles({ player }) {
   );
 }
 
-export default function PlayerProfileModal({ player, onClose, data, curveSettings, gameDate }) {
+export default function PlayerProfileModal({ player, onClose, data, curveSettings, gameDate, leagueSlug }) {
   useEffect(() => {
     const fn = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", fn);
@@ -346,7 +346,13 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
         {/* Active tab body */}
         {isHitter && activeTab === "batting" && <BattingTab player={player} />}
         {isHitter && activeTab === "fielding" && (
-          <FieldingTab player={player} eligiblePositions={eligiblePositions} bestRunsPPos={bestRunsPPos} />
+          <FieldingTab
+            player={player}
+            eligiblePositions={eligiblePositions}
+            bestRunsPPos={bestRunsPPos}
+            peerPools={peerPools}
+            leagueSlug={leagueSlug}
+          />
         )}
         {isHitter && activeTab === "baserunning" && <BaserunningTab player={player} />}
         {!isHitter && activeTab === "pitching" && <PitchingTab player={player} role={role} />}

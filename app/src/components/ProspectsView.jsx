@@ -282,7 +282,7 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
       </Section>
 
       {/* Filter Bar + Table */}
-      <Section title={`The Board (${prospectPool.length} prospects)`}>
+      <Section title={`The Board (${prospectPool.length})`}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
           <PositionFilter value={posFilter} onChange={(v) => { setPosFilter(v); setPage(0); }} />
           <MultiSelectDropdown
@@ -311,13 +311,13 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                 { key: "Name", label: "Name", w: 170 },
                 { key: "Age", label: "Age", w: 45 },
                 { key: "_devPct", label: "Dev%", w: 48 },
-                { key: "POS", label: "POS", w: 45 },
+                { key: "POS", label: "POS", w: 48 },
                 { key: "_bestPos", label: "Best", w: 48 },
-                { key: "ORG", label: "Team", w: 110 },
-                { key: "Lev", label: "Lvl", w: 40 },
+                { key: "ORG", label: "Team", w: 130 },
+                { key: "Lev", label: "Lvl", w: 45 },
                 { key: "_fv", label: "FV", w: 60 },
-                { key: "_currentVal", label: "WAR", w: 55 },
-                { key: "_baseVal", label: "WAR P", w: 55 },
+                { key: "_currentVal", label: "WAR", w: 65 },
+                { key: "_baseVal", label: "WAR P", w: 65 },
                 { key: "_dollarVal", label: "$ Val", w: 55 },
               ].map(({ key, label, w }) => (
                 <SortHeader key={key} label={label} width={w} sortCol={sort.col} sortDir={sort.dir} colKey={key}

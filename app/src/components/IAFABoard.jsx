@@ -78,11 +78,11 @@ export default function IAFABoard({ data, myTeam, strength, curveSettings, leagu
           <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
           <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
           <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
-          <Toggle label="Intangibles" description="Bonus for elite intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
+          <Toggle label="Intangibles" description="Bonus for elite 20-80 intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
         </div>
       </Section>
 
-      <Section title={`IAFA Board (${pool.length} players)`}>
+      <Section title={`IAFA Board (${pool.length})`}>
         <div style={{ marginBottom: 12 }}>
           <PositionFilter value={posFilter} onChange={(v) => { setPosFilter(v); setPage(0); }} />
         </div>
@@ -104,14 +104,14 @@ export default function IAFABoard({ data, myTeam, strength, curveSettings, leagu
               <th style={{ ...S.th, width: 50, textAlign: "center" }}>Signed</th>
               {[
                 { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70 },
-                { key: "Name", label: "Name", w: 140 },
+                { key: "Name", label: "Name", w: 170 },
                 { key: "Age", label: "Age", w: 45 },
                 { key: "_devPct", label: "Dev%", w: 48 },
                 { key: "POS", label: "POS", w: 48 },
                 { key: "_bestPos", label: "Best", w: 48 },
                 ...(anyToggle ? [{ key: "_baseVal", label: "Raw", w: 60 }] : []),
                 { key: "Prone", label: "Prone", w: 65 },
-                { key: "_intangibles", label: "INTG", w: 45 },
+                { key: "_intangibles", label: "INTG", w: 48 },
                 { key: "WE", label: "WE", w: 32 },
                 { key: "INT", label: "INT", w: 32 },
                 { key: "_demSort", label: "DEM", w: 75 },

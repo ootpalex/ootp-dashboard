@@ -285,6 +285,125 @@ export function LevelFilter({ players, value, onChange, expandRookieTeams = true
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// NumericRangeFilter — styled-button + popover filter for numeric
+// ranges (Age, Pro Yrs, etc.) matching the MultiSelectDropdown look.
+// Either side of the range can be left blank → open-ended filter.
+//
+// value: { min: string|number|"", max: string|number|"" }
+// onChange: ({ min, max }) => void — both values are echoed back even
+// when only one changes, so callers can manage a single piece of state.
+// ─────────────────────────────────────────────────────────────
+export function NumericRangeFilter({ label = "Range", value, onChange, step = 1, minWidth = 130 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open]);
+
+  const min = value?.min ?? "";
+  const max = value?.max ?? "";
+  const hasMin = min !== "" && min != null;
+  const hasMax = max !== "" && max != null;
+  const active = hasMin || hasMax;
+
+  let summary;
+  if (!active) summary = label;
+  else if (hasMin && hasMax) summary = `${min} ≤ ${label} ≤ ${max}`;
+  else if (hasMin) summary = `${label} ≥ ${min}`;
+  else summary = `${label} ≤ ${max}`;
+
+  const setMin = (v) => onChange({ min: v, max });
+  const setMax = (v) => onChange({ min, max: v });
+  const clear = () => onChange({ min: "", max: "" });
+
+  const inputStyle = {
+    background: "#0a0f1c",
+    border: "1px solid #334155",
+    borderRadius: 6,
+    color: "#cbd5e1",
+    padding: "6px 8px",
+    fontSize: 12,
+    fontFamily: "inherit",
+    width: "100%",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`Filter by ${label}`}
+        style={{
+          padding: "6px 10px 6px 12px",
+          background: "linear-gradient(#0f172a, #0a0f1c)",
+          border: "1px solid",
+          borderColor: open ? "#3b82f6" : active ? "#475569" : "#334155",
+          borderRadius: 8,
+          color: active ? "#93c5fd" : "#94a3b8",
+          fontSize: 12,
+          fontWeight: 600,
+          fontFamily: "inherit",
+          cursor: "pointer",
+          minWidth,
+          textAlign: "left",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          boxShadow: open ? "0 0 0 3px rgba(59,130,246,0.18)" : "0 1px 2px rgba(0,0,0,0.2)",
+          transition: "all 0.15s",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary}</span>
+        <span style={{ fontSize: 9, color: "#64748b", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+      </button>
+      {open && (
+        <div role="dialog" aria-label={`${label} range`} style={{
+          position: "absolute",
+          top: "calc(100% + 6px)",
+          left: 0,
+          minWidth: 220,
+          background: "#0f172a",
+          border: "1px solid #334155",
+          borderRadius: 8,
+          boxShadow: "0 12px 28px rgba(0,0,0,0.5)",
+          zIndex: 1000,
+          padding: 10,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>
+            <span>{label} range</span>
+            {active && (
+              <button type="button" onClick={clear} style={{ background: "none", border: "none", color: "#60a5fa", fontSize: 10, cursor: "pointer", padding: 0, fontFamily: "inherit", fontWeight: 700, letterSpacing: 0.5 }}>
+                CLEAR
+              </button>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center" }}>
+            <input type="number" placeholder="Min" step={step} value={min} onChange={(e) => setMin(e.target.value)} style={inputStyle} aria-label={`Minimum ${label}`} />
+            <span style={{ color: "#64748b", fontSize: 11 }}>—</span>
+            <input type="number" placeholder="Max" step={step} value={max} onChange={(e) => setMax(e.target.value)} style={inputStyle} aria-label={`Maximum ${label}`} />
+          </div>
+          <div style={{ marginTop: 6, fontSize: 10, color: "#475569", lineHeight: 1.4 }}>
+            Leave a side blank for an open-ended filter.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TabGroup({ children, label, style: extraStyle }) {
   return (
     <div role="tablist" aria-label={label} style={extraStyle}>

@@ -164,7 +164,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
       const cohortCurve = ageMatured ? null : hitCurve;
       const fv = (matured || cur == null) ? cur :
         calcFutureValue(cur, pot, p._age, curveSettings);
-      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct, _devCurve: cohortCurve, _fv: fv };
+      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct, _devCurve: cohortCurve, _fv: fv, _war: cur, _warP: pot };
     };
 
     const enrichPitcher = (p) => {
@@ -297,7 +297,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
           {activePage === "dev" && <DevAnalysisView data={enrichedData} curveSettings={curveSettings} updateCurveSettings={updateCurveSettings} />}
           {activePage === "scout" && myTeam && <ScoutView data={enrichedData} myTeam={myTeam} strength={strength} strengthMode={strengthMode} setStrengthMode={setStrengthMode} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "compare" && <PlayerCompareView data={enrichedData} curveSettings={curveSettings} />}
-          {activePage === "r5" && myTeam && <Rule5Board data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
+          {activePage === "r5" && myTeam && <Rule5Board data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} dashMeta={dashMeta} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "prospects" && <ProspectsView data={enrichedData} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "roster" && myTeam && <RosterPlanner data={enrichedData} myTeam={myTeam} curveSettings={curveSettings} leagueSettings={leagueSettings} dashMeta={dashMeta} onSelectPlayer={setSelectedPlayer} />}
         </Suspense>
@@ -309,6 +309,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
           data={enrichedData}
           curveSettings={curveSettings}
           gameDate={gameDate}
+          leagueSlug={currentLeague}
         />
       )}
     </div>

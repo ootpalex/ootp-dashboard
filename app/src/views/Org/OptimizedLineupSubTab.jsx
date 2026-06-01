@@ -7,8 +7,7 @@ import { Section, TwoWayBadge } from "../../components/shared.jsx";
 const LINEUP_DEPTH = { C: 1, "1B": 1, "2B": 1, "3B": 1, SS: 1, LF: 1, CF: 1, RF: 1, DH: 1 };
 
 function buildPlatoonLineup(hitters, hand) {
-  const warCol = (pos) => `${pos} WAR ${hand}`;
-  const { assigned } = assignPlayersToPositions(hitters, [], LINEUP_DEPTH, "current", warCol);
+  const { assigned } = assignPlayersToPositions(hitters, [], LINEUP_DEPTH, "current", hand);
 
   const rawStarters = [];
   const positions = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];

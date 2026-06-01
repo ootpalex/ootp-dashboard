@@ -68,8 +68,22 @@ function bestFieldingValue(player) {
 // Returns {overall, batting, fielding, baserunning} each with a {current, potential}
 // pair of ascending-sorted numeric arrays. Single-dot metrics (fielding, baserunning)
 // expose only `current`.
+//
+// `fielding.byPos` is a per-position lookup of RunsP among MLB players eligible
+// at that position — used by FieldingTab to show "this player's RunsP at SS
+// ranks Nth among MLB SS-eligibles". Keyed by lowercase pos-key (c, 1b, …, rf)
+// to match the dashboard.positions.* schema.
 export function buildHitterPeerPools(hitters) {
   const mlb = (hitters || []).filter((h) => (h.meta?.lev ?? h.Lev) === "MLB");
+  const POS_KEYS = ["c", "1b", "2b", "3b", "ss", "lf", "cf", "rf"];
+  const fieldingByPos = {};
+  for (const k of POS_KEYS) {
+    fieldingByPos[k] = sortPool(
+      mlb
+        .filter((h) => h.positions?.[k]?.eligible)
+        .map((h) => num(h.positions?.[k]?.stats?.runsP))
+    );
+  }
   return {
     overall: {
       current: sortPool(mlb.map((h) => getMaxWar(h))),
@@ -81,6 +95,7 @@ export function buildHitterPeerPools(hitters) {
     },
     fielding: {
       current: sortPool(mlb.map((h) => bestFieldingValue(h))),
+      byPos: fieldingByPos,
     },
     baserunning: {
       current: sortPool(mlb.map((h) => getBsr(h))),
