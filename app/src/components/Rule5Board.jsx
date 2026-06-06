@@ -70,7 +70,7 @@ function Rule5Board({ data, myTeam, strength, curveSettings, leagueSettings, das
           <PositionalStrengthTable
             team={myTeam}
             strength={strength}
-            mode="farm"
+            mode="now"
             sort="weakest"
             dense
           />
