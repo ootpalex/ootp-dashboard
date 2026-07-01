@@ -17,8 +17,9 @@ hitting / pitching / baserunning / fielding formulas (`model/src/hitters.py`,
    out-count is over-spread vs a continuous catch-probability model.)
 3. **Resolve every flag before merging.** No made-up constants, no skipped steps.
 
-Pattern to copy (a worked audit + reusable harness):
-`Leftovers/oaa-fielding-model/OAA_PIPELINE_AUDIT.md` and `verify_oaa_pipeline.py`.
+Pattern to copy (a worked audit + reusable harness), in the research workspace
+outside this repo: `analysis/oaa-fielding-model/docs/OAA_PIPELINE_AUDIT.md` and
+`analysis/oaa-fielding-model/pipeline/verify_oaa_pipeline.py`.
 
 ## Key pipeline facts
 
@@ -29,7 +30,8 @@ Pattern to copy (a worked audit + reusable harness):
   rollout): `export.py:_detect_metadata` → `generate_regression_coefficients(regressions_dir)` →
   injected into `compose_data_points`. Cached in `.regressions_cache.json` (keyed on sim-data hash +
   `_CACHE_VERSION`; recomputes only on data change or version bump). The hardcoded `data_points.py`
-  values are now only the **no-sims fallback** (fielding `*_pm_*` are OAA). The recompute reproduces the
+  values are now only the **no-sims fallback** (fielding `*_pm_*` are rating→made/TOTAL PM%, reverted from
+  OAA on 2026-06-28 — tail-bias fix, see `FIELDING_DENOMINATOR_DECISION.md`). The recompute reproduces the
   slopes exactly. **Caveat:** the baserunning cubics (sb_pct/sba/ubr, sp/rp_sb_pct) are applied as
   `poly + lg.rate`, so their `c0` is a real *pooled-vs-average-rated* offset (e.g. sb_pct.c0 ≈ −0.133), NOT
   zero — the centered recompute returns ≈0 there, which is wrong, so those intercepts are pinned to the
@@ -43,7 +45,7 @@ Pattern to copy (a worked audit + reusable harness):
 - **Multi-year positional adjustments.** Per-league posAdj is computed via a multi-year
   offense + defense blend (calibration windows H_def=5 / cut_def=20, H_off=2.5 / cut_off=8)
   and frozen into `_FROZEN_POS_ADJ_BY_URL` in `data_points.py` (keyed on `statsplus_url`).
-  Cache version v5 invalidates pre-multi-year caches.
+  Bumping the metadata `_CACHE_VERSION` (in `metadata.py`) invalidates pre-multi-year caches.
 - **`bestPos` resolution is Option B** — `RunsP + DEF_SPECTRUM[pos]` argmax over eligible
   field positions, with an LF/RF arm-split leaf when both corners are eligible (chooses
   RF when OF arm ≥ per-league threshold, LF otherwise).

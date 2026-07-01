@@ -62,7 +62,7 @@ flowchart TD
   FETCH[App.jsx fetch dashboard.json.gz] --> PD[processData]
   PD --> RA[recomputeAges with sidebar gameDate]
   RA --> EN[Dashboard.enrichedData memo]
-  EN --> DP[_devPct via computeDevPercentile]
+  EN --> DP[_devPct via devPercentileRank]
   EN --> FV[_fv via calcFutureValue]
   EN --> MAT[_matured flag]
   EN --> INT[_intangibles via calcRawIntangibles]
