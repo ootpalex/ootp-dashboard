@@ -293,6 +293,24 @@ def _normalize_fielding_ratings_frame(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _normalize_pitcher_ratings_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Alias the HR-allowed pitcher rating ``HRA*`` to ``HRR*`` when present.
+
+    OOTP exports this rating under either caption depending on the view; the
+    aggregator reads ``HRR`` (bare for the legacy per-role files,
+    ``HRR vR``/``HRR vL`` for the combined 2-file format). The suffix set covers
+    both shapes. Idempotent: files that already use ``HRR`` are unchanged. (The
+    ``_1``/``.1`` duplicate-caption issue handled in players.py cannot occur here
+    — these are single-purpose exports with no repeated captions.)
+    """
+    aliases = {
+        f"HRA{suffix}": f"HRR{suffix}"
+        for suffix in ("", " vL", " vR", " P")
+        if f"HRA{suffix}" in df.columns and f"HRR{suffix}" not in df.columns
+    }
+    return df.rename(columns=aliases) if aliases else df
+
+
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
@@ -353,15 +371,21 @@ def load_metadata_inputs(
     # takes precedence; otherwise fall back to the legacy 4-file per-role format.
     if (d / "pitcher_ratings_vr.csv").is_file():
         pitcher_kwargs = {
-            "pitcher_ratings_vr": _load_metadata_rating_csv(d / "pitcher_ratings_vr.csv", **blend_kw),
-            "pitcher_ratings_vl": _load_metadata_rating_csv(d / "pitcher_ratings_vl.csv", **blend_kw),
+            "pitcher_ratings_vr": _normalize_pitcher_ratings_frame(
+                _load_metadata_rating_csv(d / "pitcher_ratings_vr.csv", **blend_kw)),
+            "pitcher_ratings_vl": _normalize_pitcher_ratings_frame(
+                _load_metadata_rating_csv(d / "pitcher_ratings_vl.csv", **blend_kw)),
         }
     else:
         pitcher_kwargs = {
-            "sp_ratings_vr": _load_metadata_rating_csv(d / "sp_ratings_vr.csv", **blend_kw),
-            "sp_ratings_vl": _load_metadata_rating_csv(d / "sp_ratings_vl.csv", **blend_kw),
-            "rp_ratings_vr": _load_metadata_rating_csv(d / "rp_ratings_vr.csv", **blend_kw),
-            "rp_ratings_vl": _load_metadata_rating_csv(d / "rp_ratings_vl.csv", **blend_kw),
+            "sp_ratings_vr": _normalize_pitcher_ratings_frame(
+                _load_metadata_rating_csv(d / "sp_ratings_vr.csv", **blend_kw)),
+            "sp_ratings_vl": _normalize_pitcher_ratings_frame(
+                _load_metadata_rating_csv(d / "sp_ratings_vl.csv", **blend_kw)),
+            "rp_ratings_vr": _normalize_pitcher_ratings_frame(
+                _load_metadata_rating_csv(d / "rp_ratings_vr.csv", **blend_kw)),
+            "rp_ratings_vl": _normalize_pitcher_ratings_frame(
+                _load_metadata_rating_csv(d / "rp_ratings_vl.csv", **blend_kw)),
         }
 
     return MetadataInputs(

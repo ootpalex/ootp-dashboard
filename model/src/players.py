@@ -15,16 +15,38 @@ import pandas as pd
 
 from src.relative_ratings import blend_relative_ratings
 
-# Columns whose pandas auto-suffix (.1) we rename for clarity.
-# Format: pandas_auto_name → desired_name
-_COLUMN_RENAMES = {
-    "INJ.1": "INJ2",
-    "CON.1": "PCON",
-    "CON vL.1": "PCON vL",
-    "CON vR.1": "PCON vR",
-    "CON P.1": "PCON P",
-    "DEM.1": "DEM2",
-}
+# OOTP exports several ratings twice under the same caption — once for the
+# hitter side and once for the pitcher side (CON = contact/control; INJ; DEM).
+# The second copy must be disambiguated and renamed to its pitcher-side meaning.
+#
+# Two disambiguation conventions appear in the wild and both are handled:
+#   • ".1" — pandas' own auto-suffix when it reads literal duplicate headers
+#            from a raw OOTP export ("CON","CON" → "CON","CON.1").
+#   • "_1" — already baked into the header when the CSV has been round-tripped
+#            through a spreadsheet app (Excel/Numbers/Sheets dedupe that way).
+# Separately, the HR-allowed pitcher rating exports as either "HRR" or "HRA"
+# depending on the view caption, so "HRA*" is normalized to "HRR*".
+def _build_column_renames() -> dict[str, str]:
+    # base caption → desired (pitcher-side) name
+    duplicated = {
+        "INJ": "INJ2",
+        "CON": "PCON",
+        "CON vL": "PCON vL",
+        "CON vR": "PCON vR",
+        "CON P": "PCON P",
+        "DEM": "DEM2",
+    }
+    renames: dict[str, str] = {}
+    for base, target in duplicated.items():
+        renames[f"{base}.1"] = target  # pandas auto-suffix
+        renames[f"{base}_1"] = target  # spreadsheet dedup suffix
+    # HR-allowed rating caption alias (HRA → HRR): bare, both splits, potential.
+    for suffix in ("", " vL", " vR", " P"):
+        renames[f"HRA{suffix}"] = f"HRR{suffix}"
+    return renames
+
+
+_COLUMN_RENAMES = _build_column_renames()
 
 # Positions that count as pitchers
 _PITCHER_POSITIONS = frozenset({"SP", "RP", "CL"})

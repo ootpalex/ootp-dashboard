@@ -33,6 +33,7 @@ from src.metadata import (
     _normalize_batter_ratings_frame,
     _normalize_fielding_data_frame,
     _normalize_fielding_ratings_frame,
+    _normalize_pitcher_ratings_frame,
     _normalize_pitching_frame,
     _resolve_season_dirs,
     has_metadata_inputs,
@@ -1190,3 +1191,25 @@ class TestRawExportNormalization:
         legacy = pd.DataFrame({"ID": [1], "PA": [600], "BA": [52], "EYE": [58], "SPE": [70]})
         out = _normalize_batter_ratings_frame(legacy, "vR")
         assert out["BA"].iloc[0] == 52 and out["EYE"].iloc[0] == 58
+
+    def test_pitcher_ratings_hra_alias_combined(self):
+        """The combined 2-file format's split HRA caption aliases to HRR."""
+        df = pd.DataFrame({
+            "ID": [1], "BF": [800], "STU vR": [60], "HRA vR": [55],
+            "STU vL": [58], "HRA vL": [54],
+        })
+        out = _normalize_pitcher_ratings_frame(df)
+        assert out["HRR vR"].iloc[0] == 55 and out["HRR vL"].iloc[0] == 54
+        assert "HRA vR" not in out.columns and "HRA vL" not in out.columns
+
+    def test_pitcher_ratings_hra_alias_legacy(self):
+        """The legacy per-role format's bare HRA caption aliases to HRR."""
+        df = pd.DataFrame({"ID": [1], "BF": [800], "STU": [60], "HRA": [55]})
+        out = _normalize_pitcher_ratings_frame(df)
+        assert out["HRR"].iloc[0] == 55 and "HRA" not in out.columns
+
+    def test_pitcher_ratings_hrr_untouched(self):
+        """Files already using HRR pass through unchanged (idempotent)."""
+        df = pd.DataFrame({"ID": [1], "BF": [800], "STU vR": [60], "HRR vR": [55]})
+        out = _normalize_pitcher_ratings_frame(df)
+        assert out["HRR vR"].iloc[0] == 55 and "HRA vR" not in out.columns
