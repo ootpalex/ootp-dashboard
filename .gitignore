@@ -47,6 +47,9 @@ model/pipeline_settings.json
 # Claude Code harness (local AI tooling, not for upload)
 .claude/
 
+# treehouse worktree manager (local machine config)
+treehouse.toml
+
 # OS
 .DS_Store
 
