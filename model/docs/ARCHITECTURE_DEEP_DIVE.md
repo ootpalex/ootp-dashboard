@@ -32,8 +32,10 @@ The `Data Points` sheet constants are the key bridge from the external sheets. W
 > - **Regression coefficients are computed from the calibration sims and injected at build time**
 >   (`export._detect_metadata` → `generate_regression_coefficients` → `compose_data_points`); the
 >   hardcoded `data_points.py` values are the no-sims fallback.
-> - **Fielding range target is OAA** (difficulty-adjusted outs above average), not raw PM% — so the
->   fielding *range* slopes differ from the PM% tables here.
+> - **Fielding range target is raw PM% = made/TOTAL** (plays made over total balls in zone). It was OAA
+>   (difficulty-adjusted) from 2026-05-24 to 2026-06-28, then reverted because OAA is endogenously biased
+>   at the OF-corner tail (`analysis/oaa-fielding-model/docs/FIELDING_DENOMINATOR_DECISION.md`). The
+>   *range* slopes in the PM% tables below are again the live target.
 > - **Fielding out-values (`inf_out`/`of_out`) are derived per league** from each league's own linear
 >   weights, not the fixed `0.75`/`0.90` shown below.
 > - **WAR (with a per-league replacement-runs term) is the headline value metric**; WAA is retained as

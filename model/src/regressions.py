@@ -992,18 +992,19 @@ def _parse_height_cm(ht_series: pd.Series) -> np.ndarray:
 def compute_fielding_regressions(inputs: RegressionInputs) -> FieldingRegressionCoeffs:
     """Compute all fielding regression coefficients.
 
-    The range target is **OAA** (difficulty-adjusted outs above average) when per-position bucket
-    baselines are available (`inputs.fielding_baselines`); otherwise it falls back to raw PM%. Errors,
-    double plays, OF arm, and catcher framing/SBA/RTO are unchanged.
+    The range target is raw **PM% = made/TOTAL** (plays made over total balls in zone, impossible
+    included). Reverted from OAA on 2026-06-28: OAA (difficulty-adjusted, makeable-expected) is
+    endogenously biased at the OF-corner tail — range reclassifies impossible balls into makeable ones,
+    so any difficulty-normalized denominator is range-inflated. See
+    `analysis/oaa-fielding-model/docs/FIELDING_DENOMINATOR_DECISION.md`. Errors, double plays, OF arm,
+    and catcher framing/SBA/RTO are unchanged.
     """
     fd = inputs.fielding
     coeffs = {}
-    _base = inputs.fielding_baselines
 
     def _range_target(df, pos):
-        # OAA (difficulty-adjusted) when baselines present; else raw PM% (legacy/no-baseline fallback)
-        if _base and pos in _base:
-            return _fielding_oaa_rate(df, _base[pos])
+        # Range target = raw made/TOTAL (PM/PA). `_fielding_oaa_rate` + `inputs.fielding_baselines` are
+        # retained for measurement/actuals use but no longer feed the rating→range projection.
         return _fielding_pm_rate(df)
 
     # ── Catcher ────────────────────────────────────────────────────────────
@@ -1187,10 +1188,12 @@ def compute_regressions(
 # Caching
 # ---------------------------------------------------------------------------
 
-_CACHE_VERSION = 3  # bump when the regression CODE changes (cache keys on data hash, not code).
+_CACHE_VERSION = 4  # bump when the regression CODE changes (cache keys on data hash, not code).
 #                     v2: fielding range target switched PM% → OAA (difficulty-adjusted).
 #                     v3: baserunning intercepts (sb_pct/sba/ubr, sp/rp_sb_pct, sba) restored to the
 #                         calibration values via _with_canonical_intercept (the centered fit returns c0≈0).
+#                     v4: fielding range target reverted OAA → PM% (made/TOTAL); OAA was tail-biased.
+#                         See analysis/oaa-fielding-model/docs/FIELDING_DENOMINATOR_DECISION.md.
 _CACHE_FILENAME = ".regressions_cache.json"
 
 

@@ -228,12 +228,12 @@ class FieldingRegressionCoeffs:
 
     # ── 1B regressions ───────────────────────────────────────────────────────
 
-    # 1B RANGE: rating → OAA (difficulty-adjusted outs above avg). These *_pm_* slots are the no-metadata
-    # FALLBACK; the live build recomputes them from the sims (regressions.py, cached). OAA replaces raw
-    # PM% (old: rng 0.001003, ht 0.000388); centered fit ⇒ const ≈ 0.
+    # 1B RANGE: rating → made/TOTAL (PM%). These *_pm_* slots are the no-metadata FALLBACK; the live build
+    # recomputes them from the sims (regressions.py, cached). Reverted from OAA 2026-06-28 (OAA tail-biased,
+    # FIELDING_DENOMINATOR_DECISION.md; reverted-from OAA: rng 0.000915, ht 0.000345); centered ⇒ const ≈ 0.
     first_pm_const:      float =  0.0
-    first_pm_rng_slope:  float =  0.0009151949948855174
-    first_pm_ht_slope:   float =  0.0003446133761910427
+    first_pm_rng_slope:  float =  0.001002977655284526
+    first_pm_ht_slope:   float =  0.0003878808525983733
 
     # K11/L11: 1B E%
     first_err_const:     float =  3.1813551428886712e-06
@@ -241,10 +241,10 @@ class FieldingRegressionCoeffs:
 
     # ── 2B regressions ───────────────────────────────────────────────────────
 
-    # 2B RANGE: rating → OAA (fallback; live path recomputes). Old PM%: rng 0.003756, arm 0.000316.
+    # 2B RANGE: rating → made/TOTAL (PM%; fallback, live path recomputes). Reverted-from OAA: rng 0.003772, arm 0.000261.
     second_pm_const:     float =  0.0
-    second_pm_rng_slope: float =  0.003771573807995789
-    second_pm_arm_slope: float =  0.0002608155997936609
+    second_pm_rng_slope: float =  0.0037556628914973407
+    second_pm_arm_slope: float =  0.00031640848444508296
 
     # K15/L15: 2B E% — Excel intercept corrected. The "Fielding Reg IF" sheet's
     # AP column subtracted $AC$118 (zone-rating total) instead of $AD$118 (errors
@@ -260,10 +260,10 @@ class FieldingRegressionCoeffs:
 
     # ── 3B regressions ───────────────────────────────────────────────────────
 
-    # 3B RANGE: rating → OAA (fallback; live path recomputes). Old PM%: rng 0.001378, arm 0.001363.
+    # 3B RANGE: rating → made/TOTAL (PM%; fallback, live path recomputes). Reverted-from OAA: rng 0.001328, arm 0.001351.
     third_pm_const:      float =  0.0
-    third_pm_rng_slope:  float =  0.0013281949738248523
-    third_pm_arm_slope:  float =  0.0013505282900773128
+    third_pm_rng_slope:  float =  0.0013781937691086114
+    third_pm_arm_slope:  float =  0.0013632388402701617
 
     # K21/L21: 3B E%
     third_err_const:     float = -2.5281452967541396e-05
@@ -271,10 +271,10 @@ class FieldingRegressionCoeffs:
 
     # ── SS regressions ───────────────────────────────────────────────────────
 
-    # SS RANGE: rating → OAA (fallback; live path recomputes). Old PM%: rng 0.004132, arm 0.001612.
+    # SS RANGE: rating → made/TOTAL (PM%; fallback, live path recomputes). Reverted-from OAA: rng 0.004071, arm 0.001614.
     ss_pm_const:         float =  0.0
-    ss_pm_rng_slope:     float =  0.004070699981202805
-    ss_pm_arm_slope:     float =  0.0016142481737371167
+    ss_pm_rng_slope:     float =  0.004131565657882436
+    ss_pm_arm_slope:     float =  0.0016120252281730022
 
     # K25/L25: SS E% — Excel intercept corrected. Two centering bugs in the
     # "Fielding Reg IF" SS block: AP subtracted $AC$197 (zone-rating total) not
@@ -290,9 +290,9 @@ class FieldingRegressionCoeffs:
 
     # ── LF regressions ───────────────────────────────────────────────────────
 
-    # LF RANGE: rating → OAA (fallback; live path recomputes). Old PM% slope 0.003134.
+    # LF RANGE: rating → made/TOTAL (PM%; fallback, live path recomputes). Reverted-from OAA slope 0.003075.
     lf_pm_const:         float =  0.0
-    lf_pm_slope:         float =  0.003075472379586414
+    lf_pm_slope:         float =  0.0031340210977502145
 
     # K29/L29: LF E%
     lf_err_const:        float = -3.4462774109098156e-05
@@ -304,9 +304,10 @@ class FieldingRegressionCoeffs:
 
     # ── CF regressions ───────────────────────────────────────────────────────
 
-    # CF RANGE: rating → OAA (fallback; live path recomputes). Old PM% slope 0.005036 → OAA de-steepens CF.
+    # CF RANGE: rating → made/TOTAL (PM%; fallback, live path recomputes). Reverted-from OAA slope 0.004564
+    # (OAA de-steepened CF chasing a tail-biased ZR; made/TOTAL re-steepens — FIELDING_DENOMINATOR_DECISION.md).
     cf_pm_const:         float =  0.0
-    cf_pm_slope:         float =  0.0045637585735488935
+    cf_pm_slope:         float =  0.005035728341437424
 
     # K35/L35: CF E%
     cf_err_const:        float =  2.1654252079945865e-05
@@ -318,9 +319,9 @@ class FieldingRegressionCoeffs:
 
     # ── RF regressions ───────────────────────────────────────────────────────
 
-    # RF RANGE: rating → OAA (fallback; live path recomputes). Old PM% slope 0.002907 → OAA de-steepens RF.
+    # RF RANGE: rating → made/TOTAL (PM%; fallback, live path recomputes). Reverted-from OAA slope 0.002759.
     rf_pm_const:         float =  0.0
-    rf_pm_slope:         float =  0.0027589731643906353
+    rf_pm_slope:         float =  0.0029065972864713943
 
     # K41/L41: RF E%
     rf_err_const:        float = -7.722203634869723e-05
