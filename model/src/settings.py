@@ -27,6 +27,12 @@ from pathlib import Path
 class PipelineSettings:
     """Legacy single-league user-configurable pipeline parameters."""
 
+    # OOTP version driving coefficient selection: "26" (default) computes coefficients from the
+    # calibration sims (auto-fit); "27" selects the hardcoded DEFAULT_*_REG_COEFFS_27 piecewise
+    # constants in export._detect_metadata (decision PD3b — the single-segment auto-fit cannot
+    # represent the 27 multi-knot curves). Threaded from LeagueConfig.ootp_version via
+    # to_pipeline_settings(); legacy single-league mode stays "26" and is unchanged.
+    ootp_version: str = "26"
     team: str = "Nashville Stars"
     park_factor_mode: str = "team"       # "neutral" | "team"
     home_fraction: float = 0.5
@@ -64,6 +70,7 @@ class LeagueConfig:
     def to_pipeline_settings(self) -> PipelineSettings:
         """Project to legacy PipelineSettings for code that still expects it."""
         return PipelineSettings(
+            ootp_version=self.ootp_version,
             team=self.team,
             park_factor_mode=self.park_factor_mode,
             home_fraction=self.home_fraction,

@@ -43,8 +43,13 @@ from src.data_points import (
     FieldingRegressionCoeffs,
     HitterDataPoints,
     LinearCoeffs,
+    PiecewiseCoeffs,
 )
-from src.utils import rating_to_delta as _rating_to_delta
+from src.utils import (
+    baserunning_poly as _baserunning_poly,
+    piecewise_delta as _piecewise_delta,
+    rating_to_delta as _rating_to_delta,
+)
 from src.constants import (
     HITTER_BIG3_COLS as _HITTER_BIG3_COLS,
     PITCHER_RATING_COLS as _PITCHER_RATING_COLS,
@@ -61,15 +66,32 @@ def _dual_park(
     rating: pd.Series,
     additive_delta: float,
     mult_factor,
+    crossover: float = 50.0,
 ) -> pd.Series:
-    """Dual park factor model: additive (rating >= 50) or multiplicative (< 50).
+    """Dual park factor model: additive (rating >= crossover) or multiplicative (below).
 
-    HIGH model (rating >= 50): base_stat + additive_delta
-    LOW  model (rating <  50): base_stat * mult_factor
+    HIGH model (rating >= crossover): base_stat + additive_delta
+    LOW  model (rating <  crossover): base_stat * mult_factor
+
+    OOTP-26 keeps the historical crossover at rating 50 (the default — callers pass nothing).
+    OOTP-27 curves are continuous with no split at 50, so its callers pass the league average
+    rating as the crossover (decision D-DUALPARK: additive at/above average skill, mult below).
     """
     high = base_stat + additive_delta
     low = base_stat * mult_factor
-    return pd.Series(np.where(rating >= 50, high, low), index=base_stat.index)
+    return pd.Series(np.where(rating >= crossover, high, low), index=base_stat.index)
+
+
+def _fld_delta(rating: pd.Series, avg: float, coeff) -> pd.Series:
+    """Fielding rating→delta term.
+
+    OOTP-26: `coeff` is the scalar slope → ``coeff * (rating - avg)``, the exact historical
+    arithmetic. OOTP-27: `coeff` is a ``PiecewiseCoeffs`` (multi-knot range / clamped framing)
+    → the continuous piecewise delta, likewise anchored to 0 at the league-average rating.
+    """
+    if isinstance(coeff, PiecewiseCoeffs):
+        return _piecewise_delta(rating, avg, coeff)
+    return coeff * (rating - avg)
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +150,12 @@ def _compute_batting_split(
 
     # XBH-HR (GAP) uses the SAME high-model coefficients for all ratings.
     # This is unlike other stats where _rating_to_delta switches h/l at 50.
-    gap_centered = gap_r - lg.avg_gap
-    gap_delta = reg.gap.h_const + reg.gap.h_slope * gap_centered
+    # (27: the gap curve is a single continuous piecewise — same evaluator as everything else.)
+    if isinstance(reg.gap, PiecewiseCoeffs):
+        gap_delta = _piecewise_delta(gap_r, lg.avg_gap, reg.gap)
+    else:
+        gap_centered = gap_r - lg.avg_gap
+        gap_delta = reg.gap.h_const + reg.gap.h_slope * gap_centered
 
     # --- Multiplicative park factors ---
     bats = df["B"].astype(str)
@@ -184,19 +210,25 @@ def _compute_batting_split(
     # 4. SO (K regression, no park)
     so = (k_delta + lg.so_rate) * (pa - ubb - hbp)
 
+    # Dual-park crossovers: 26 keeps the historical rating-50 split; 27 (piecewise coeffs,
+    # continuous — no 50 split exists) crosses at the league-average rating (D-DUALPARK).
+    ba_cross = lg.avg_babip if isinstance(reg.babip, PiecewiseCoeffs) else 50.0
+    gap_cross = lg.avg_gap if isinstance(reg.gap, PiecewiseCoeffs) else 50.0
+    spe_cross = lg.avg_speed if isinstance(reg.speed, PiecewiseCoeffs) else 50.0
+
     # 5. H-HR (BABIP regression + DUAL park model on BA rating)
     bip = pa - hbp - ubb - hr - so
     hmhr_base = (babip_delta + lg.babip) * bip
-    hmhr = _dual_park(hmhr_base, ba_r, hmhr_delta, ba_park_mult)
+    hmhr = _dual_park(hmhr_base, ba_r, hmhr_delta, ba_park_mult, ba_cross)
     hmhr = hmhr.clip(lower=0)
 
     # 6. XBH-HR (GAP regression + DUAL park model on GAP rating)
     xbh_base = (gap_delta + lg.xbh_rate) * hmhr
-    xbh = _dual_park(xbh_base, gap_r, xbh_delta, d_park_mult)
+    xbh = _dual_park(xbh_base, gap_r, xbh_delta, d_park_mult, gap_cross)
 
     # 7. 3B (SPE/speed regression + DUAL park model on SPE rating)
     tri_base = (speed_delta + lg.triple_rate) * xbh
-    triple = _dual_park(tri_base, spe, tri_delta, t_park_mult)
+    triple = _dual_park(tri_base, spe, tri_delta, t_park_mult, spe_cross)
 
     # 8. 2B
     double = xbh - triple
@@ -274,15 +306,17 @@ def _compute_baserunning(
     # base-stealer past 100% (which would make sb > sbat ⇒ negative caught-stealing). Matches the
     # pitcher-side cap in pitchers.py. With the calibration intercept (sb_pct.c0 ≈ −0.133) this only binds
     # for the extreme tail (STE≈95+); it's a defensive guard, not a re-baseline.
-    sb_pct_poly = reg.sb_pct.c0 + reg.sb_pct.c1 * (ste - lg.avg_steal)
+    # (26 CubicCoeffs: c0 + c1*(r-avg), unchanged; 27 PiecewiseCoeffs: c0 + piecewise — the
+    # canonical c0 carries over identically in both, spec §2.5.)
+    sb_pct_poly = _baserunning_poly(ste, lg.avg_steal, reg.sb_pct)
     sb_pct = (sb_pct_poly + lg.sb_pct).clip(lower=0.0, upper=1.0)
 
     # --- SBA rate (no cap on STE) ---
-    sba_poly = reg.sba.c0 + reg.sba.c1 * (ste - lg.avg_steal)
+    sba_poly = _baserunning_poly(ste, lg.avg_steal, reg.sba)
     sba_rate = sba_poly + lg.sba_rate
 
     # --- UBR rate ---
-    ubr_poly = reg.ubr.c0 + reg.ubr.c1 * (run - lg.avg_bsr)
+    ubr_poly = _baserunning_poly(run, lg.avg_bsr, reg.ubr)
     ubr_rate = ubr_poly - lg.ubr  # lg.ubr is negative, so this adds |ubr|
 
     results = {}
@@ -537,8 +571,8 @@ def compute_fielding(
     # ── Catcher ──────────────────────────────────────────────────────────
     c_elig = eligibility["C Elig"]
 
-    # FRMAA = (const + slope * (FRM - avg)) * ip_c
-    frmaa = (fc.c_frm_const + fc.c_frm_slope * (c_frm - fp.avg_frm_c)) * lg.ip_c
+    # FRMAA = (const + slope * (FRM - avg)) * ip_c   (27: slope term is piecewise, clamp-both)
+    frmaa = (fc.c_frm_const + _fld_delta(c_frm, fp.avg_frm_c, fc.c_frm_slope)) * lg.ip_c
     result["C FRMAA"] = frmaa.where(c_elig)
 
     # SBA = (const + slope * (ARM - avg_arm)) * ip_c + c_sba_scale
@@ -569,7 +603,7 @@ def compute_fielding(
     # PMAA = (const + rng_slope*(IF_RNG - avg_rng) + ht_slope*(HT - avg_ht)) * scale
     b1_pmaa = (
         fc.first_pm_const
-        + fc.first_pm_rng_slope * (if_rng - fp.avg_rng_1b)
+        + _fld_delta(if_rng, fp.avg_rng_1b, fc.first_pm_rng_slope)
         + fc.first_pm_ht_slope * (ht_cm - fp.avg_ht_1b)
     ) * fp.first_pa
     result["1B PMAA"] = b1_pmaa.where(b1_elig)
@@ -587,7 +621,7 @@ def compute_fielding(
     # PMAA = (const + rng_slope*(RNG-avg) + arm_slope*(ARM-avg)) * scale
     b2_pmaa = (
         fc.second_pm_const
-        + fc.second_pm_rng_slope * (if_rng - fp.avg_rng_2b)
+        + _fld_delta(if_rng, fp.avg_rng_2b, fc.second_pm_rng_slope)
         + fc.second_pm_arm_slope * (if_arm - fp.avg_arm_2b)
     ) * fp.second_pa
     result["2B PMAA"] = b2_pmaa.where(b2_elig)
@@ -627,7 +661,7 @@ def compute_fielding(
 
     ss_pmaa = (
         fc.ss_pm_const
-        + fc.ss_pm_rng_slope * (if_rng - fp.avg_rng_ss)
+        + _fld_delta(if_rng, fp.avg_rng_ss, fc.ss_pm_rng_slope)
         + fc.ss_pm_arm_slope * (if_arm - fp.avg_arm_ss)
     ) * fp.ss_pa
     result["SS PMAA"] = ss_pmaa.where(ss_elig)
@@ -646,7 +680,7 @@ def compute_fielding(
     # ── LF ───────────────────────────────────────────────────────────────
     lf_elig = eligibility["LF Elig"]
 
-    lf_pmaa = (fc.lf_pm_const + fc.lf_pm_slope * (of_rng - fp.avg_rng_lf)) * fp.lf_pa
+    lf_pmaa = (fc.lf_pm_const + _fld_delta(of_rng, fp.avg_rng_lf, fc.lf_pm_slope)) * fp.lf_pa
     result["LF PMAA"] = lf_pmaa.where(lf_elig)
 
     lf_eaa = (fc.lf_err_const + fc.lf_err_slope * (of_err - fp.avg_err_lf)) * (
@@ -662,7 +696,7 @@ def compute_fielding(
     # ── CF ───────────────────────────────────────────────────────────────
     cf_elig = eligibility["CF Elig"]
 
-    cf_pmaa = (fc.cf_pm_const + fc.cf_pm_slope * (of_rng - fp.avg_rng_cf)) * fp.cf_pa
+    cf_pmaa = (fc.cf_pm_const + _fld_delta(of_rng, fp.avg_rng_cf, fc.cf_pm_slope)) * fp.cf_pa
     result["CF PMAA"] = cf_pmaa.where(cf_elig)
 
     cf_eaa = (fc.cf_err_const + fc.cf_err_slope * (of_err - fp.avg_err_cf)) * (
@@ -678,7 +712,7 @@ def compute_fielding(
     # ── RF ───────────────────────────────────────────────────────────────
     rf_elig = eligibility["RF Elig"]
 
-    rf_pmaa = (fc.rf_pm_const + fc.rf_pm_slope * (of_rng - fp.avg_rng_rf)) * fp.rf_pa
+    rf_pmaa = (fc.rf_pm_const + _fld_delta(of_rng, fp.avg_rng_rf, fc.rf_pm_slope)) * fp.rf_pa
     result["RF PMAA"] = rf_pmaa.where(rf_elig)
 
     rf_eaa = (fc.rf_err_const + fc.rf_err_slope * (of_err - fp.avg_err_rf)) * (

@@ -94,6 +94,48 @@ class CubicCoeffs:
     c3: float = 0.0
 
 
+@dataclass(frozen=True)
+class PiecewiseCoeffs:
+    """Continuous piecewise-linear rating→delta, anchored delta(lg.avg)=0 (OOTP-27 calibration).
+
+    OOTP-27 only — no 26 constant uses this type. Applicators dispatch on
+    ``isinstance(coeffs, PiecewiseCoeffs)`` so every 26 ``LinearCoeffs``/``CubicCoeffs``/scalar
+    code path is untouched. See ``OOTP27_WIRING_IMPLEMENTATION_SPEC.md`` §2–§4.
+
+    knots:  ascending knot positions where the slope changes (length K). Their MEANING depends on
+        ``relative``:  relative=True  → OFFSETS from lg.avg (placed at lg.avg + knot);
+                       relative=False → ABSOLUTE display values (placed there directly).
+    slopes: per-segment slope per display point (length K+1), low→high. Used directly in BOTH
+        regimes (slopes are frame-invariant — spec §2.1).
+    relative: True for hit/pit skill ratings (EYE/POW/K/BA/GAP/STU/CON/HRR/PBABIP) → offset
+        placement; False for absolute ratings (SPE/STE/RUN/HLD + all fielding) → absolute
+        placement. Classify by the PREDICTOR rating, never the stat family (spec §2 table).
+    clamp_lo / clamp_hi: the first/last segment is a hard flat floor/ceiling; informational —
+        ``slopes[0]``/``slopes[-1]`` already encode it (0.0). Kept for provenance/tests.
+    c0: OPTIONAL canonical intercept for ``poly + lg.rate`` channels (baserunning, spec §2.5).
+        None for hit/pit/fielding rate deltas (which anchor at delta(lg.avg)=0).
+    """
+
+    knots: tuple[float, ...]
+    slopes: tuple[float, ...]
+    relative: bool = True
+    clamp_lo: bool = False
+    clamp_hi: bool = False
+    c0: float | None = None
+
+    def __post_init__(self):
+        assert len(self.slopes) == len(self.knots) + 1, (
+            f"need len(slopes) == len(knots)+1, got {len(self.slopes)} vs {len(self.knots)}"
+        )
+        assert all(a < b for a, b in zip(self.knots, self.knots[1:])), (
+            f"knots must be strictly ascending: {self.knots}"
+        )
+        if self.clamp_lo:
+            assert self.slopes[0] == 0.0, "clamp_lo requires slopes[0] == 0.0"
+        if self.clamp_hi:
+            assert self.slopes[-1] == 0.0, "clamp_hi requires slopes[-1] == 0.0"
+
+
 # ---------------------------------------------------------------------------
 # Section 1 — Regression coefficients (25 Regressions.xlsx / Data Points)
 # ---------------------------------------------------------------------------
@@ -430,6 +472,99 @@ class PitchingRegressionCoeffs:
         c0= 0.0007224917422994285,
         c1=-0.0017724275964245081,
     )
+
+    # OOTP-27 D-SBASPLIT: 27 calibrates SP and RP Hold→SBA% separately. When set, the RP path uses
+    # this instead of the shared `sba`. None for 26 (the default) ⇒ RP shares `sba`, exactly as before —
+    # the 26 behavior is unchanged by construction. See OOTP27_WIRING_IMPLEMENTATION_SPEC.md §7.2.
+    rp_sba: "CubicCoeffs | PiecewiseCoeffs | None" = None
+
+
+# ---------------------------------------------------------------------------
+# Section 1b — OOTP-27 regression coefficients (hardcoded piecewise constants)
+# ---------------------------------------------------------------------------
+# Source of truth: analysis/test-league-design/outputs/KNOT_DECISIONS_27.md (knots at absolute
+# de-quantized display; slopes per display point) via OOTP27_WIRING_IMPLEMENTATION_SPEC.md §7.
+# 27 does NOT use the sims auto-fit (decision PD3b): the fit machinery is single-segment-@50 and
+# cannot represent these multi-knot / off-50 / clamped curves. `export._detect_metadata` selects
+# these sets when the league's ootp_version == "27"; the 26 path is untouched.
+#
+# Transcription rule (spec §2/§7): RELATIVE-regime rows store knot OFFSETS = knot_abs − calib_avg
+# (calib_avg = the calibration pool's leagueAvg.display for that rating, from
+# analysis/test-league-design/outputs/viz/viz_data.json, full precision); the applicator re-adds
+# the per-league lg.avg at build time so knots slide with each league's average. ABSOLUTE-regime
+# rows (SPE/STE/RUN/HLD + all fielding) store knots at absolute display, unchanged.
+# Baserunning c0s are the canonical 26 intercepts (spec §2.5/§7.4 — pooled-vs-average-rated offset).
+# Fielding consts and every 26 scalar reused for 27 keep their 26 values (spec §7.4).
+
+
+def _rel_knots(abs_knots: tuple[float, ...], calib_avg: float) -> tuple[float, ...]:
+    """Absolute display knots → offsets-from-calibration-average (RELATIVE regime storage)."""
+    return tuple(k - calib_avg for k in abs_knots)
+
+
+# Calibration pool averages (viz_data.json leagueAvg.display, full precision; spec §7 rounds to 1dp).
+_CALIB_AVG_27 = {
+    "eye": 55.447, "power": 54.601, "k": 56.724, "babip": 53.633, "gap": 56.131,
+    "sp_stu": 50.473, "sp_con": 54.724, "sp_hrr": 54.157, "sp_babip": 51.987,
+    "rp_stu": 56.905, "rp_con": 51.005, "rp_hrr": 53.866, "rp_babip": 51.448,
+}
+
+# ⚠ PHASE-B SLICE: the fields set below are the proven representative subset (one per applicator
+# type). Every field NOT set explicitly still carries its 26 default TEMPORARILY and must be
+# transcribed before any 27 league ships (Phase C of the landing plan — see HANDOFF.md at the
+# workspace root). Do not build a real 27 league until this banner is removed.
+
+DEFAULT_HITTING_REG_COEFFS_27 = HittingRegressionCoeffs(
+    # KNOT_DECISIONS_27.md HITTING "Eye → uBB%": knots 40/67/79 (abs), R²0.999.
+    eye=PiecewiseCoeffs(
+        knots=_rel_knots((40.0, 67.0, 79.0), _CALIB_AVG_27["eye"]),
+        slopes=(0.00271, 0.00225, 0.00150, 0.00313),
+        relative=True,
+    ),
+    # KNOT_DECISIONS_27.md HITTING "Speed → 3B%": clamp-low floor <34, knee 50 (ABSOLUTE — SPE).
+    speed=PiecewiseCoeffs(
+        knots=(34.0, 50.0),
+        slopes=(0.0, 0.00314, 0.00280),
+        relative=False,
+        clamp_lo=True,
+    ),
+    # KNOT_DECISIONS_27.md BASERUNNING[hit] "Steal → SB%": 1 knot @70 (ABSOLUTE — STE);
+    # c0 = canonical 26 intercept (data_points sb_pct.c0, spec §2.5).
+    sb_pct=PiecewiseCoeffs(
+        knots=(70.0,),
+        slopes=(0.01045, 0.00255),
+        relative=False,
+        c0=-0.13320702812059265,
+    ),
+)
+
+DEFAULT_PITCHING_REG_COEFFS_27 = PitchingRegressionCoeffs(
+    # KNOT_DECISIONS_27.md PITCHING[RP] "Stuff → K%": knots 33/75 (abs), R²0.998.
+    # Consumed via _stu_delta_rp (SP-POS +5 preserved); displayed Stuff capped at 88 first (D24).
+    rp_stu=PiecewiseCoeffs(
+        knots=_rel_knots((33.0, 75.0), _CALIB_AVG_27["rp_stu"]),
+        slopes=(0.00846, 0.00389, 0.00649),
+        relative=True,
+    ),
+)
+
+DEFAULT_FIELDING_REG_COEFFS_27 = FieldingRegressionCoeffs(
+    # KNOT_DECISIONS_27.md FIELDING "SS range → PM%" (H-pool FINAL): knots 62/68, R²0.991.
+    # ABSOLUTE regime (all fielding). Sits in the 26 scalar slot; compute_fielding dispatches on type.
+    ss_pm_rng_slope=PiecewiseCoeffs(
+        knots=(62.0, 68.0),
+        slopes=(0.00052, 0.00190, 0.00654),
+        relative=False,
+    ),
+    # KNOT_DECISIONS_27.md FIELDING "C C_Fram → fram/IP" (H-pool FINAL): clamp-both, R²0.998.
+    c_frm_slope=PiecewiseCoeffs(
+        knots=(37.0, 73.0),
+        slopes=(0.0, 0.00120, 0.0),
+        relative=False,
+        clamp_lo=True,
+        clamp_hi=True,
+    ),
+)
 
 
 # ---------------------------------------------------------------------------

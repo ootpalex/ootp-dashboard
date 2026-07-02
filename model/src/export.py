@@ -1467,10 +1467,25 @@ def _detect_metadata(
     hitting, pitching, fielding = generate_data_points(
         metadata_dir, season_weights=season_weights, **blend_kw)
 
-    # Compute the regression coefficients from the calibration sims (cached); fall back to the hardcoded
-    # defaults if no regressions dir is available or the compute fails.
+    # Regression coefficients by OOTP version:
+    #   "27" → the hardcoded DEFAULT_*_REG_COEFFS_27 piecewise constants (decision PD3b). The 27
+    #          multi-knot calibration CANNOT be represented by the single-segment auto-fit, so 27
+    #          never routes through generate_regression_coefficients — sim CSVs in a 27
+    #          regressions dir are cross-check material only, never the build.
+    #   "26" (default) → computed from the calibration sims (cached); fall back to the hardcoded
+    #          26 defaults if no regressions dir is available or the compute fails. Unchanged.
     hitting_reg = pitching_reg = fielding_reg = None
-    if regressions_dir is not None and Path(regressions_dir).is_dir():
+    if settings is not None and getattr(settings, "ootp_version", "26") == "27":
+        from src.data_points import (
+            DEFAULT_FIELDING_REG_COEFFS_27,
+            DEFAULT_HITTING_REG_COEFFS_27,
+            DEFAULT_PITCHING_REG_COEFFS_27,
+        )
+        hitting_reg = DEFAULT_HITTING_REG_COEFFS_27
+        pitching_reg = DEFAULT_PITCHING_REG_COEFFS_27
+        fielding_reg = DEFAULT_FIELDING_REG_COEFFS_27
+        print("Using hardcoded OOTP-27 regression constants (PD3b; auto-fit bypassed)")
+    elif regressions_dir is not None and Path(regressions_dir).is_dir():
         try:
             from src.regressions import generate_regression_coefficients
             hitting_reg, pitching_reg, fielding_reg = generate_regression_coefficients(Path(regressions_dir))

@@ -29,9 +29,19 @@ from src.ballparks import NormalizedAdjustments
 from src.data_points import (
     DEFAULT_PITCHER_DP,
     LinearCoeffs,
+    PiecewiseCoeffs,
     PitcherDataPoints,
 )
-from src.utils import rating_to_delta as _rating_to_delta
+from src.utils import (
+    baserunning_poly as _baserunning_poly,
+    piecewise_delta as _piecewise_delta,
+    rating_to_delta as _rating_to_delta,
+)
+
+# OOTP-27 displayed Stuff cap (decision D24): 27 caps displayed Stuff at 88 (internal 535) —
+# real elite RP top out there and the calibration substrate was filled to it. Applied to the
+# displayed rating before any role adjustment / delta, on the 27 path only.
+_STUFF_CAP_27 = 88.0
 
 # 12 pitch types (excluding knuckleball, handled separately)
 _PITCH_TYPES = ["FB", "CH", "CB", "SL", "SI", "SP", "CT", "FO", "CC", "SC", "KC"]
@@ -56,6 +66,12 @@ def _stu_delta_rp(
     adjusted = pd.Series(
         np.where(is_sp_pos, stu_raw + 5, stu_raw), index=stu_raw.index
     )
+
+    # OOTP-27 (PiecewiseCoeffs): the curve is continuous — no high/low branches exist. The SP-POS
+    # +5 adjustment is preserved; the piecewise integrator evaluates the adjusted rating (spec §4.3).
+    # (The 26 raw-STU low-branch centering is a 2-segment artifact with no continuous analogue.)
+    if isinstance(coeffs, PiecewiseCoeffs):
+        return _piecewise_delta(adjusted, avg, coeffs)
 
     # High branch: centered on adjusted STU
     centered_high = adjusted - avg
@@ -275,6 +291,11 @@ def _compute_batting_split(
     pbabip_r = pd.to_numeric(players[f"PBABIP {split}"], errors="coerce")
     stu_r = pd.to_numeric(players[f"STU {split}"], errors="coerce")
 
+    # OOTP-27 Stuff cap (D24): clip the DISPLAYED Stuff at 88 before any role adjustment or
+    # delta. 27-only by construction — the 26 path carries LinearCoeffs and is never clipped.
+    if isinstance(stu_coeffs, PiecewiseCoeffs):
+        stu_r = stu_r.clip(upper=_STUFF_CAP_27)
+
     # STU adjustment by POS column:
     #   SP section: non-SP POS → STU-5 (applied to threshold AND both branches)
     #   RP section: SP POS → STU+5 for threshold/high branch, raw STU for low branch
@@ -340,12 +361,13 @@ def _compute_sb_stats(
     """Compute SB%, SBAT, SB, CS and write into result. Returns SB% series."""
     is_sp = role == "SP"
 
-    # SB% — cubic polynomial in HLD (one value per role, not split by hand)
-    sb_pct_poly = sb_pct_coeffs.c0 + sb_pct_coeffs.c1 * (hld - avg_hld)
+    # SB% — poly in HLD (one value per role, not split by hand).
+    # (26 CubicCoeffs: c0 + c1*(r-avg), unchanged; 27 PiecewiseCoeffs: c0 + piecewise, spec §4.5.)
+    sb_pct_poly = _baserunning_poly(hld, avg_hld, sb_pct_coeffs)
     sb_pct = (sb_pct_poly + lg_sb_pct).clip(upper=1.0)
 
-    # SBA rate — cubic polynomial in HLD
-    sba_poly = sba_coeffs.c0 + sba_coeffs.c1 * (hld - avg_hld)
+    # SBA rate — poly in HLD
+    sba_poly = _baserunning_poly(hld, avg_hld, sba_coeffs)
     sba_rate = sba_poly + lg_sba_rate
 
     sb_suffix = " SP" if is_sp else " RP"
@@ -553,10 +575,13 @@ def compute_pitcher_batting(
                 splits["vL"][stat] * vl_frac + splits["vR"][stat] * vr_frac
             )
 
-        # Phase 3: Stolen base stats
+        # Phase 3: Stolen base stats.
+        # SBA coeffs: 26 shares one `sba` across SP/RP (reg.rp_sba is None); 27 splits them
+        # (D-SBASPLIT) — the RP path uses reg.rp_sba when present.
+        sba_coeffs = reg.rp_sba if (not is_sp and reg.rp_sba is not None) else reg.sba
         _compute_sb_stats(
             result, splits, hld,
-            sb_pct_coeffs, reg.sba,
+            sb_pct_coeffs, sba_coeffs,
             avg_hld, lg_sb_pct, lg_sba_rate, role,
         )
 
