@@ -490,6 +490,139 @@ class TestAllConstants27:
 
 
 # ---------------------------------------------------------------------------
+# 4c. Synthetic 27 end-to-end (spec §9.3) — public pipeline vs by-hand piecewise arithmetic.
+#     Every expected value below is EXPLICIT segment arithmetic (never piecewise_delta —
+#     that would be circular).
+# ---------------------------------------------------------------------------
+
+
+def _elig_all(index):
+    cols = ["C Elig", "1B Elig", "2B Elig", "3B Elig", "SS Elig",
+            "LF Elig", "CF Elig", "RF Elig"]
+    return pd.DataFrame({c: True for c in cols}, index=index)
+
+
+class TestSynthetic27EndToEnd:
+    @pytest.fixture()
+    def dp27_hit(self):
+        return dataclasses.replace(
+            DEFAULT_HITTER_DP,
+            hitting=DEFAULT_HITTING_REG_COEFFS_27,
+            fielding_coeffs=DEFAULT_FIELDING_REG_COEFFS_27,
+        )
+
+    def test_hit_ubb_from_eye_piecewise(self, dp27_hit):
+        """EYE 65 hitter: uBB vR = (piecewise eye delta + lg.bb_rate) * (pa − hbp)."""
+        from src.ballparks import neutral_adjustments, neutral_park_deltas
+        from src.hitters import compute_hitter_batting
+        from tests.conftest import make_player
+
+        p = make_player()
+        for split in ("vR", "vL"):
+            p[f"EYE {split}"] = 65.0
+        out = compute_hitter_batting(p, neutral_park_deltas(), neutral_adjustments(),
+                                     0.5, dp=dp27_hit)
+        lg = dp27_hit.league
+        # knots at avg_eye + (40,67,79 − 55.447): 49.82−15.447=34.373 · 61.373 · 73.373
+        eye_delta = 0.00225 * (61.373 - lg.avg_eye) + 0.00150 * (65.0 - 61.373)
+        hbp = lg.hbp_rate * lg.pa
+        want = (eye_delta + lg.bb_rate) * (lg.pa - hbp)
+        assert out["uBB vR"].iloc[0] == pytest.approx(want, rel=1e-9)
+
+    def test_hit_sb_pct_from_steal_piecewise(self, dp27_hit):
+        from src.ballparks import neutral_adjustments, neutral_park_deltas
+        from src.hitters import compute_hitter_batting
+        from tests.conftest import make_player
+
+        p = make_player(STE=80)
+        out = compute_hitter_batting(p, neutral_park_deltas(), neutral_adjustments(),
+                                     0.5, dp=dp27_hit)
+        lg = dp27_hit.league
+        want = (-0.13320702812059265
+                + 0.01045 * (70.0 - lg.avg_steal) + 0.00255 * (80.0 - 70.0)
+                + lg.sb_pct)
+        assert out["SB%"].iloc[0] == pytest.approx(want, abs=1e-12)
+
+    def test_fielding_ss_pmaa_piecewise(self, dp27_hit):
+        from src.hitters import compute_fielding
+        from tests.conftest import make_player
+
+        p = make_player(**{"IF RNG": 75, "IF ARM": 55})
+        out = compute_fielding(p, _elig_all(p.index), dp=dp27_hit)
+        fp = dp27_hit.fielding
+        # range: knots 62/68 absolute; avg_rng_ss between them
+        rng_delta = 0.00190 * (68.0 - fp.avg_rng_ss) + 0.00654 * (75.0 - 68.0)
+        arm_delta = 0.00091 * (55.0 - fp.avg_arm_ss)
+        want = (0.0 + rng_delta + arm_delta) * fp.ss_pa
+        assert out["SS PMAA"].iloc[0] == pytest.approx(want, rel=1e-9)
+
+    def test_pit_so_from_sp_stu_piecewise(self):
+        from src.ballparks import neutral_adjustments
+        from src.pitchers import compute_pitcher_batting
+
+        base = {
+            "B": "R", "T": "R", "POS": "SP",
+            "STU vR": 60, "STU vL": 60,
+            "PCON vR": 50, "PCON vL": 50,
+            "HRR vR": 50, "HRR vL": 50,
+            "PBABIP vR": 50, "PBABIP vL": 50,
+            "STU P": 60, "PCON P": 50, "HRR P": 50, "PBABIP P": 50,
+            "HLD": 50, "STM": 55, "STE": 50,
+        }
+        for pt in ["FB", "CH", "CB", "SL"]:
+            base[pt] = 55
+            base[pt + "P"] = 60
+        for pt in ["SI", "SP", "CT", "FO", "CC", "SC", "KC", "KN"]:
+            base[pt] = "-"
+            base[pt + "P"] = "-"
+        players = pd.DataFrame([base])
+
+        dp27 = dataclasses.replace(DEFAULT_PITCHER_DP, pitching=DEFAULT_PITCHING_REG_COEFFS_27)
+        out = compute_pitcher_batting(players, neutral_adjustments(), 0.5, dp=dp27)
+        lp = dp27.league
+        # SP-POS in the SP section: no adjustment. Knots at avg_stu_sp + (32,52 − 50.473).
+        k1 = lp.avg_stu_sp + (32.0 - 50.473)
+        k2 = lp.avg_stu_sp + (52.0 - 50.473)
+        stu_delta = 0.00361 * (k2 - lp.avg_stu_sp) + 0.00425 * (60.0 - k2)
+        assert k1 < lp.avg_stu_sp < k2 < 60.0     # segment layout sanity
+        hbp = out["HBP vR"].iloc[0]
+        ubb = out["uBB vR"].iloc[0]
+        want_so = (stu_delta + lp.sp_so_rate) * (lp.bf_sp - ubb - hbp)
+        assert out["SO vR"].iloc[0] == pytest.approx(want_so, rel=1e-9)
+
+    def test_pit_rp_sba_split_applied(self):
+        """RP SBAT uses rp_sba (−0.00096), not the SP sba (−0.00133)."""
+        from src.ballparks import neutral_adjustments
+        from src.pitchers import compute_pitcher_batting
+
+        base = {
+            "B": "R", "T": "R", "POS": "CL",
+            "STU vR": 55, "STU vL": 55,
+            "PCON vR": 50, "PCON vL": 50,
+            "HRR vR": 50, "HRR vL": 50,
+            "PBABIP vR": 50, "PBABIP vL": 50,
+            "STU P": 60, "PCON P": 50, "HRR P": 50, "PBABIP P": 50,
+            "HLD": 70, "STM": 30, "STE": 50,
+        }
+        for pt in ["FB", "CH", "CB", "SL"]:
+            base[pt] = 55
+            base[pt + "P"] = 60
+        for pt in ["SI", "SP", "CT", "FO", "CC", "SC", "KC", "KN"]:
+            base[pt] = "-"
+            base[pt + "P"] = "-"
+        players = pd.DataFrame([base])
+
+        dp27 = dataclasses.replace(DEFAULT_PITCHER_DP, pitching=DEFAULT_PITCHING_REG_COEFFS_27)
+        out = compute_pitcher_batting(players, neutral_adjustments(), 0.5, dp=dp27)
+        lp = dp27.league
+        on_first = (out["1B vR RP"] + out["uBB vR RP"] + out["HBP vR RP"]).iloc[0]
+        sba_rate = (0.0007224917422994285                       # 26 canonical c0
+                    - 0.00096 * (70.0 - lp.avg_hld_rp)          # RP line, not −0.00133
+                    + lp.rp_sba_rate)
+        assert out["SBAT vR RP"].iloc[0] == pytest.approx(max(sba_rate * on_first, 0.0), rel=1e-9)
+
+
+# ---------------------------------------------------------------------------
 # 5. Version routing
 # ---------------------------------------------------------------------------
 
