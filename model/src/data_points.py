@@ -563,11 +563,14 @@ DEFAULT_HITTING_REG_COEFFS_27 = HittingRegressionCoeffs(
         relative=False,
         c0=0.009116895606791357,
     ),
-    # BASERUNNING[hit] "Steal → SB%": 1 knot @70 (ABSOLUTE — STE); c0 = canonical 26 intercept.
+    # BASERUNNING[hit] "Steal → SB%" (re-fit 2026-07-02, user-flagged): flat floor ≤26 (both
+    # substrates show it — SB% of non-stealers bottoms out ~0.3), rise, decel ≥70 (locked knee
+    # kept). C-pool clamp-lo fit R²0.983 (beats the old K=1's 0.981); c0 = canonical 26.
     sb_pct=PiecewiseCoeffs(
-        knots=(70.0,),
-        slopes=(0.01045, 0.00255),
+        knots=(26.0, 70.0),
+        slopes=(0.0, 0.01086, 0.00211),
         relative=False,
+        clamp_lo=True,
         c0=-0.13320702812059265,
     ),
     # BASERUNNING[hit] "Running → UBR/opp": single line (ABSOLUTE — RUN); c0 = canonical 26.
@@ -676,10 +679,11 @@ DEFAULT_FIELDING_REG_COEFFS_27 = FieldingRegressionCoeffs(
         slopes=(0.00067, 0.00879, 0.00112),
         relative=False,
     ),
-    # "1B range → PM%" (H-pool FINAL): rise → saturate. R²0.940.
+    # "1B range → PM%" (H-pool FINAL, re-fit 2026-07-02): flat floor <36 / rise / saturate ≥49
+    # (the earlier K=1 optimizer had stuck in a local optimum and missed the low floor). R²0.980.
     first_pm_rng_slope=PiecewiseCoeffs(
-        knots=(51.0,),
-        slopes=(0.00144, 0.00047),
+        knots=(36.0, 49.0),
+        slopes=(0.00019, 0.00206, 0.00042),
         relative=False,
     ),
     # "LF range → PM%" (H-pool FINAL): S-curve, top clamped. R²0.995.
@@ -696,23 +700,36 @@ DEFAULT_FIELDING_REG_COEFFS_27 = FieldingRegressionCoeffs(
         relative=False,
         clamp_hi=True,
     ),
-    # "3B range → PM%" (H-pool FINAL): single line. R²0.972.
-    third_pm_rng_slope=0.00269,
-    # IF_Arm → PM% singles (H-pool FINAL).
+    # "3B range → PM%" (H-pool FINAL, re-fit 2026-07-02): high-end decel knee @70 (the tail
+    # visibly saturates like every other position; knee location soft 68–72, documented). R²0.978.
+    third_pm_rng_slope=PiecewiseCoeffs(
+        knots=(70.0,),
+        slopes=(0.00281, 0.00110),
+        relative=False,
+    ),
+    # IF_Arm → PM% (H-pool FINAL). 3B gains a flat floor <39 (re-fit 2026-07-02, R²0.982);
+    # 2B stays single (no structure, R²0.64); SS stays single (a borderline mid-band knee @58
+    # exists, ΔR²+0.03 — documented, not adopted).
     second_pm_arm_slope=0.00074,
-    third_pm_arm_slope=0.00283,
+    third_pm_arm_slope=PiecewiseCoeffs(
+        knots=(39.0,),
+        slopes=(0.00032, 0.00309),
+        relative=False,
+    ),
     ss_pm_arm_slope=0.00091,
-    # IF/OF error singles (LOCKED, spot-checked substrate-robust).
+    # IF/OF error singles (H-pool FINAL, re-based 2026-07-02 — the H-pool is the declared final
+    # fielding substrate; moves ≤17%, R²0.98–0.99 each).
     first_err_slope=-0.00004,
-    second_err_slope=-0.00008,
-    third_err_slope=-0.00025,
-    ss_err_slope=-0.00022,
+    second_err_slope=-0.00007,
+    third_err_slope=-0.00021,
+    ss_err_slope=-0.00020,
     lf_err_slope=-0.00022,
-    cf_err_slope=-0.00016,
+    cf_err_slope=-0.00018,
     rf_err_slope=-0.00028,
-    # OF_Arm → arm/opp singles (LOCKED, KEPT).
-    lf_arm_slope=0.00018,
-    cf_arm_slope=0.00019,
+    # OF_Arm → arm/opp singles (H-pool FINAL, re-fit 2026-07-02 — the old KEPT LF/CF values
+    # were stale-low vs both current substrates; RF unchanged). R²0.99 each.
+    lf_arm_slope=0.00021,
+    cf_arm_slope=0.00023,
     rf_arm_slope=0.00024,
     # "C C_Fram → fram/IP" (H-pool FINAL, real-27-validated): clamp-both. R²0.998.
     c_frm_slope=PiecewiseCoeffs(
@@ -724,8 +741,14 @@ DEFAULT_FIELDING_REG_COEFFS_27 = FieldingRegressionCoeffs(
     ),
     # "C C_Arm → SBA/IP" (H-pool FINAL): single line. R²0.92.
     c_sba_slope=-0.00086,
-    # "C C_Arm → RTO%" (LOCKED, KEPT — C-pool, bell-corroborated).
-    c_rto_slope=0.00119,
+    # "C C_Arm → RTO%" (H-pool FINAL, re-fit 2026-07-02): steep / plateau / steep — the same
+    # 2-knot structure appears independently on the C-pool ([38,63], R²0.958 vs single 0.872),
+    # so it is real, not wiggle; the H-pool (realistic catchers) supplies the values. R²0.941.
+    c_rto_slope=PiecewiseCoeffs(
+        knots=(44.0, 63.0),
+        slopes=(0.00113, 0.00016, 0.00175),
+        relative=False,
+    ),
     # NOT set (keep 26 defaults): every *_const; first_pm_ht_slope (D-1BHT); second_dp_* /
     # ss_dp_* (D-DP).
 )

@@ -220,8 +220,8 @@ class TestSliceConstants:
 
     def test_sb_pct_carries_canonical_c0(self):
         c = DEFAULT_HITTING_REG_COEFFS_27.sb_pct
-        assert isinstance(c, PiecewiseCoeffs) and not c.relative
-        assert c.knots == (70.0,) and c.slopes == (0.01045, 0.00255)
+        assert isinstance(c, PiecewiseCoeffs) and not c.relative and c.clamp_lo
+        assert c.knots == (26.0, 70.0) and c.slopes == (0.0, 0.01086, 0.00211)
         assert c.c0 == HittingRegressionCoeffs().sb_pct.c0   # 26 canonical intercept
 
     def test_rp_stu_matches_knot_decisions(self):
@@ -282,10 +282,15 @@ class TestSliceDeltasByHand:
     def test_sb_pct_poly_with_c0(self):
         c = DEFAULT_HITTING_REG_COEFFS_27.sb_pct
         avg = 50.46
-        # STE 80 (above the 70 knee): c0 + 0.01045*(70−50.46) + 0.00255*(80−70)
+        # STE 80 (above the 70 knee; avg inside the 26–70 rise segment):
+        #   c0 + 0.01086*(70−50.46) + 0.00211*(80−70)
         got = baserunning_poly(pd.Series([80.0]), avg, c).iloc[0]
-        want = c.c0 + 0.01045 * (70.0 - 50.46) + 0.00255 * 10.0
+        want = c.c0 + 0.01086 * (70.0 - 50.46) + 0.00211 * 10.0
         assert got == pytest.approx(want, abs=1e-9)
+        # clamp-lo floor: STE 20 == STE 26
+        d20 = baserunning_poly(pd.Series([20.0]), avg, c).iloc[0]
+        d26 = baserunning_poly(pd.Series([26.0]), avg, c).iloc[0]
+        assert d20 == d26
 
     def test_ss_range_piecewise(self):
         c = DEFAULT_FIELDING_REG_COEFFS_27.ss_pm_rng_slope
@@ -369,7 +374,7 @@ _HIT_EXPECTED = {
     "speed":  ((34, 50), (0.0, 0.00314, 0.00280), False, True, False, None),
     "sba":    ((37, 55, 72), (0.00070, 0.00181, 0.00605, 0.01196), False, False, False,
                0.009116895606791357),
-    "sb_pct": ((70,), (0.01045, 0.00255), False, False, False, -0.13320702812059265),
+    "sb_pct": ((26, 70), (0.0, 0.01086, 0.00211), False, True, False, -0.13320702812059265),
     "ubr":    ((), (0.00018,), False, False, False, 3.093821597831973e-05),
 }
 _PIT_EXPECTED = {
@@ -397,20 +402,23 @@ _FLD_PW_EXPECTED = {
     "ss_pm_rng_slope":     ((62, 68), (0.00052, 0.00190, 0.00654), False, False),
     "cf_pm_slope":         ((62, 66, 71), (0.00009, 0.00665, 0.01200, 0.0), False, True),
     "second_pm_rng_slope": ((60, 69), (0.00067, 0.00879, 0.00112), False, False),
-    "first_pm_rng_slope":  ((51,), (0.00144, 0.00047), False, False),
+    # 1B / 3B-arm / c_rto re-fit 2026-07-02 (user-flagged structures, H-pool):
+    "first_pm_rng_slope":  ((36, 49), (0.00019, 0.00206, 0.00042), False, False),
+    "third_pm_rng_slope":  ((70,), (0.00281, 0.00110), False, False),
+    "third_pm_arm_slope":  ((39,), (0.00032, 0.00309), False, False),
+    "c_rto_slope":         ((44, 63), (0.00113, 0.00016, 0.00175), False, False),
     "lf_pm_slope":         ((48, 56), (0.00125, 0.00715, 0.0), False, True),
     "rf_pm_slope":         ((50, 57), (0.00075, 0.00676, 0.0), False, True),
     "c_frm_slope":         ((37, 73), (0.0, 0.00120, 0.0), True, True),
 }
-# Fielding single-line 27 scalars.
+# Fielding single-line 27 scalars (errors + arms = H-pool FINAL re-base 2026-07-02).
 _FLD_SCALAR_EXPECTED = {
-    "third_pm_rng_slope": 0.00269,
-    "second_pm_arm_slope": 0.00074, "third_pm_arm_slope": 0.00283, "ss_pm_arm_slope": 0.00091,
-    "first_err_slope": -0.00004, "second_err_slope": -0.00008, "third_err_slope": -0.00025,
-    "ss_err_slope": -0.00022, "lf_err_slope": -0.00022, "cf_err_slope": -0.00016,
+    "second_pm_arm_slope": 0.00074, "ss_pm_arm_slope": 0.00091,
+    "first_err_slope": -0.00004, "second_err_slope": -0.00007, "third_err_slope": -0.00021,
+    "ss_err_slope": -0.00020, "lf_err_slope": -0.00022, "cf_err_slope": -0.00018,
     "rf_err_slope": -0.00028,
-    "lf_arm_slope": 0.00018, "cf_arm_slope": 0.00019, "rf_arm_slope": 0.00024,
-    "c_sba_slope": -0.00086, "c_rto_slope": 0.00119,
+    "lf_arm_slope": 0.00021, "cf_arm_slope": 0.00023, "rf_arm_slope": 0.00024,
+    "c_sba_slope": -0.00086,
 }
 # Fields that must KEEP their 26 values (🟡 borrowed: consts, D-1BHT, D-DP).
 _FLD_KEEP_26 = [
@@ -539,7 +547,7 @@ class TestSynthetic27EndToEnd:
                                      0.5, dp=dp27_hit)
         lg = dp27_hit.league
         want = (-0.13320702812059265
-                + 0.01045 * (70.0 - lg.avg_steal) + 0.00255 * (80.0 - 70.0)
+                + 0.01086 * (70.0 - lg.avg_steal) + 0.00211 * (80.0 - 70.0)
                 + lg.sb_pct)
         assert out["SB%"].iloc[0] == pytest.approx(want, abs=1e-12)
 

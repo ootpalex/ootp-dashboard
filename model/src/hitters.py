@@ -579,8 +579,8 @@ def compute_fielding(
     c_sba = (fc.c_sba_const + fc.c_sba_slope * (c_arm - fp.avg_arm_c)) * lg.ip_c + fp.c_sba_scale
     result["C SBA"] = c_sba.where(c_elig)
 
-    # RTO% = MAX(0, (const + slope * (ARM - avg)) + c_rto_lg)
-    c_rto = (fc.c_rto_const + fc.c_rto_slope * (c_arm - fp.avg_arm_c) + fp.c_rto_lg).clip(lower=0)
+    # RTO% = MAX(0, (const + slope * (ARM - avg)) + c_rto_lg)   (27: slope term is piecewise)
+    c_rto = (fc.c_rto_const + _fld_delta(c_arm, fp.avg_arm_c, fc.c_rto_slope) + fp.c_rto_lg).clip(lower=0)
     result["C RTO%"] = c_rto.where(c_elig)
 
     # CS = RTO% * SBA; SB = SBA - CS
@@ -622,7 +622,7 @@ def compute_fielding(
     b2_pmaa = (
         fc.second_pm_const
         + _fld_delta(if_rng, fp.avg_rng_2b, fc.second_pm_rng_slope)
-        + fc.second_pm_arm_slope * (if_arm - fp.avg_arm_2b)
+        + _fld_delta(if_arm, fp.avg_arm_2b, fc.second_pm_arm_slope)
     ) * fp.second_pa
     result["2B PMAA"] = b2_pmaa.where(b2_elig)
 
@@ -644,8 +644,8 @@ def compute_fielding(
 
     b3_pmaa = (
         fc.third_pm_const
-        + fc.third_pm_rng_slope * (if_rng - fp.avg_rng_3b)
-        + fc.third_pm_arm_slope * (if_arm - fp.avg_arm_3b)
+        + _fld_delta(if_rng, fp.avg_rng_3b, fc.third_pm_rng_slope)
+        + _fld_delta(if_arm, fp.avg_arm_3b, fc.third_pm_arm_slope)
     ) * fp.third_pa
     result["3B PMAA"] = b3_pmaa.where(b3_elig)
 
@@ -662,7 +662,7 @@ def compute_fielding(
     ss_pmaa = (
         fc.ss_pm_const
         + _fld_delta(if_rng, fp.avg_rng_ss, fc.ss_pm_rng_slope)
-        + fc.ss_pm_arm_slope * (if_arm - fp.avg_arm_ss)
+        + _fld_delta(if_arm, fp.avg_arm_ss, fc.ss_pm_arm_slope)
     ) * fp.ss_pa
     result["SS PMAA"] = ss_pmaa.where(ss_elig)
 
