@@ -13,6 +13,13 @@
 > suite 501 passed / 24 skipped incl. the 110-case 26 byte-identical gate. Per-row old→new:
 > `analysis/test-league-design/outputs/KNOT_DECISIONS_27.md`.
 
+> **✅ F1 FIXED (2026-07-02, rollout session) —** the hitter Steal→SBA% c0 finding below is
+> RESOLVED by the league-adaptive normalization (§6): on the 27 path `compose_data_points`
+> replaces the canonical c0 with `−E_w[pw(STE)]` over the league's PA-weighted MLB-batter STE
+> distribution, reproducing the pooled league attempt rate by construction. 26 path untouched
+> (suite 512 passed / 24 skipped incl. the 110-case 26 gate). Design ratified by Alex
+> (population/compute-site/sb_pct-exclusion); details + audit trace in §6.
+
 > **⚠ Post-port adversarial audit (2026-07-02) —** the hit/pit/baserunning calibration was
 > pressure-tested against a REAL OOTP-27 league (SSB 2043) + bell@27 realistic rosters:
 > `analysis/test-league-design/docs/AUDIT_HITPIT_BR_27.md`. Outcome: **hit/pit slopes validated
@@ -64,7 +71,7 @@ and asserts equality.
 
 | Item | Value(s) | Why borrowed |
 |---|---|---|
-| Baserunning intercepts | hit `sba.c0` 0.009116895606791357, `sb_pct.c0` −0.13320702812059265, `ubr.c0` 3.093821597831973e-05; pit `sba.c0`/`rp_sba.c0` 0.0007224917422994285 (26's single shared value), `sp_sb_pct.c0` −0.01179124984884817, `rp_sb_pct.c0` −0.007441413482453901 | Spec §2.5: these channels apply as `poly + lg.rate` where lg.rate is the pooled (attempt-weighted) rate; c0 is the real average-rated-vs-pooled offset. The 27 calibration slopes are de-meaned and cannot supply it. Asserted `== 26 canonical` in tests. |
+| Baserunning intercepts | hit `sba.c0` 0.009116895606791357 **(27: stored canonical only — superseded at compose time by the league-adaptive `−E_w[pw(STE)]`, §6; canonical remains the no-distribution fallback)**, `sb_pct.c0` −0.13320702812059265, `ubr.c0` 3.093821597831973e-05; pit `sba.c0`/`rp_sba.c0` 0.0007224917422994285 (26's single shared value), `sp_sb_pct.c0` −0.01179124984884817, `rp_sb_pct.c0` −0.007441413482453901 | Spec §2.5: these channels apply as `poly + lg.rate` where lg.rate is the pooled (attempt-weighted) rate; c0 is the real average-rated-vs-pooled offset. The 27 calibration slopes are de-meaned and cannot supply it. Asserted `== 26 canonical` in tests. |
 | Fielding consts | every `*_const` (incl. `c_frm_const`, `c_sba_const`, `c_rto_const`) | Spec §7.4: the const is the position baseline; 27 changes only slopes. |
 | 1B height slope | `first_pm_ht_slope` 0.0003878808525983733 | D-1BHT (see 🔵). |
 | DP slopes | `second_dp_*`, `ss_dp_*` | D-DP (see 🔵). |
@@ -171,3 +178,50 @@ sides). Details + the accepted ≲1% BB-vs-uBB denominator nit: `DERIVATION_NOTE
 No un-traced constant ships: every field of the three 27 sets is asserted against its
 KNOT_DECISIONS row (or its 26 origin, for 🟡 fields) in `TestAllConstants27` — 104 passing
 cases as of Phase C, alongside the untouched 110-case 26 byte-identical suite.
+
+---
+
+## 6. League-adaptive sba c0 (F1 fix, 2026-07-02 rollout session)
+
+**Problem** (AUDIT_HITPIT_BR_27 §F1): the hitter Steal→SBA% channel applies as
+`c0 + pw(STE) + lg.sba_rate` with `lg.sba_rate` the POOLED (attempt-weighted) league rate.
+Self-consistency requires `c0 = avg-rated rate − pooled rate`, and because attempts are strongly
+convex in STE this is a Jensen gap that scales with the league's run environment — the
+26-canonical +0.0091 (quiet bell substrate: no spread ⇒ no gap) is sign-wrong for every
+realistic league; no constant is correct for all leagues.
+
+**Mechanism** (design ratified by Alex 2026-07-02: MLB-metadata population, PA weighting,
+metadata/compose-time compute, sb_pct excluded):
+- `aggregators/hit_aggregator._compute_ste_pa_distribution` — PA-weighted STE distribution of
+  the league's MLB batters (vR/vL blended by `ovr_vr` — the exact population/weighting of
+  `avg_steal`) → new `HitterLeagueParams.ste_pa_dist` (`None`-safe; default `None`).
+- `metadata._blend_params` — multi-season pooling blends distribution fields as a
+  season-weighted measure mixture (per-season renormalized — the distribution analogue of the
+  scalar field-wise mean); any season missing a distribution ⇒ `None` (fallback).
+- `metadata._with_league_adaptive_sba_c0` (called from `compose_data_points`) — 27 path only
+  (`isinstance(sba, PiecewiseCoeffs)`): replaces `sba.c0` with `−E_w[pw(STE)]`, so
+  `E_w[c0 + pw + lg.sba_rate] = lg.sba_rate` **exactly by construction**. 26 (`CubicCoeffs`)
+  and no-distribution leagues pass through by identity (canonical c0 = pre-fix behavior).
+- Metadata `_CACHE_VERSION` 5 → 6 (v5 caches lack the distribution and would silently keep the
+  canonical c0 on 27 leagues).
+
+**Input trace:** 🟢 STE + PA from the league's own metadata batter files (same files as
+`avg_steal`); 🟢 `pw` = the locked 27 sba piecewise; 🔵 PA approximates on-first weighting
+(ratified; pooled-rate reproduction is exact w.r.t. the PA measure).
+
+**Re-derivation on real data (SSB metadata, 2041+2042 pooled):** STE is 5-pt quantized 20–80
+(13 values); `E[dist]` 49.96 vs `avg_steal` 49.90 (Δ from 13 NaN-STE rows, 269 PA ≈ 0.2%, which
+`_weighted_mean` keeps in its denominator — the distribution correctly excludes unprojectable
+rows; the invariant is anchor-independent). Adaptive c0 = **−0.02538** (replaces +0.00912) in a
+`lg.sba_rate` = 0.101 environment; `E_w[c0 + pw]` = −3.0e−18 ✓. The audit's real-27 descriptive
+estimate (−0.44 × rate ≈ −0.044) is larger because it includes real-engine convexity beyond the
+wired curve (the deliberately-unwired SPE co-predictor) — this fix makes the league TOTAL exact
+under the wired curve and fixes the sign; the SPE co-predictor remains a reported, unwired
+follow-up.
+
+**Tests** (`TestLeagueAdaptiveSbaC0`, 11 cases): pooled-rate reproduction on a synthetic league
+(abs 1e−15), sign fix, no-distribution fallback, only-sba-changes (sb_pct/ubr identity), 26-path
+identity pass-through, degenerate all-average league ⇒ c0 = 0, season-mixture blending +
+missing-season fallback, aggregator-vs-avg_steal consistency on clean data, missing-STE-column
+`None`, cache JSON roundtrip. Full suite 512 passed / 24 skipped; the 110-case 26 byte-identical
+gate untouched.

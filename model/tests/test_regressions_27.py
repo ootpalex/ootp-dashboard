@@ -666,7 +666,15 @@ class TestVersionRouting:
         hitter_dp, pitcher_dp = _detect_metadata(
             meta_dir, PipelineSettings(ootp_version="27"), regressions_dir=None
         )
-        assert hitter_dp.hitting is DEFAULT_HITTING_REG_COEFFS_27
+        # Hitting routes to the hardcoded 27 constants, MODULO the league-adaptive sba c0
+        # (compose_data_points replaces sba.c0 with −E_w[pw(STE)] when the league has an STE
+        # distribution — AUDIT_HITPIT_BR_27 §F1). Every other field must be the wired default.
+        assert dataclasses.replace(
+            hitter_dp.hitting, sba=DEFAULT_HITTING_REG_COEFFS_27.sba
+        ) == DEFAULT_HITTING_REG_COEFFS_27
+        assert dataclasses.replace(
+            hitter_dp.hitting.sba, c0=DEFAULT_HITTING_REG_COEFFS_27.sba.c0
+        ) == DEFAULT_HITTING_REG_COEFFS_27.sba
         assert pitcher_dp.pitching is DEFAULT_PITCHING_REG_COEFFS_27
         assert hitter_dp.fielding_coeffs is DEFAULT_FIELDING_REG_COEFFS_27
 
@@ -675,3 +683,128 @@ class TestVersionRouting:
         )
         assert hitter_dp26.hitting is not DEFAULT_HITTING_REG_COEFFS_27
         assert pitcher_dp26.pitching is not DEFAULT_PITCHING_REG_COEFFS_27
+
+
+# ---------------------------------------------------------------------------
+# 6. League-adaptive sba c0 (AUDIT_HITPIT_BR_27 §F1 fix)
+# ---------------------------------------------------------------------------
+
+
+class TestLeagueAdaptiveSbaC0:
+    """compose_data_points replaces the 27 hitter sba canonical c0 with −E_w[pw(STE)].
+
+    Design (ratified 2026-07-02): E_w = the league's PA-weighted MLB-batter STE distribution
+    (``HitterLeagueParams.ste_pa_dist``), computed at metadata/compose time; sb_pct keeps its
+    canonical constant; the 26 path and the no-distribution 27 path are untouched.
+    """
+
+    @staticmethod
+    def _league(dist, avg_steal=50.0):
+        from src.data_points import HitterLeagueParams
+        return HitterLeagueParams(avg_steal=avg_steal, ste_pa_dist=dist)
+
+    @staticmethod
+    def _compose(hitting, hitting_reg):
+        from src.data_points import FieldingParams, PitcherLeagueParams
+        from src.metadata import compose_data_points
+        hdp, _pdp = compose_data_points(
+            hitting, PitcherLeagueParams(), FieldingParams(),
+            hitting_reg=hitting_reg,
+            pitching_reg=DEFAULT_PITCHING_REG_COEFFS_27,
+            fielding_reg=DEFAULT_FIELDING_REG_COEFFS_27,
+        )
+        return hdp
+
+    def test_reproduces_pooled_league_rate_by_construction(self):
+        """PA-weighted mean of (c0 + pw(STE) + lg.sba_rate) == lg.sba_rate on a synthetic league."""
+        dist = [[25.0, 0.15], [40.0, 0.20], [50.0, 0.30], [65.0, 0.25], [80.0, 0.10]]
+        lg = self._league(dist)
+        hdp = self._compose(lg, DEFAULT_HITTING_REG_COEFFS_27)
+        sba = hdp.hitting.sba
+        assert isinstance(sba, PiecewiseCoeffs)
+        e = sum(w * (sba.c0 + float(piecewise_delta(v, lg.avg_steal, sba)))
+                for v, w in dist) / sum(w for _, w in dist)
+        assert e == pytest.approx(0.0, abs=1e-15)  # ⇒ E_w[rate] == lg.sba_rate exactly
+
+    def test_adaptive_c0_is_negative_for_convex_curve_with_spread(self):
+        """Any realistic STE spread ⇒ Jensen gap ⇒ c0 < 0 (the F1 sign fix)."""
+        dist = [[25.0, 0.15], [40.0, 0.20], [50.0, 0.30], [65.0, 0.25], [80.0, 0.10]]
+        hdp = self._compose(self._league(dist), DEFAULT_HITTING_REG_COEFFS_27)
+        assert hdp.hitting.sba.c0 < 0
+        assert hdp.hitting.sba.c0 != DEFAULT_HITTING_REG_COEFFS_27.sba.c0
+
+    def test_no_distribution_keeps_canonical_c0(self):
+        hdp = self._compose(self._league(None), DEFAULT_HITTING_REG_COEFFS_27)
+        assert hdp.hitting is DEFAULT_HITTING_REG_COEFFS_27
+        assert hdp.hitting.sba.c0 == DEFAULT_HITTING_REG_COEFFS_27.sba.c0
+
+    def test_only_sba_changes(self):
+        """sb_pct/ubr and every non-sba field keep the wired defaults (sb_pct exclusion ratified)."""
+        dist = [[40.0, 0.5], [60.0, 0.5]]
+        hdp = self._compose(self._league(dist), DEFAULT_HITTING_REG_COEFFS_27)
+        assert dataclasses.replace(
+            hdp.hitting, sba=DEFAULT_HITTING_REG_COEFFS_27.sba
+        ) == DEFAULT_HITTING_REG_COEFFS_27
+        assert hdp.hitting.sb_pct is DEFAULT_HITTING_REG_COEFFS_27.sb_pct
+        assert hdp.hitting.ubr is DEFAULT_HITTING_REG_COEFFS_27.ubr
+
+    def test_26_path_untouched(self):
+        """A 26 HittingRegressionCoeffs (CubicCoeffs sba) passes through by identity even when
+        the league carries an STE distribution."""
+        reg26 = HittingRegressionCoeffs()
+        dist = [[40.0, 0.5], [60.0, 0.5]]
+        hdp = self._compose(self._league(dist), reg26)
+        assert hdp.hitting is reg26
+        assert hdp.hitting.sba.c0 == reg26.sba.c0
+
+    def test_degenerate_distribution_all_average_gives_zero_gap(self):
+        """Everyone at the league-average STE ⇒ no Jensen gap ⇒ c0 == 0 (not the canonical)."""
+        hdp = self._compose(self._league([[50.0, 1.0]]), DEFAULT_HITTING_REG_COEFFS_27)
+        assert hdp.hitting.sba.c0 == pytest.approx(0.0, abs=1e-15)
+
+    def test_season_blending_mixes_distributions(self):
+        """_blend_params mixes per-season distributions as a season-weighted measure mixture."""
+        from src.data_points import HitterLeagueParams
+        from src.metadata import _blend_params
+        a = HitterLeagueParams(ste_pa_dist=[[40.0, 1.0]])
+        b = HitterLeagueParams(ste_pa_dist=[[60.0, 1.0]])
+        blended = _blend_params([a, b], [3.0, 2.0])
+        assert blended.ste_pa_dist == [[40.0, pytest.approx(0.6)], [60.0, pytest.approx(0.4)]]
+
+    def test_season_blending_missing_distribution_yields_none(self):
+        """Any season without a distribution ⇒ None (falls back to the canonical c0)."""
+        from src.data_points import HitterLeagueParams
+        from src.metadata import _blend_params
+        a = HitterLeagueParams(ste_pa_dist=[[40.0, 1.0]])
+        b = HitterLeagueParams(ste_pa_dist=None)
+        assert _blend_params([a, b], [3.0, 2.0]).ste_pa_dist is None
+
+    def test_aggregator_distribution_matches_avg_steal_on_clean_data(self):
+        """On NaN-free inputs the distribution's mean equals avg_steal (same weighting)."""
+        from src.aggregators.hit_aggregator import (
+            _compute_rating_averages_hitting,
+            _compute_ste_pa_distribution,
+        )
+        vr = pd.DataFrame({"PA": [400, 300, 200], "STE": [35.0, 50.0, 70.0]})
+        vl = pd.DataFrame({"PA": [100, 150, 50], "STE": [35.0, 50.0, 70.0]})
+        ovr_vr = 0.72
+        dist = _compute_ste_pa_distribution(vr, vl, ovr_vr)
+        assert sum(w for _, w in dist) == pytest.approx(1.0)
+        got = sum(v * w for v, w in dist)
+        vr_avg = (vr["PA"] * vr["STE"]).sum() / vr["PA"].sum()
+        vl_avg = (vl["PA"] * vl["STE"]).sum() / vl["PA"].sum()
+        assert got == pytest.approx(vr_avg * ovr_vr + vl_avg * (1 - ovr_vr))
+
+    def test_aggregator_missing_ste_column_returns_none(self):
+        from src.aggregators.hit_aggregator import _compute_ste_pa_distribution
+        vr = pd.DataFrame({"PA": [400], "SPE": [50.0]})
+        vl = pd.DataFrame({"PA": [100], "SPE": [50.0]})
+        assert _compute_ste_pa_distribution(vr, vl, 0.72) is None
+
+    def test_cache_roundtrip_preserves_distribution(self, tmp_path):
+        """ste_pa_dist survives the metadata JSON cache (asdict → json → kwargs)."""
+        import json as _json
+        from src.data_points import HitterLeagueParams
+        d = dataclasses.asdict(HitterLeagueParams(ste_pa_dist=[[40.0, 0.5], [60.0, 0.5]]))
+        loaded = HitterLeagueParams(**_json.loads(_json.dumps(d)))
+        assert loaded.ste_pa_dist == [[40.0, 0.5], [60.0, 0.5]]

@@ -1029,7 +1029,16 @@ class TestMultiSeasonGenerate:
         _make_season(multi, "2025")
         h_flat, p_flat, f_flat = generate_data_points(flat, use_cache=False)
         h_multi, p_multi, f_multi = generate_data_points(multi, use_cache=False)
-        assert dataclasses.asdict(h_multi) == pytest.approx(dataclasses.asdict(h_flat))
+        # ste_pa_dist is a list of [value, weight] pairs — pytest.approx can't diff it inside
+        # the dict, so compare it pairwise and the scalar fields as before.
+        hd_flat, hd_multi = dataclasses.asdict(h_flat), dataclasses.asdict(h_multi)
+        dist_flat, dist_multi = hd_flat.pop("ste_pa_dist"), hd_multi.pop("ste_pa_dist")
+        if dist_flat is None:
+            assert dist_multi is None
+        else:
+            assert [v for v, _ in dist_multi] == [v for v, _ in dist_flat]
+            assert [w for _, w in dist_multi] == pytest.approx([w for _, w in dist_flat])
+        assert hd_multi == pytest.approx(hd_flat)
         assert dataclasses.asdict(p_multi) == pytest.approx(dataclasses.asdict(p_flat))
         assert dataclasses.asdict(f_multi) == pytest.approx(dataclasses.asdict(f_flat))
 

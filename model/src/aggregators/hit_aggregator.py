@@ -78,6 +78,34 @@ def _compute_rating_averages_hitting(
     }
 
 
+def _compute_ste_pa_distribution(
+    batter_vr: pd.DataFrame, batter_vl: pd.DataFrame, ovr_vr: float
+) -> list | None:
+    """PA-weighted STE distribution over the league's MLB batters.
+
+    Returns ``[[ste_value, weight], ...]`` sorted by rating, weights summing to 1 — each file's
+    PA weights normalized within-file, then blended vR/vL by ``ovr_vr``, mirroring exactly how
+    ``_compute_rating_averages_hitting`` produces ``avg_steal`` (so E[dist] == avg_steal on clean
+    data). Feeds the OOTP-27 league-adaptive sba c0 in ``compose_data_points``
+    (AUDIT_HITPIT_BR_27 §F1); returns None when STE/PA are absent or unusable, which downstream
+    keeps the canonical c0.
+    """
+    agg: dict[float, float] = {}
+    for df, frac in ((batter_vr, ovr_vr), (batter_vl, 1.0 - ovr_vr)):
+        if "STE" not in df.columns or "PA" not in df.columns:
+            return None
+        ste = pd.to_numeric(df["STE"], errors="coerce")
+        pa = pd.to_numeric(df["PA"], errors="coerce")
+        mask = ste.notna() & pa.notna() & (pa > 0)
+        total = float(pa[mask].sum())
+        if total <= 0:
+            return None
+        for v, w in zip(ste[mask], pa[mask]):
+            key = float(v)
+            agg[key] = agg.get(key, 0.0) + frac * float(w) / total
+    return [[v, w] for v, w in sorted(agg.items())]
+
+
 _OF_POSITIONS = ("lf", "cf", "rf")
 _INF_OUT_FALLBACK = 0.75
 _OF_OUT_FALLBACK = 0.90
@@ -143,6 +171,10 @@ def compute_hitting_constants(inputs) -> HitterLeagueParams:
     rating_avgs = _compute_rating_averages_hitting(
         inputs.batter_ratings_vr, inputs.batter_ratings_vl, splits["ovr_vr"])
 
+    # Step 4b: PA-weighted STE distribution (OOTP-27 league-adaptive sba c0; None-safe)
+    ste_pa_dist = _compute_ste_pa_distribution(
+        inputs.batter_ratings_vr, inputs.batter_ratings_vl, splits["ovr_vr"])
+
     return HitterLeagueParams(
         # Rating averages
         avg_eye=rating_avgs["eye"],
@@ -153,6 +185,7 @@ def compute_hitting_constants(inputs) -> HitterLeagueParams:
         avg_speed=rating_avgs["spe"],
         avg_steal=rating_avgs["ste"],
         avg_bsr=rating_avgs["run"],
+        ste_pa_dist=ste_pa_dist,
 
         # wOBA weights
         wt_hbp=woba["wt_hbp"],

@@ -71,6 +71,7 @@ from src.data_points import (
     HitterDataPoints,
     HitterLeagueParams,
     HittingRegressionCoeffs,
+    PiecewiseCoeffs,
     PitcherDataPoints,
     PitcherLeagueParams,
     PitchingRegressionCoeffs,
@@ -417,7 +418,11 @@ def load_metadata_inputs(
 # v5: defensive half of the blend widened to H_def=5/cut_def=20 (offense unchanged at H=2.5/cut=8)
 # per the per-position-pair bootstrap-SE audit (Leftovers/positional-adjustments/SAMPLE_SIZE_AUDIT.md).
 # Constants change; bump invalidates v4 caches that still hold the narrower-window values.
-_CACHE_VERSION = 5
+# v6: HitterLeagueParams gains ste_pa_dist (PA-weighted MLB-batter STE distribution) feeding the
+# OOTP-27 league-adaptive sba c0 (AUDIT_HITPIT_BR_27 §F1). v5 caches load fine (defaulted field)
+# but would silently keep the canonical c0 on 27 leagues; bump forces recompute so the
+# distribution is present. No 26 constant changes.
+_CACHE_VERSION = 6
 _CACHE_FILENAME = ".metadata_cache.json"
 
 
@@ -578,13 +583,36 @@ def _resolve_season_dirs(
     return [(path, weight) for _, path, weight in selected]
 
 
-def _blend_params(params_list: list, weights: Sequence[float]):
-    """Weighted-average every (float) field across same-typed param dataclasses.
+def _blend_distributions(dists: list, weights: Sequence[float], total: float) -> list | None:
+    """Season-weighted mixture of per-season ``[[value, weight], ...]`` distributions.
 
-    Every field of HitterLeagueParams / PitcherLeagueParams / FieldingParams is a
-    plain float, so a field-wise weighted mean is well-defined. A single-element
-    list returns that element unchanged (exact identity — no float drift on the
-    single-season path).
+    Each season's weights are renormalized within-season before applying the season weight —
+    the distribution analogue of the field-wise weighted mean of the scalar averages (so the
+    mixture's mean equals the blended scalar average by construction). Returns None when any
+    season lacks a usable distribution: a partial mixture would silently misrepresent the pool,
+    and None falls back to the canonical-c0 behavior downstream.
+    """
+    if any(not d for d in dists):
+        return None
+    agg: dict[float, float] = {}
+    for dist, w in zip(dists, weights):
+        season_total = float(sum(pw for _, pw in dist))
+        if season_total <= 0:
+            return None
+        for val, pw in dist:
+            key = float(val)
+            agg[key] = agg.get(key, 0.0) + (w / total) * (float(pw) / season_total)
+    return [[v, pw] for v, pw in sorted(agg.items())]
+
+
+def _blend_params(params_list: list, weights: Sequence[float]):
+    """Weighted-average every field across same-typed param dataclasses.
+
+    Float fields (everything in PitcherLeagueParams / FieldingParams, and all scalar
+    HitterLeagueParams fields) take the field-wise weighted mean. Distribution-valued fields
+    (``HitterLeagueParams.ste_pa_dist``: a list of [value, weight] pairs, or None) take the
+    season-weighted measure mixture via ``_blend_distributions``. A single-element list returns
+    that element unchanged (exact identity — no float drift on the single-season path).
     """
     if len(params_list) == 1:
         return params_list[0]
@@ -592,10 +620,13 @@ def _blend_params(params_list: list, weights: Sequence[float]):
     if total <= 0:
         raise ValueError("season weights must sum to a positive value")
     cls = type(params_list[0])
-    blended = {
-        f.name: sum(getattr(p, f.name) * w for p, w in zip(params_list, weights)) / total
-        for f in dataclasses.fields(cls)
-    }
+    blended = {}
+    for f in dataclasses.fields(cls):
+        vals = [getattr(p, f.name) for p in params_list]
+        if all(isinstance(v, (int, float)) for v in vals):
+            blended[f.name] = sum(v * w for v, w in zip(vals, weights)) / total
+        else:
+            blended[f.name] = _blend_distributions(vals, weights, total)
     return cls(**blended)
 
 
@@ -698,6 +729,43 @@ def generate_data_points(
     return hitting, pitching, fielding
 
 
+def _with_league_adaptive_sba_c0(
+    hitting_reg: HittingRegressionCoeffs, hitting: HitterLeagueParams
+) -> HittingRegressionCoeffs:
+    """OOTP-27 only: replace the hitter Steal→SBA% canonical c0 with the league-adaptive offset.
+
+    The sba channel applies as ``c0 + pw(STE) + lg.sba_rate`` with ``pw`` anchored to 0 at
+    ``avg_steal`` and ``lg.sba_rate`` the POOLED (attempt-weighted) league rate. Self-consistency
+    requires ``c0 = avg-rated rate − pooled rate`` — and because attempts are strongly convex in
+    STE, that gap is a Jensen gap that scales with the league's run environment; no constant is
+    correct for every league (AUDIT_HITPIT_BR_27 §F1: real-27 ≈ −0.44 × lg.sba_rate, the wired
+    26-canonical +0.0091 is a quiet-bell-substrate artifact). Setting
+    ``c0 = −E_w[pw(STE)]`` (E_w = the league's PA-weighted MLB-batter STE distribution, the same
+    population/weighting as avg_steal) reproduces the pooled rate exactly by construction:
+    E_w[c0 + pw + lg.sba_rate] = lg.sba_rate.
+
+    Dispatch: 26 (CubicCoeffs) is returned untouched; 27 without a usable distribution keeps the
+    canonical c0 (pre-fix behavior). Design ratified 2026-07-02 (population, compute site,
+    sb_pct exclusion).
+    """
+    sba = hitting_reg.sba
+    if not isinstance(sba, PiecewiseCoeffs):
+        return hitting_reg
+    dist = hitting.ste_pa_dist
+    if not dist:
+        return hitting_reg
+    total = float(sum(w for _, w in dist))
+    if total <= 0:
+        return hitting_reg
+    from src.utils import piecewise_delta
+    e_pw = sum(
+        w * float(piecewise_delta(float(v), hitting.avg_steal, sba)) for v, w in dist
+    ) / total
+    print(f"OOTP-27 league-adaptive SBA c0: {-e_pw:+.5f} "
+          f"(replaces canonical {sba.c0:+.5f}; lg.sba_rate {hitting.sba_rate:.5f})")
+    return dataclasses.replace(hitting_reg, sba=dataclasses.replace(sba, c0=-e_pw))
+
+
 def compose_data_points(
     hitting: HitterLeagueParams,
     pitching: PitcherLeagueParams,
@@ -738,6 +806,9 @@ def compose_data_points(
         pitching_reg = PitchingRegressionCoeffs()
     if fielding_reg is None:
         fielding_reg = FieldingRegressionCoeffs()
+
+    # OOTP-27 F1 fix: league-adaptive hitter sba c0 (no-op for 26 LinearCoeffs/CubicCoeffs).
+    hitting_reg = _with_league_adaptive_sba_c0(hitting_reg, hitting)
 
     hitter_dp = HitterDataPoints(
         hitting=hitting_reg,

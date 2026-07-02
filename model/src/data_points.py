@@ -863,6 +863,16 @@ class HitterLeagueParams:
     # receive a smaller bonus (~+16.67 R at pa_c=500) via the lower PA benchmark.
     repl_runs_per_pa: float = 20.0 / 600.0   # ≈ 0.03333 R/PA
 
+    # ── League STE distribution (OOTP-27 league-adaptive SBA c0 — AUDIT_HITPIT_BR_27 §F1) ──
+    # PA-weighted distribution of the league's MLB batters' STE ratings as
+    # [[ste_value, weight], ...] with weights summing to 1 (vR/vL blended by ovr_vr — the same
+    # population and weighting as avg_steal). Consumed ONLY by the OOTP-27 path in
+    # compose_data_points, which replaces the hitter sba canonical c0 with −E_w[pw(STE)] so the
+    # pooled league attempt rate is reproduced by construction (the Jensen-gap fix). None (the
+    # default, and the value on legacy caches/leagues without STE metadata) keeps the canonical
+    # c0 — the pre-fix behavior. The 26 path never reads this field.
+    ste_pa_dist: list | None = None
+
     def to_ballpark_constants(self) -> "BallparkConstants":
         """
         Bridge: construct a BallparkConstants from the subset of fields shared
