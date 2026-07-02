@@ -58,7 +58,7 @@ exist, the flat `metadata/` is used as a single season exactly as before.
 | Metadata CSVs | Per league | Computed from each league's actual ratings |
 | `dashboard.json.gz` | Per league | Each league produces its own output |
 | Regressions (`data/regressions/ootp<version>/`) | Per OOTP version | Calibrated against the OOTP simulator's mechanics, which are version-specific |
-| Regression coefficients | Per OOTP version | Computed from that version's sims at build time and injected; `data_points.py` holds the shared no-sims fallback |
+| Regression coefficients | Per OOTP version | **26:** computed from that version's sims at build time (auto-fit); `data_points.py` holds the no-sims fallback. **27:** hardcoded piecewise constants in `data_points.py` Section 1b — the auto-fit cannot represent the 27 multi-knot calibration (see "Adding a new OOTP version") |
 
 The frontend namespaces these localStorage keys per league: `ssb_my_team`, `ssb_game_date`, `league_settings`, `ssb_roster_plan`, `ssb_roster_plan_order`, `ssb_roster_r5_threshold`, `ssb_iafa_signed`, and `prospect_board_settings`. Each league remembers its own selected team, game date, roster moves, and so on.
 
@@ -80,32 +80,26 @@ Regression compute is cached by input-file hash (`data/regressions/ootp<version>
 
 ## Adding a new OOTP version
 
-OOTP simulator mechanics change between major versions. New mechanics produce different rating-to-stat distributions, which means coefficients calibrated against OOTP 26 sim data don't apply to OOTP 27. For a new version:
+OOTP simulator mechanics change between major versions. New mechanics produce different rating-to-stat distributions, which means coefficients calibrated against OOTP 26 sim data don't apply to OOTP 27. **The two shipped versions use different coefficient mechanisms:**
 
-1. **Drop calibration sim CSVs** into `data/regressions/ootp<new_version>/` (e.g., `data/regressions/ootp27/`). The expected files are listed in `model/src/validation.py` (`_REQUIRED_REGRESSION_CSVS`):
-   - `hitters_ratings.csv`, `pitchers_ratings.csv`
-   - `batting_sim_1.csv` through `batting_sim_5.csv`
-   - `pitching_sim_1.csv` through `pitching_sim_5.csv`
-   - `fielding_sim_1.csv` through `fielding_sim_5.csv`
-   - Optional: `calibration/` subfolder for answer-key JSONs and team DP rates
+### OOTP 26 — auto-fit from calibration sims
 
-   These come from running the OOTP simulator with a baseline ratings sheet over many sim seasons. See [`model/docs/pipelines/REGRESSIONS_IMPLEMENTATION.md`](../model/docs/pipelines/REGRESSIONS_IMPLEMENTATION.md) for the calibration methodology.
+1. Calibration sim CSVs live in `data/regressions/ootp26/` (files listed in `model/src/validation.py` `_REQUIRED_REGRESSION_CSVS`: `hitters_ratings.csv`, `pitchers_ratings.csv`, `batting/pitching/fielding_sim_1..5.csv`, optional `calibration/`). See [`model/docs/pipelines/REGRESSIONS_IMPLEMENTATION.md`](../model/docs/pipelines/REGRESSIONS_IMPLEMENTATION.md).
+2. At build time `export._detect_metadata` calls `generate_regression_coefficients(regressions_dir)`, which fits all hitting/pitching/fielding coefficients from the sims (single-segment, split at rating 50) and injects them via `compose_data_points`; cached in `.regressions_cache.json`. The hardcoded 26 values in `data_points.py` are the **no-sims fallback**.
 
-2. **Configure your new-version league** with `ootpVersion: "27"` in `league.json`. The pipeline routes regressions from `data/regressions/ootp27/` automatically based on this field.
+### OOTP 27 — hardcoded piecewise constants (NOT the auto-fit)
 
-3. **Run the build.** That's it — there's no manual coefficient merge. At build time `export._detect_metadata` calls `generate_regression_coefficients(regressions_dir)`, which fits *all* hitting/pitching/fielding coefficients from the new sims and injects them via `compose_data_points`. The fit is cached in a new `.regressions_cache.json` next to the inputs (keyed on a data hash + cache version), so only the first build on the new version pays the cost. The hardcoded OOTP 26 values in `data_points.py` stay put as the **no-sims fallback** — you don't edit them.
+The OOTP-27 calibration is **multi-knot piecewise-linear** (up to 4 knots, off-50 breaks, flat-end clamps, two placement regimes) — a structure the single-segment auto-fit **cannot represent**. So 27 does not use `data/regressions/ootp27/` sims at build time at all (decision PD3b). Instead:
 
-   (You can pre-warm / sanity-check the fit without a full build, from `model/`:
-   ```bash
-   python3 -c "from src.regressions import generate_regression_coefficients; from pathlib import Path; generate_regression_coefficients(Path('../data/regressions/ootp27'))"
-   ```
-   )
+- The constants live in `model/src/data_points.py` **Section 1b** (`DEFAULT_HITTING/PITCHING/FIELDING_REG_COEFFS_27`, built from `PiecewiseCoeffs`), transcribed from the test-league calibration (`analysis/test-league-design/outputs/KNOT_DECISIONS_27.md` in the research workspace). Provenance + audit: [`AUDIT_27.md`](AUDIT_27.md).
+- A league with `ootpVersion: "27"` in `league.json` routes to these constants in `export._detect_metadata` (threaded via `settings.ootp_version`); the auto-fit is bypassed. Sim CSVs in `data/regressions/ootp27/`, if present, are cross-check material only — never the build.
+- Guarded by `model/tests/test_regressions_27.py` (constants vs the calibration tables, evaluator continuity/anchor, 26-dispatch no-op proofs, end-to-end spot checks).
 
-OOTP 26 is the only version this project ships with calibration sims for. OOTP 27 calibration (producing those sims) is a future task.
+**For a future version (28+):** decide first which mechanism fits. If the new calibration is representable by the single-segment fit, follow the 26 path (drop sims + build). If it is knotted/clamped like 27, add a `DEFAULT_*_REG_COEFFS_28` constants section + a routing branch, following the 27 pattern.
 
 ## Sharing data between leagues on different OOTP versions
 
-There's no automatic sharing. Each version gets its own `data/regressions/ootp<version>/`, and its coefficients are computed from those sims at build time (the hardcoded `data_points.py` values are a shared no-sims fallback, not per-version constants). Leagues on the same version share regressions transparently; leagues on different versions are fully independent.
+There's no automatic sharing. Same-version leagues share their coefficient source transparently (26: the cached sims fit; 27: the constants). Leagues on different versions are fully independent.
 
 ## Common pitfalls
 
