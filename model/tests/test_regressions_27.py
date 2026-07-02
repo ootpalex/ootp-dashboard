@@ -208,28 +208,30 @@ class TestSliceConstants:
         c = DEFAULT_HITTING_REG_COEFFS_27.eye
         assert isinstance(c, PiecewiseCoeffs) and c.relative
         # stored offsets + calibration avg == the KNOT_DECISIONS_27 absolute knots
+        # (H-pool re-lock 2026-07-02)
         abs_knots = tuple(k + _CALIB_AVG_27["eye"] for k in c.knots)
-        assert abs_knots == pytest.approx((40.0, 67.0, 79.0))
-        assert c.slopes == (0.00271, 0.00225, 0.00150, 0.00313)
+        assert abs_knots == pytest.approx((26.0, 49.0, 79.0))
+        assert c.slopes == (0.00056, 0.00256, 0.00176, 0.00579)
 
     def test_speed_matches_knot_decisions(self):
         c = DEFAULT_HITTING_REG_COEFFS_27.speed
         assert isinstance(c, PiecewiseCoeffs) and not c.relative and c.clamp_lo
         assert c.knots == (34.0, 50.0)
-        assert c.slopes == (0.0, 0.00315, 0.00284)
+        assert c.slopes == (0.0, 0.00312, 0.00281)
 
     def test_sb_pct_carries_canonical_c0(self):
         c = DEFAULT_HITTING_REG_COEFFS_27.sb_pct
         assert isinstance(c, PiecewiseCoeffs) and not c.relative and c.clamp_lo
-        assert c.knots == (26.0, 70.0) and c.slopes == (0.0, 0.01216, 0.00146)
+        # H-pool re-lock 2026-07-02: the engine STEP form (jump across STE 34→36)
+        assert c.knots == (34.0, 36.0, 72.0) and c.slopes == (0.0, 0.09328, 0.01014, 0.00157)
         assert c.c0 == HittingRegressionCoeffs().sb_pct.c0   # 26 canonical intercept
 
     def test_rp_stu_matches_knot_decisions(self):
         c = DEFAULT_PITCHING_REG_COEFFS_27.rp_stu
         assert isinstance(c, PiecewiseCoeffs) and c.relative
         abs_knots = tuple(k + _CALIB_AVG_27["rp_stu"] for k in c.knots)
-        assert abs_knots == pytest.approx((33.0, 75.0))
-        assert c.slopes == (0.00846, 0.00389, 0.00649)
+        assert abs_knots == pytest.approx((41.0, 78.0))
+        assert c.slopes == (0.00622, 0.00339, 0.01025)
 
     def test_ss_range_matches_knot_decisions(self):
         c = DEFAULT_FIELDING_REG_COEFFS_27.ss_pm_rng_slope
@@ -249,48 +251,46 @@ class TestSliceDeltasByHand:
     """One hand-computed delta per applicator family (spec §8.2: below / mid / above knots)."""
 
     def test_eye_offsets_regime(self):
-        # League avg EYE 52.0 → knots at 52 + (40−55.447, 67−55.447, 79−55.447)
-        #                              = (36.553, 63.553, 75.553).
+        # League avg EYE 52.0 → knots at 52 + (26−56.038, 49−56.038, 79−56.038)
+        #                              = (21.962, 44.962, 74.962).
         c = DEFAULT_HITTING_REG_COEFFS_27.eye
         avg = 52.0
-        # rating 60 (mid segment 2): delta = 0.00225 * (60 − 52) = 0.018
+        # rating 60 (segment 3, same as the avg): delta = 0.00176 * (60 − 52)
         got = rating_to_delta(pd.Series([60.0]), avg, c).iloc[0]
-        assert got == pytest.approx(0.00225 * 8.0, abs=1e-12)
-        # rating 30 (below all knots): −[0.00271*(36.553−30) + 0.00225*(52−36.553)]
+        assert got == pytest.approx(0.00176 * 8.0, abs=1e-9)
+        # rating 30 (segment 2): −[0.00256*(44.962−30) + 0.00176*(52−44.962)]
         got = rating_to_delta(pd.Series([30.0]), avg, c).iloc[0]
-        want = -(0.00271 * (36.553 - 30.0) + 0.00225 * (52.0 - 36.553))
+        want = -(0.00256 * (44.962 - 30.0) + 0.00176 * (52.0 - 44.962))
         assert got == pytest.approx(want, abs=1e-9)
-        # rating 80 (above all knots): 0.00225*(63.553−52) + 0.00150*(75.553−63.553) + 0.00313*(80−75.553)
+        # rating 80 (above all knots): 0.00176*(74.962−52) + 0.00579*(80−74.962)
         got = rating_to_delta(pd.Series([80.0]), avg, c).iloc[0]
-        want = (0.00225 * (63.553 - 52.0) + 0.00150 * (75.553 - 63.553)
-                + 0.00313 * (80.0 - 75.553))
+        want = 0.00176 * (74.962 - 52.0) + 0.00579 * (80.0 - 74.962)
         assert got == pytest.approx(want, abs=1e-9)
 
     def test_speed_absolute_floor(self):
-        # SPE floor: below 34 the curve is flat — a 20 and a 34 both sit
-        # −[0.00314*(50−34) + 0.00280*(avg−50)] below a league-average 55.0 runner... computed:
+        # SPE floor: below 34 the curve is flat — a 20 and a 34 sit together.
         c = DEFAULT_HITTING_REG_COEFFS_27.speed
         avg = 47.61   # 26-default league avg speed; knots are ABSOLUTE (34, 50)
         d20 = rating_to_delta(pd.Series([20.0]), avg, c).iloc[0]
         d34 = rating_to_delta(pd.Series([34.0]), avg, c).iloc[0]
         assert d20 == d34                                  # clamp floor
-        assert d34 == pytest.approx(-(0.00315 * (47.61 - 34.0)), abs=1e-9)
-        # above the 50 knee: delta(60) = 0.00314*(50−47.61) + 0.00280*(60−50)
+        assert d34 == pytest.approx(-(0.00312 * (47.61 - 34.0)), abs=1e-9)
+        # above the 50 knee: delta(60) = 0.00312*(50−47.61) + 0.00281*(60−50)
         d60 = rating_to_delta(pd.Series([60.0]), avg, c).iloc[0]
-        assert d60 == pytest.approx(0.00315 * (50.0 - 47.61) + 0.00284 * 10.0, abs=1e-9)
+        assert d60 == pytest.approx(0.00312 * (50.0 - 47.61) + 0.00281 * 10.0, abs=1e-9)
 
     def test_sb_pct_poly_with_c0(self):
         c = DEFAULT_HITTING_REG_COEFFS_27.sb_pct
         avg = 50.46
-        # STE 80 (above the 70 knee; avg inside the 26–70 rise segment):
-        #   c0 + 0.01086*(70−50.46) + 0.00211*(80−70)
+        # STE 80 (above the 72 knee; avg inside the 36–72 rise segment):
+        #   c0 + 0.01014*(72−50.46) + 0.00157*(80−72)
         got = baserunning_poly(pd.Series([80.0]), avg, c).iloc[0]
-        want = c.c0 + 0.01216 * (70.0 - 50.46) + 0.00146 * 10.0
+        want = c.c0 + 0.01014 * (72.0 - 50.46) + 0.00157 * 8.0
         assert got == pytest.approx(want, abs=1e-9)
-        # clamp-lo floor: STE 20 == STE 26
+        # clamp-lo floor: STE 20 == STE 34 (the step form's floor knee)
         d20 = baserunning_poly(pd.Series([20.0]), avg, c).iloc[0]
-        d26 = baserunning_poly(pd.Series([26.0]), avg, c).iloc[0]
-        assert d20 == d26
+        d34 = baserunning_poly(pd.Series([34.0]), avg, c).iloc[0]
+        assert d20 == d34
 
     def test_ss_range_piecewise(self):
         c = DEFAULT_FIELDING_REG_COEFFS_27.ss_pm_rng_slope
@@ -316,13 +316,13 @@ class TestSliceDeltasByHand:
     def test_rp_stu_sp_pos_plus5_and_offsets(self):
         c = DEFAULT_PITCHING_REG_COEFFS_27.rp_stu
         avg = 55.0
-        # Knots at avg + (33−56.905, 75−56.905) = (31.095, 73.095).
-        # CL @ 60 (mid segment): 0.00389 * (60 − 55)
+        # Knots at avg + (41−57.217, 78−57.217) = (38.783, 75.783).
+        # CL @ 60 (mid segment): 0.00339 * (60 − 55)
         got = _stu_delta_rp(pd.Series([60.0]), avg, c, pd.Series(["CL"])).iloc[0]
-        assert got == pytest.approx(0.00389 * 5.0, abs=1e-9)
-        # SP POS @ 60 → adjusted 65: 0.00389 * (65 − 55)
+        assert got == pytest.approx(0.00339 * 5.0, abs=1e-9)
+        # SP POS @ 60 → adjusted 65: 0.00339 * (65 − 55)
         got = _stu_delta_rp(pd.Series([60.0]), avg, c, pd.Series(["SP"])).iloc[0]
-        assert got == pytest.approx(0.00389 * 10.0, abs=1e-9)
+        assert got == pytest.approx(0.00339 * 10.0, abs=1e-9)
 
 
 class TestStuffCap27:
@@ -366,35 +366,38 @@ class TestStuffCap27:
 # (absolute knots, slopes, relative?, clamp_lo, clamp_hi, c0) — knots listed ABSOLUTE for
 # relative rows too; the test converts stored offsets back via _CALIB_AVG_27.
 _HIT_EXPECTED = {
-    "eye":    ((40, 67, 79), (0.00271, 0.00225, 0.00150, 0.00313), True, False, False, None),
-    "power":  ((50, 80), (0.00086, 0.00141, 0.00229), True, False, False, None),
-    "k":      ((24, 29, 69), (0.0, -0.02904, -0.00574, -0.00301), True, True, False, None),
-    "babip":  ((26, 33), (0.01305, 0.00385, 0.00201), True, False, False, None),
-    "gap":    ((25, 51, 76), (0.01152, 0.00461, 0.00307, 0.00489), True, False, False, None),
-    "speed":  ((34, 50), (0.0, 0.00315, 0.00284), False, True, False, None),
-    "sba":    ((37, 55, 72), (0.00075, 0.00181, 0.00639, 0.01157), False, False, False,
+    # H-pool RE-LOCK 2026-07-02 (de-quantized frame) — KNOT_DECISIONS_27.md
+    "eye":    ((26, 49, 79), (0.00056, 0.00256, 0.00176, 0.00579), True, False, False, None),
+    "power":  ((36, 79), (0.00042, 0.00116, 0.00400), True, False, False, None),
+    "k":      ((15, 44), (0.0, -0.00897, -0.00483), True, True, False, None),
+    "babip":  ((22, 43, 78), (0.00422, 0.00282, 0.00192, 0.00415), True, False, False, None),
+    "gap":    ((30, 49, 79), (0.00389, 0.00584, 0.00237, 0.00893), True, False, False, None),
+    "speed":  ((34, 50), (0.0, 0.00312, 0.00281), False, True, False, None),
+    "sba":    ((37, 55, 72), (0.00076, 0.00182, 0.00642, 0.01172), False, False, False,
                0.009116895606791357),
-    "sb_pct": ((26, 70), (0.0, 0.01216, 0.00146), False, True, False, -0.13320702812059265),
+    "sb_pct": ((34, 36, 72), (0.0, 0.09328, 0.01014, 0.00157), False, True, False,
+               -0.13320702812059265),
     "ubr":    ((), (0.00019,), False, False, False, 3.093821597831973e-05),
 }
 _PIT_EXPECTED = {
-    "sp_stu":   ((32, 52), (0.01449, 0.00361, 0.00425), True, False, False, None),
-    "sp_con":   ((27, 35, 49, 63), (-0.01596, -0.00673, -0.00274, -0.00161, -0.00106),
+    # H-pool RE-LOCK 2026-07-02 — EXCEPT sp_hrr/rp_hrr (C-pool locks KEPT; real-27 referee).
+    "sp_stu":   ((32, 42, 78), (0.01315, 0.00603, 0.00339, 0.01078), True, False, False, None),
+    "sp_con":   ((22, 42, 50, 78), (-0.00573, -0.00475, -0.00291, -0.00125, -0.00182),
                  True, False, False, None),
     "sp_hrr":   ((30, 39, 52, 65), (-0.00481, -0.00296, -0.00159, -0.00087, -0.00048),
                  True, False, False, None),
-    "sp_babip": ((), (-0.00070,), True, False, False, None),
-    "rp_stu":   ((33, 75), (0.00846, 0.00389, 0.00649), True, False, False, None),
-    "rp_con":   ((27, 35, 48, 63), (-0.01555, -0.00654, -0.00283, -0.00156, -0.00110),
+    "sp_babip": ((), (-0.00066,), True, False, False, None),
+    "rp_stu":   ((41, 78), (0.00622, 0.00339, 0.01025), True, False, False, None),
+    "rp_con":   ((23, 42, 50, 78), (-0.00549, -0.00472, -0.00290, -0.00123, -0.00175),
                  True, False, False, None),
     "rp_hrr":   ((31, 40, 53, 67), (-0.00449, -0.00259, -0.00159, -0.00081, -0.00037),
                  True, False, False, None),
-    "rp_babip": ((), (-0.00058,), True, False, False, None),
-    "sba":      ((), (-0.00145,), False, False, False, 0.0007224917422994285),
-    "rp_sba":   ((), (-0.00102,), False, False, False, 0.0007224917422994285),
-    "sp_sb_pct": ((42, 63), (-0.00157, -0.00059, -0.00199), False, False, False,
+    "rp_babip": ((), (-0.00057,), True, False, False, None),
+    "sba":      ((), (-0.00148,), False, False, False, 0.0007224917422994285),
+    "rp_sba":   ((), (-0.00105,), False, False, False, 0.0007224917422994285),
+    "sp_sb_pct": ((42, 63), (-0.00159, -0.00059, -0.00202), False, False, False,
                   -0.01179124984884817),
-    "rp_sb_pct": ((42, 64), (-0.00178, -0.00067, -0.00240), False, False, False,
+    "rp_sb_pct": ((42, 64), (-0.00181, -0.00069, -0.00243), False, False, False,
                   -0.007441413482453901),
 }
 # Fielding piecewise rows (all ABSOLUTE, no c0).
@@ -531,8 +534,12 @@ class TestSynthetic27EndToEnd:
         out = compute_hitter_batting(p, neutral_park_deltas(), neutral_adjustments(),
                                      0.5, dp=dp27_hit)
         lg = dp27_hit.league
-        # knots at avg_eye + (40,67,79 − 55.447): 49.82−15.447=34.373 · 61.373 · 73.373
-        eye_delta = 0.00225 * (61.373 - lg.avg_eye) + 0.00150 * (65.0 - 61.373)
+        # knots at avg_eye + (26,49,79 − 56.038); with avg_eye 49.82 the 49-knot lands at
+        # 42.782 and the 79-knot at 72.782 — EYE 65 and the avg share segment 3 (0.00176).
+        k2 = lg.avg_eye + (49.0 - 56.038)
+        k3 = lg.avg_eye + (79.0 - 56.038)
+        assert k2 < lg.avg_eye < 65.0 < k3        # segment layout sanity
+        eye_delta = 0.00176 * (65.0 - lg.avg_eye)
         hbp = lg.hbp_rate * lg.pa
         want = (eye_delta + lg.bb_rate) * (lg.pa - hbp)
         assert out["uBB vR"].iloc[0] == pytest.approx(want, rel=1e-9)
@@ -546,8 +553,10 @@ class TestSynthetic27EndToEnd:
         out = compute_hitter_batting(p, neutral_park_deltas(), neutral_adjustments(),
                                      0.5, dp=dp27_hit)
         lg = dp27_hit.league
+        # step form: avg_steal sits in the 36–72 segment (0.01014), STE 80 above the 72 knee
+        assert 36.0 < lg.avg_steal < 72.0
         want = (-0.13320702812059265
-                + 0.01216 * (70.0 - lg.avg_steal) + 0.00146 * (80.0 - 70.0)
+                + 0.01014 * (72.0 - lg.avg_steal) + 0.00157 * (80.0 - 72.0)
                 + lg.sb_pct)
         assert out["SB%"].iloc[0] == pytest.approx(want, abs=1e-12)
 
@@ -588,18 +597,19 @@ class TestSynthetic27EndToEnd:
         dp27 = dataclasses.replace(DEFAULT_PITCHER_DP, pitching=DEFAULT_PITCHING_REG_COEFFS_27)
         out = compute_pitcher_batting(players, neutral_adjustments(), 0.5, dp=dp27)
         lp = dp27.league
-        # SP-POS in the SP section: no adjustment. Knots at avg_stu_sp + (32,52 − 50.473).
-        k1 = lp.avg_stu_sp + (32.0 - 50.473)
-        k2 = lp.avg_stu_sp + (52.0 - 50.473)
-        stu_delta = 0.00361 * (k2 - lp.avg_stu_sp) + 0.00425 * (60.0 - k2)
-        assert k1 < lp.avg_stu_sp < k2 < 60.0     # segment layout sanity
+        # SP-POS in the SP section: no adjustment. Knots at avg_stu_sp + (32,42,78 − 56.605):
+        # both the avg and STU 60 sit in segment 3 (0.00339), below the elite 78-knee.
+        k2 = lp.avg_stu_sp + (42.0 - 56.605)
+        k3 = lp.avg_stu_sp + (78.0 - 56.605)
+        stu_delta = 0.00339 * (60.0 - lp.avg_stu_sp)
+        assert k2 < lp.avg_stu_sp < 60.0 < k3     # segment layout sanity
         hbp = out["HBP vR"].iloc[0]
         ubb = out["uBB vR"].iloc[0]
         want_so = (stu_delta + lp.sp_so_rate) * (lp.bf_sp - ubb - hbp)
         assert out["SO vR"].iloc[0] == pytest.approx(want_so, rel=1e-9)
 
     def test_pit_rp_sba_split_applied(self):
-        """RP SBAT uses rp_sba (−0.00102), not the SP sba (−0.00145)."""
+        """RP SBAT uses rp_sba (−0.00105), not the SP sba (−0.00148)."""
         from src.ballparks import neutral_adjustments
         from src.pitchers import compute_pitcher_batting
 
@@ -625,7 +635,7 @@ class TestSynthetic27EndToEnd:
         lp = dp27.league
         on_first = (out["1B vR RP"] + out["uBB vR RP"] + out["HBP vR RP"]).iloc[0]
         sba_rate = (0.0007224917422994285                       # 26 canonical c0
-                    - 0.00102 * (70.0 - lp.avg_hld_rp)          # RP line, not −0.00145
+                    - 0.00105 * (70.0 - lp.avg_hld_rp)          # RP line, not −0.00148
                     + lp.rp_sba_rate)
         assert out["SBAT vR RP"].iloc[0] == pytest.approx(max(sba_rate * on_first, 0.0), rel=1e-9)
 

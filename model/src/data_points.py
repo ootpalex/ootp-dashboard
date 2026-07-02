@@ -489,10 +489,11 @@ class PitchingRegressionCoeffs:
 # these sets when the league's ootp_version == "27"; the 26 path is untouched.
 #
 # Transcription rule (spec §2/§7): RELATIVE-regime rows store knot OFFSETS = knot_abs − calib_avg
-# (calib_avg = the calibration pool's leagueAvg.display for that rating, from
-# analysis/test-league-design/outputs/viz/viz_data.json, full precision); the applicator re-adds
-# the per-league lg.avg at build time so knots slide with each league's average. ABSOLUTE-regime
-# rows (SPE/STE/RUN/HLD + all fielding) store knots at absolute display, unchanged.
+# (calib_avg = the calibration pool's leagueAvg.display for that rating — since the 2026-07-02
+# H-pool RE-LOCK from analysis/test-league-design/outputs/viz/hpool_hitpit_bins.json, except the
+# two kept Move rows whose averages stay C-pool viz_data.json; full precision); the applicator
+# re-adds the per-league lg.avg at build time so knots slide with each league's average.
+# ABSOLUTE-regime rows (SPE/STE/RUN/HLD + all fielding) store knots at absolute display, unchanged.
 # Baserunning c0s are the canonical 26 intercepts (spec §2.5/§7.4 — pooled-vs-average-rated offset).
 # Fielding consts and every 26 scalar reused for 27 keep their 26 values (spec §7.4).
 
@@ -502,11 +503,15 @@ def _rel_knots(abs_knots: tuple[float, ...], calib_avg: float) -> tuple[float, .
     return tuple(k - calib_avg for k in abs_knots)
 
 
-# Calibration pool averages (viz_data.json leagueAvg.display, full precision; spec §7 rounds to 1dp).
+# Calibration pool averages (full precision; spec §7 rounds to 1dp). RE-LOCK 2026-07-02: all rows
+# except sp_hrr/rp_hrr are the H-POOL fit-weighted averages on the de-quantized display frame
+# (hpool_hitpit_bins.json v2 leagueAvg.display) — they pair with the H-pool re-locked knots below.
+# sp_hrr/rp_hrr stay C-pool (viz_data.json): the Move rows kept their C-pool locks (real-27
+# referee rejected the H-pool candidates), and offsets = knot_abs − calib_avg move together.
 _CALIB_AVG_27 = {
-    "eye": 55.447, "power": 54.601, "k": 56.724, "babip": 53.633, "gap": 56.131,
-    "sp_stu": 50.473, "sp_con": 54.724, "sp_hrr": 54.157, "sp_babip": 51.987,
-    "rp_stu": 56.905, "rp_con": 51.005, "rp_hrr": 53.866, "rp_babip": 51.448,
+    "eye": 56.038, "power": 57.686, "k": 56.316, "babip": 57.407, "gap": 57.508,
+    "sp_stu": 56.605, "sp_con": 57.313, "sp_hrr": 54.157, "sp_babip": 52.629,
+    "rp_stu": 57.217, "rp_con": 56.308, "rp_hrr": 53.866, "rp_babip": 52.064,
 }
 
 # Every row below is transcribed from KNOT_DECISIONS_27.md (status LOCKED; fielding rows are the
@@ -517,67 +522,74 @@ _CALIB_AVG_27 = {
 # RTO singles that were spot-checked substrate-robust and locked at their C-pool values.
 
 DEFAULT_HITTING_REG_COEFFS_27 = HittingRegressionCoeffs(
-    # "Eye → uBB%": 3 knots 40/67/79 (abs), R²0.999.
+    # "Eye → uBB%": 3 knots 26/49/79 (abs). RE-LOCKED 2026-07-02 (H-pool, de-quantized frame;
+    # was C-pool 40/67/79 · 0.00271/0.00225/0.00150/0.00313). Elite 79 knee confirmed. R²0.9995.
     eye=PiecewiseCoeffs(
-        knots=_rel_knots((40.0, 67.0, 79.0), _CALIB_AVG_27["eye"]),
-        slopes=(0.00271, 0.00225, 0.00150, 0.00313),
+        knots=_rel_knots((26.0, 49.0, 79.0), _CALIB_AVG_27["eye"]),
+        slopes=(0.00056, 0.00256, 0.00176, 0.00579),
         relative=True,
     ),
-    # "Power → HR%": 2 knots 50/80, accelerating convex. R²—see KNOT_DECISIONS.
+    # "Power → HR%": 2 knots 36/79, convex w/ elite surge. RE-LOCKED 2026-07-02 (H-pool,
+    # de-quantized frame; was C-pool 50/80 · 0.00086/0.00141/0.00229). R²0.9994.
     power=PiecewiseCoeffs(
-        knots=_rel_knots((50.0, 80.0), _CALIB_AVG_27["power"]),
-        slopes=(0.00086, 0.00141, 0.00229),
+        knots=_rel_knots((36.0, 79.0), _CALIB_AVG_27["power"]),
+        slopes=(0.00042, 0.00116, 0.00400),
         relative=True,
     ),
-    # "AvoidK → K%": clamp-low floor ≤24 (off-band ~55% K% ceiling), knee 24→29, R²0.998.
+    # "AvoidK → K%": clamp-low floor ≤15 (K% ceiling ~0.57), single in-band slope above 44.
+    # RE-LOCKED 2026-07-02 (H-pool, de-quantized frame; was C-pool 24/29/69). R²0.9990.
     k=PiecewiseCoeffs(
-        knots=_rel_knots((24.0, 29.0, 69.0), _CALIB_AVG_27["k"]),
-        slopes=(0.0, -0.02904, -0.00574, -0.00301),
+        knots=_rel_knots((15.0, 44.0), _CALIB_AVG_27["k"]),
+        slopes=(0.0, -0.00897, -0.00483),
         relative=True,
         clamp_lo=True,
     ),
-    # "BABIP → BABIP": 2 knots 26/33 (both just below band), R²0.999.
+    # "BABIP → BABIP": 3 knots 22/43/78 (diminishing low + elite re-steepen). RE-LOCKED
+    # 2026-07-02 (H-pool, de-quantized frame; was C-pool 26/33 · 0.01305/0.00385/0.00201). R²0.9997.
     babip=PiecewiseCoeffs(
-        knots=_rel_knots((26.0, 33.0), _CALIB_AVG_27["babip"]),
-        slopes=(0.01305, 0.00385, 0.00201),
+        knots=_rel_knots((22.0, 43.0, 78.0), _CALIB_AVG_27["babip"]),
+        slopes=(0.00422, 0.00282, 0.00192, 0.00415),
         relative=True,
     ),
-    # "Gap → XBH%": 3 knots 25/51/76, monotone w/ elite re-accel. R²0.999.
+    # "Gap → XBH%": 3 knots 30/49/79, S-shape w/ elite surge. RE-LOCKED 2026-07-02 (H-pool,
+    # de-quantized frame; was C-pool 25/51/76 · 0.01152/0.00461/0.00307/0.00489). R²0.9994.
     gap=PiecewiseCoeffs(
-        knots=_rel_knots((25.0, 51.0, 76.0), _CALIB_AVG_27["gap"]),
-        slopes=(0.01152, 0.00461, 0.00307, 0.00489),
+        knots=_rel_knots((30.0, 49.0, 79.0), _CALIB_AVG_27["gap"]),
+        slopes=(0.00389, 0.00584, 0.00237, 0.00893),
         relative=True,
     ),
-    # "Speed → 3B%": clamp-low floor <34, knee 50 (ABSOLUTE — SPE). H-pool re-base 2026-07-02
-    # (realistic OF defense; slopes at locked knots ≈ C-pool — the context worry dissolved). R²1.000.
+    # "Speed → 3B%": clamp-low floor <34, knee 50 (ABSOLUTE — SPE). RE-LOCK 2026-07-02: free
+    # H-pool K-ladder CONFIRMS the knots; slopes under the v2 conventions (≤1% moves). R²0.999.
     speed=PiecewiseCoeffs(
         knots=(34.0, 50.0),
-        slopes=(0.0, 0.00315, 0.00284),
+        slopes=(0.0, 0.00312, 0.00281),
         relative=False,
         clamp_lo=True,
     ),
     # BASERUNNING[hit] "Steal → SBA%": 3 knots 37/55/72, monotone-accelerating (ABSOLUTE — STE);
-    # c0 = canonical 26 intercept.
-    # H-pool re-base 2026-07-02 (realistic defense/battery; slopes at locked knots, ≤6% moves).
+    # c0 = canonical 26 intercept. RE-LOCK 2026-07-02: free H-pool K-ladder CONFIRMS the knots
+    # (an extra off-real-band 84 decel knee rejected); slopes ≤1.3% moves. R²0.997.
     sba=PiecewiseCoeffs(
         knots=(37.0, 55.0, 72.0),
-        slopes=(0.00075, 0.00181, 0.00639, 0.01157),
+        slopes=(0.00076, 0.00182, 0.00642, 0.01172),
         relative=False,
         c0=0.009116895606791357,
     ),
-    # BASERUNNING[hit] "Steal → SB%" (re-fit 2026-07-02, user-flagged): flat floor ≤26 (both
-    # substrates show it — SB% of non-stealers bottoms out ~0.3), rise, decel ≥70 (locked knee
-    # kept). C-pool clamp-lo fit R²0.983 (beats the old K=1's 0.981); c0 = canonical 26.
-    # H-pool re-base 2026-07-02 (realistic catcher arms — the flagged substrate divergence is
-    # resolved by adopting the H-pool: rise steeper, elite decel gentler than C-pool). R²0.985.
+    # BASERUNNING[hit] "Steal → SB%" — STEP FORM, RE-LOCKED 2026-07-02 (free H-pool K-ladder):
+    # SB% is a hard engine step at STE≈35 — flat ~0.29 floor ≤34, jump to ~0.50 across 34→36,
+    # then +0.0101 to 72, decel above. The step is on BOTH substrates (C-pool bins jump
+    # 0.366→0.503 across STE 34); the previous clamp-lo [26,70] smeared it (R²0.979→0.997).
+    # c0 = canonical 26. ⚠ the 34–36 segment is steep (±0.09/pt) — sensitive to display
+    # quantization of real inputs around STE 35 (documented in KNOT_DECISIONS_27).
     sb_pct=PiecewiseCoeffs(
-        knots=(26.0, 70.0),
-        slopes=(0.0, 0.01216, 0.00146),
+        knots=(34.0, 36.0, 72.0),
+        slopes=(0.0, 0.09328, 0.01014, 0.00157),
         relative=False,
         clamp_lo=True,
         c0=-0.13320702812059265,
     ),
     # BASERUNNING[hit] "Running → UBR/opp": single line (ABSOLUTE — RUN); c0 = canonical 26.
+    # RE-LOCK 2026-07-02: single CONFIRMED (free ladder's ≥75 flattening immaterial).
     ubr=PiecewiseCoeffs(
         knots=(),
         slopes=(0.00019,),
@@ -587,75 +599,86 @@ DEFAULT_HITTING_REG_COEFFS_27 = HittingRegressionCoeffs(
 )
 
 DEFAULT_PITCHING_REG_COEFFS_27 = PitchingRegressionCoeffs(
-    # [SP] "Stuff → K%": 2 knots 32/52. R²0.998. (SP section applies POS −5 upstream, as in 26.)
+    # [SP] "Stuff → K%": 3 knots 32/42/78 w/ elite convexity ≥78 (real, D24). RE-LOCKED
+    # 2026-07-02 (H-pool, de-quantized frame; was C-pool 32/52 · 0.01449/0.00361/0.00425).
+    # (SP section applies POS −5 upstream, as in 26.) R²0.9994.
     sp_stu=PiecewiseCoeffs(
-        knots=_rel_knots((32.0, 52.0), _CALIB_AVG_27["sp_stu"]),
-        slopes=(0.01449, 0.00361, 0.00425),
+        knots=_rel_knots((32.0, 42.0, 78.0), _CALIB_AVG_27["sp_stu"]),
+        slopes=(0.01315, 0.00603, 0.00339, 0.01078),
         relative=True,
     ),
-    # [SP] "Control → uBB%": clean-4, monotone diminishing returns. R²0.999.
+    # [SP] "Control → uBB%": K=4, monotone diminishing w/ mild elite re-steepen ≥78. RE-LOCKED
+    # 2026-07-02 (H-pool, de-quantized frame; was C-pool 27/35/49/63). R²0.9998.
     sp_con=PiecewiseCoeffs(
-        knots=_rel_knots((27.0, 35.0, 49.0, 63.0), _CALIB_AVG_27["sp_con"]),
-        slopes=(-0.01596, -0.00673, -0.00274, -0.00161, -0.00106),
+        knots=_rel_knots((22.0, 42.0, 50.0, 78.0), _CALIB_AVG_27["sp_con"]),
+        slopes=(-0.00573, -0.00475, -0.00291, -0.00125, -0.00182),
         relative=True,
     ),
-    # [SP] "Move → HR%": clean-4, monotone. R²0.999.
+    # [SP] "Move → HR%": clean-4, monotone. C-POOL LOCK KEPT at the 2026-07-02 re-lock: the
+    # real-27 referee rejects the H-pool candidate (1.72× real, z2.2) — see KNOT_DECISIONS_27 +
+    # POOL_RECONCILIATION_PLAN §2 (knee is absolute-anchored ~50; H-pool avg 63.5 misplaces it
+    # under relative storage). calib avg stays C-pool 54.157. R²0.999.
     sp_hrr=PiecewiseCoeffs(
         knots=_rel_knots((30.0, 39.0, 52.0, 65.0), _CALIB_AVG_27["sp_hrr"]),
         slopes=(-0.00481, -0.00296, -0.00159, -0.00087, -0.00048),
         relative=True,
     ),
-    # [SP] "pbabip → BABIP": single line −0.00070 (D-PBABIP: ≈26; OOTP import ignores imported
-    # pbabip, so this channel is immaterial — wired to the locked 27 table value).
-    sp_babip=PiecewiseCoeffs(knots=(), slopes=(-0.00070,), relative=True),
-    # [RP] "Stuff → K%": 2 knots 33/75 (elite-RP re-steepen). R²0.998. Consumed via _stu_delta_rp
-    # (SP-POS +5 preserved); displayed Stuff capped at 88 first (D24).
+    # [SP] "pbabip → BABIP": single line −0.00066. RE-LOCKED 2026-07-02 (H-pool, its threshold
+    # map came free; was −0.00070). OOTP import ignores imported pbabip — immaterial channel.
+    sp_babip=PiecewiseCoeffs(knots=(), slopes=(-0.00066,), relative=True),
+    # [RP] "Stuff → K%": 2 knots 41/78 (elite re-steepen ≈ the C-pool's 75). RE-LOCKED
+    # 2026-07-02 (H-pool, de-quantized frame; was C-pool 33/75 · 0.00846/0.00389/0.00649).
+    # Consumed via _stu_delta_rp (SP-POS +5 preserved); displayed Stuff capped at 88 first (D24).
     rp_stu=PiecewiseCoeffs(
-        knots=_rel_knots((33.0, 75.0), _CALIB_AVG_27["rp_stu"]),
-        slopes=(0.00846, 0.00389, 0.00649),
+        knots=_rel_knots((41.0, 78.0), _CALIB_AVG_27["rp_stu"]),
+        slopes=(0.00622, 0.00339, 0.01025),
         relative=True,
     ),
-    # [RP] "Control → uBB%": clean-4. R²0.999.
+    # [RP] "Control → uBB%": K=4, mirrors SP. RE-LOCKED 2026-07-02 (H-pool, de-quantized frame;
+    # was C-pool 27/35/48/63). R²0.9998.
     rp_con=PiecewiseCoeffs(
-        knots=_rel_knots((27.0, 35.0, 48.0, 63.0), _CALIB_AVG_27["rp_con"]),
-        slopes=(-0.01555, -0.00654, -0.00283, -0.00156, -0.00110),
+        knots=_rel_knots((23.0, 42.0, 50.0, 78.0), _CALIB_AVG_27["rp_con"]),
+        slopes=(-0.00549, -0.00472, -0.00290, -0.00123, -0.00175),
         relative=True,
     ),
-    # [RP] "Move → HR%": clean-4. R²1.000.
+    # [RP] "Move → HR%": clean-4, monotone. C-POOL LOCK KEPT (as sp_hrr — referee rejection
+    # 2026-07-02; H-pool candidate would land 1.46× real). calib avg stays C-pool 53.866. R²1.000.
     rp_hrr=PiecewiseCoeffs(
         knots=_rel_knots((31.0, 40.0, 53.0, 67.0), _CALIB_AVG_27["rp_hrr"]),
         slopes=(-0.00449, -0.00259, -0.00159, -0.00081, -0.00037),
         relative=True,
     ),
-    # [RP] "pbabip → BABIP": single line −0.00058 (D-PBABIP, as sp_babip).
-    rp_babip=PiecewiseCoeffs(knots=(), slopes=(-0.00058,), relative=True),
+    # [RP] "pbabip → BABIP": single line −0.00057. RE-LOCKED 2026-07-02 (as sp_babip; was −0.00058).
+    rp_babip=PiecewiseCoeffs(knots=(), slopes=(-0.00057,), relative=True),
     # BASERUNNING[pit] "SP Hold → SBA%": single line (ABSOLUTE — HLD). 27 splits SP/RP
     # (D-SBASPLIT): `sba` carries the SP line, `rp_sba` the RP line; both reuse the shared 26
-    # canonical c0 (26 had a single SP/RP sba intercept).
-    # H-pool re-base 2026-07-02 (battery-routed; realistic defense substrate).
+    # canonical c0 (26 had a single SP/RP sba intercept). RE-LOCK 2026-07-02: singles CONFIRMED
+    # by free ladder; slopes under the v2 conventions (roster-role split; ≤3% moves).
     sba=PiecewiseCoeffs(
         knots=(),
-        slopes=(-0.00145,),
+        slopes=(-0.00148,),
         relative=False,
         c0=0.0007224917422994285,
     ),
     rp_sba=PiecewiseCoeffs(
         knots=(),
-        slopes=(-0.00102,),
+        slopes=(-0.00105,),
         relative=False,
         c0=0.0007224917422994285,
     ),
     # BASERUNNING[pit] "SP Hold → SB%": 2 knots 42/63 (ABSOLUTE); c0 = canonical 26 sp_sb_pct.
+    # RE-LOCK 2026-07-02: knots CONFIRMED (free [40,64] within noise); slopes ≤1.5% moves.
     sp_sb_pct=PiecewiseCoeffs(
         knots=(42.0, 63.0),
-        slopes=(-0.00157, -0.00059, -0.00199),
+        slopes=(-0.00159, -0.00059, -0.00202),
         relative=False,
         c0=-0.01179124984884817,
     ),
     # BASERUNNING[pit] "RP Hold → SB%": 2 knots 42/64 (ABSOLUTE); c0 = canonical 26 rp_sb_pct.
+    # RE-LOCK 2026-07-02: knots CONFIRMED (free [45,64] within noise); slopes ≤3% moves.
     rp_sb_pct=PiecewiseCoeffs(
         knots=(42.0, 64.0),
-        slopes=(-0.00178, -0.00067, -0.00240),
+        slopes=(-0.00181, -0.00069, -0.00243),
         relative=False,
         c0=-0.007441413482453901,
     ),
