@@ -1,5 +1,18 @@
 # AUDIT_27 — OOTP-27 coefficient port, audit-first record
 
+> **⚠ Post-port adversarial audit (2026-07-02) —** the hit/pit/baserunning calibration was
+> pressure-tested against a REAL OOTP-27 league (SSB 2043) + bell@27 realistic rosters:
+> `analysis/test-league-design/docs/AUDIT_HITPIT_BR_27.md`. Outcome: **hit/pit slopes validated
+> on the real 27 engine** (9 relationships at 0.82–1.19 of wired; the 26 coefficients fit worse
+> nearly everywhere) and the SP Move→HR% ALARM closed (real ratio 0.97). **One real finding: the
+> hitter Steal→SBA% canonical c0 (+0.0091, 🟡 26-borrowed below) is a bell-substrate artifact,
+> sign-wrong for realistic leagues (real-27 ≈ −0.08; bell@27 −0.010 in a 6.5× quieter run game)**
+> — the correct offset scales with the league's run environment, so no constant fixes it;
+> production over-projects steal attempts ~1.9× for average-STE players (WAR impact ≤ +0.13
+> elite / ~0 typical; inherited 26-live behavior, unchanged by this port). Recommended
+> league-adaptive fix + two smaller findings (missing SPE co-predictor; sb_pct c0 conservative)
+> are specified in the audit doc and await a design sign-off.
+
 **Date:** 2026-07-02. **Scope:** the OOTP-27 piecewise constants and applicator generalization
 landed on branch `ootp27-wiring` (`model/src/data_points.py` Section 1b, `utils.py`,
 `hitters.py`, `pitchers.py`, `settings.py`, `export.py`). Per the CLAUDE.md audit-first
