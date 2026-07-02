@@ -355,6 +355,141 @@ class TestStuffCap27:
 
 
 # ---------------------------------------------------------------------------
+# 4b. FULL constants table — every DEFAULT_*_REG_COEFFS_27 field vs KNOT_DECISIONS_27.md
+# ---------------------------------------------------------------------------
+
+# (absolute knots, slopes, relative?, clamp_lo, clamp_hi, c0) — knots listed ABSOLUTE for
+# relative rows too; the test converts stored offsets back via _CALIB_AVG_27.
+_HIT_EXPECTED = {
+    "eye":    ((40, 67, 79), (0.00271, 0.00225, 0.00150, 0.00313), True, False, False, None),
+    "power":  ((50, 80), (0.00086, 0.00141, 0.00229), True, False, False, None),
+    "k":      ((24, 29, 69), (0.0, -0.02904, -0.00574, -0.00301), True, True, False, None),
+    "babip":  ((26, 33), (0.01305, 0.00385, 0.00201), True, False, False, None),
+    "gap":    ((25, 51, 76), (0.01152, 0.00461, 0.00307, 0.00489), True, False, False, None),
+    "speed":  ((34, 50), (0.0, 0.00314, 0.00280), False, True, False, None),
+    "sba":    ((37, 55, 72), (0.00070, 0.00181, 0.00605, 0.01196), False, False, False,
+               0.009116895606791357),
+    "sb_pct": ((70,), (0.01045, 0.00255), False, False, False, -0.13320702812059265),
+    "ubr":    ((), (0.00018,), False, False, False, 3.093821597831973e-05),
+}
+_PIT_EXPECTED = {
+    "sp_stu":   ((32, 52), (0.01449, 0.00361, 0.00425), True, False, False, None),
+    "sp_con":   ((27, 35, 49, 63), (-0.01596, -0.00673, -0.00274, -0.00161, -0.00106),
+                 True, False, False, None),
+    "sp_hrr":   ((30, 39, 52, 65), (-0.00481, -0.00296, -0.00159, -0.00087, -0.00048),
+                 True, False, False, None),
+    "sp_babip": ((), (-0.00070,), True, False, False, None),
+    "rp_stu":   ((33, 75), (0.00846, 0.00389, 0.00649), True, False, False, None),
+    "rp_con":   ((27, 35, 48, 63), (-0.01555, -0.00654, -0.00283, -0.00156, -0.00110),
+                 True, False, False, None),
+    "rp_hrr":   ((31, 40, 53, 67), (-0.00449, -0.00259, -0.00159, -0.00081, -0.00037),
+                 True, False, False, None),
+    "rp_babip": ((), (-0.00058,), True, False, False, None),
+    "sba":      ((), (-0.00133,), False, False, False, 0.0007224917422994285),
+    "rp_sba":   ((), (-0.00096,), False, False, False, 0.0007224917422994285),
+    "sp_sb_pct": ((42, 63), (-0.00218, -0.00058, -0.00287), False, False, False,
+                  -0.01179124984884817),
+    "rp_sb_pct": ((42, 64), (-0.00241, -0.00080, -0.00346), False, False, False,
+                  -0.007441413482453901),
+}
+# Fielding piecewise rows (all ABSOLUTE, no c0).
+_FLD_PW_EXPECTED = {
+    "ss_pm_rng_slope":     ((62, 68), (0.00052, 0.00190, 0.00654), False, False),
+    "cf_pm_slope":         ((62, 66, 71), (0.00009, 0.00665, 0.01200, 0.0), False, True),
+    "second_pm_rng_slope": ((60, 69), (0.00067, 0.00879, 0.00112), False, False),
+    "first_pm_rng_slope":  ((51,), (0.00144, 0.00047), False, False),
+    "lf_pm_slope":         ((48, 56), (0.00125, 0.00715, 0.0), False, True),
+    "rf_pm_slope":         ((50, 57), (0.00075, 0.00676, 0.0), False, True),
+    "c_frm_slope":         ((37, 73), (0.0, 0.00120, 0.0), True, True),
+}
+# Fielding single-line 27 scalars.
+_FLD_SCALAR_EXPECTED = {
+    "third_pm_rng_slope": 0.00269,
+    "second_pm_arm_slope": 0.00074, "third_pm_arm_slope": 0.00283, "ss_pm_arm_slope": 0.00091,
+    "first_err_slope": -0.00004, "second_err_slope": -0.00008, "third_err_slope": -0.00025,
+    "ss_err_slope": -0.00022, "lf_err_slope": -0.00022, "cf_err_slope": -0.00016,
+    "rf_err_slope": -0.00028,
+    "lf_arm_slope": 0.00018, "cf_arm_slope": 0.00019, "rf_arm_slope": 0.00024,
+    "c_sba_slope": -0.00086, "c_rto_slope": 0.00119,
+}
+# Fields that must KEEP their 26 values (🟡 borrowed: consts, D-1BHT, D-DP).
+_FLD_KEEP_26 = [
+    "c_frm_const", "c_sba_const", "c_rto_const",
+    "first_pm_const", "second_pm_const", "third_pm_const", "ss_pm_const",
+    "lf_pm_const", "cf_pm_const", "rf_pm_const",
+    "first_err_const", "second_err_const", "third_err_const", "ss_err_const",
+    "lf_err_const", "cf_err_const", "rf_err_const",
+    "lf_arm_const", "cf_arm_const", "rf_arm_const",
+    "first_pm_ht_slope",                        # D-1BHT: keep 26 height slope
+    "second_dp_const", "second_dp_slope", "ss_dp_const", "ss_dp_slope",   # D-DP
+]
+
+
+class TestAllConstants27:
+    """Every DEFAULT_*_REG_COEFFS_27 field equals KNOT_DECISIONS_27.md / spec §7 exactly."""
+
+    @pytest.mark.parametrize("field", sorted(_HIT_EXPECTED))
+    def test_hitting(self, field):
+        abs_knots, slopes, rel, clo, chi, c0 = _HIT_EXPECTED[field]
+        c = getattr(DEFAULT_HITTING_REG_COEFFS_27, field)
+        assert isinstance(c, PiecewiseCoeffs)
+        assert (c.relative, c.clamp_lo, c.clamp_hi) == (rel, clo, chi)
+        stored_abs = tuple(k + _CALIB_AVG_27[field] for k in c.knots) if rel else c.knots
+        assert stored_abs == pytest.approx(abs_knots)
+        assert c.slopes == slopes
+        assert c.c0 == c0
+
+    @pytest.mark.parametrize("field", sorted(_PIT_EXPECTED))
+    def test_pitching(self, field):
+        abs_knots, slopes, rel, clo, chi, c0 = _PIT_EXPECTED[field]
+        c = getattr(DEFAULT_PITCHING_REG_COEFFS_27, field)
+        assert isinstance(c, PiecewiseCoeffs)
+        assert (c.relative, c.clamp_lo, c.clamp_hi) == (rel, clo, chi)
+        stored_abs = tuple(k + _CALIB_AVG_27[field] for k in c.knots) if rel else c.knots
+        assert stored_abs == pytest.approx(abs_knots)
+        assert c.slopes == slopes
+        assert c.c0 == c0
+
+    @pytest.mark.parametrize("field", sorted(_FLD_PW_EXPECTED))
+    def test_fielding_piecewise(self, field):
+        knots, slopes, clo, chi = _FLD_PW_EXPECTED[field]
+        c = getattr(DEFAULT_FIELDING_REG_COEFFS_27, field)
+        assert isinstance(c, PiecewiseCoeffs) and not c.relative
+        assert (c.clamp_lo, c.clamp_hi) == (clo, chi)
+        assert c.knots == tuple(float(k) for k in knots)
+        assert c.slopes == slopes
+
+    @pytest.mark.parametrize("field", sorted(_FLD_SCALAR_EXPECTED))
+    def test_fielding_scalars(self, field):
+        assert getattr(DEFAULT_FIELDING_REG_COEFFS_27, field) == _FLD_SCALAR_EXPECTED[field]
+
+    @pytest.mark.parametrize("field", _FLD_KEEP_26)
+    def test_fielding_keeps_26_borrowed_fields(self, field):
+        assert getattr(DEFAULT_FIELDING_REG_COEFFS_27, field) == getattr(
+            FieldingRegressionCoeffs(), field
+        )
+
+    def test_baserunning_c0s_equal_26_canonical(self):
+        h26, p26 = HittingRegressionCoeffs(), PitchingRegressionCoeffs()
+        assert DEFAULT_HITTING_REG_COEFFS_27.sba.c0 == h26.sba.c0
+        assert DEFAULT_HITTING_REG_COEFFS_27.sb_pct.c0 == h26.sb_pct.c0
+        assert DEFAULT_HITTING_REG_COEFFS_27.ubr.c0 == h26.ubr.c0
+        assert DEFAULT_PITCHING_REG_COEFFS_27.sba.c0 == p26.sba.c0
+        assert DEFAULT_PITCHING_REG_COEFFS_27.rp_sba.c0 == p26.sba.c0
+        assert DEFAULT_PITCHING_REG_COEFFS_27.sp_sb_pct.c0 == p26.sp_sb_pct.c0
+        assert DEFAULT_PITCHING_REG_COEFFS_27.rp_sb_pct.c0 == p26.rp_sb_pct.c0
+
+    def test_26_default_objects_untouched(self):
+        """The 26 constant sets still construct with their original values (spot fields)."""
+        h, p, f = HittingRegressionCoeffs(), PitchingRegressionCoeffs(), FieldingRegressionCoeffs()
+        assert isinstance(h.eye, LinearCoeffs) and h.eye.h_slope == 0.0018699770558723264
+        assert isinstance(p.rp_stu, LinearCoeffs) and p.rp_stu.l_const == 0.021514220537781122
+        assert f.ss_pm_rng_slope == 0.004131565657882436
+        assert f.c_frm_slope == 0.0005468042209251762
+        assert p.rp_sba is None
+
+
+# ---------------------------------------------------------------------------
 # 5. Version routing
 # ---------------------------------------------------------------------------
 

@@ -509,54 +509,212 @@ _CALIB_AVG_27 = {
     "rp_stu": 56.905, "rp_con": 51.005, "rp_hrr": 53.866, "rp_babip": 51.448,
 }
 
-# ⚠ PHASE-B SLICE: the fields set below are the proven representative subset (one per applicator
-# type). Every field NOT set explicitly still carries its 26 default TEMPORARILY and must be
-# transcribed before any 27 league ships (Phase C of the landing plan — see HANDOFF.md at the
-# workspace root). Do not build a real 27 league until this banner is removed.
+# Every row below is transcribed from KNOT_DECISIONS_27.md (status LOCKED; fielding rows are the
+# H-pool FINAL re-fit of 2026-07-01) via spec §7. Baserunning c0s are the canonical 26 intercepts
+# (spec §2.5/§7.4). Values deliberately KEPT from 26 (🟡 borrowed, per the spec's open-decision
+# defaults): all fielding *_const fields, the 1B height slope (D-1BHT — no 27 height calibration,
+# orthogonal to range), the 2B/SS DP slopes (D-DP — no 27 DP calibration), and the OF-arm/error/
+# RTO singles that were spot-checked substrate-robust and locked at their C-pool values.
 
 DEFAULT_HITTING_REG_COEFFS_27 = HittingRegressionCoeffs(
-    # KNOT_DECISIONS_27.md HITTING "Eye → uBB%": knots 40/67/79 (abs), R²0.999.
+    # "Eye → uBB%": 3 knots 40/67/79 (abs), R²0.999.
     eye=PiecewiseCoeffs(
         knots=_rel_knots((40.0, 67.0, 79.0), _CALIB_AVG_27["eye"]),
         slopes=(0.00271, 0.00225, 0.00150, 0.00313),
         relative=True,
     ),
-    # KNOT_DECISIONS_27.md HITTING "Speed → 3B%": clamp-low floor <34, knee 50 (ABSOLUTE — SPE).
+    # "Power → HR%": 2 knots 50/80, accelerating convex. R²—see KNOT_DECISIONS.
+    power=PiecewiseCoeffs(
+        knots=_rel_knots((50.0, 80.0), _CALIB_AVG_27["power"]),
+        slopes=(0.00086, 0.00141, 0.00229),
+        relative=True,
+    ),
+    # "AvoidK → K%": clamp-low floor ≤24 (off-band ~55% K% ceiling), knee 24→29, R²0.998.
+    k=PiecewiseCoeffs(
+        knots=_rel_knots((24.0, 29.0, 69.0), _CALIB_AVG_27["k"]),
+        slopes=(0.0, -0.02904, -0.00574, -0.00301),
+        relative=True,
+        clamp_lo=True,
+    ),
+    # "BABIP → BABIP": 2 knots 26/33 (both just below band), R²0.999.
+    babip=PiecewiseCoeffs(
+        knots=_rel_knots((26.0, 33.0), _CALIB_AVG_27["babip"]),
+        slopes=(0.01305, 0.00385, 0.00201),
+        relative=True,
+    ),
+    # "Gap → XBH%": 3 knots 25/51/76, monotone w/ elite re-accel. R²0.999.
+    gap=PiecewiseCoeffs(
+        knots=_rel_knots((25.0, 51.0, 76.0), _CALIB_AVG_27["gap"]),
+        slopes=(0.01152, 0.00461, 0.00307, 0.00489),
+        relative=True,
+    ),
+    # "Speed → 3B%": clamp-low floor <34, knee 50 (ABSOLUTE — SPE). R²0.999.
     speed=PiecewiseCoeffs(
         knots=(34.0, 50.0),
         slopes=(0.0, 0.00314, 0.00280),
         relative=False,
         clamp_lo=True,
     ),
-    # KNOT_DECISIONS_27.md BASERUNNING[hit] "Steal → SB%": 1 knot @70 (ABSOLUTE — STE);
-    # c0 = canonical 26 intercept (data_points sb_pct.c0, spec §2.5).
+    # BASERUNNING[hit] "Steal → SBA%": 3 knots 37/55/72, monotone-accelerating (ABSOLUTE — STE);
+    # c0 = canonical 26 intercept.
+    sba=PiecewiseCoeffs(
+        knots=(37.0, 55.0, 72.0),
+        slopes=(0.00070, 0.00181, 0.00605, 0.01196),
+        relative=False,
+        c0=0.009116895606791357,
+    ),
+    # BASERUNNING[hit] "Steal → SB%": 1 knot @70 (ABSOLUTE — STE); c0 = canonical 26 intercept.
     sb_pct=PiecewiseCoeffs(
         knots=(70.0,),
         slopes=(0.01045, 0.00255),
         relative=False,
         c0=-0.13320702812059265,
     ),
+    # BASERUNNING[hit] "Running → UBR/opp": single line (ABSOLUTE — RUN); c0 = canonical 26.
+    ubr=PiecewiseCoeffs(
+        knots=(),
+        slopes=(0.00018,),
+        relative=False,
+        c0=3.093821597831973e-05,
+    ),
 )
 
 DEFAULT_PITCHING_REG_COEFFS_27 = PitchingRegressionCoeffs(
-    # KNOT_DECISIONS_27.md PITCHING[RP] "Stuff → K%": knots 33/75 (abs), R²0.998.
-    # Consumed via _stu_delta_rp (SP-POS +5 preserved); displayed Stuff capped at 88 first (D24).
+    # [SP] "Stuff → K%": 2 knots 32/52. R²0.998. (SP section applies POS −5 upstream, as in 26.)
+    sp_stu=PiecewiseCoeffs(
+        knots=_rel_knots((32.0, 52.0), _CALIB_AVG_27["sp_stu"]),
+        slopes=(0.01449, 0.00361, 0.00425),
+        relative=True,
+    ),
+    # [SP] "Control → uBB%": clean-4, monotone diminishing returns. R²0.999.
+    sp_con=PiecewiseCoeffs(
+        knots=_rel_knots((27.0, 35.0, 49.0, 63.0), _CALIB_AVG_27["sp_con"]),
+        slopes=(-0.01596, -0.00673, -0.00274, -0.00161, -0.00106),
+        relative=True,
+    ),
+    # [SP] "Move → HR%": clean-4, monotone. R²0.999.
+    sp_hrr=PiecewiseCoeffs(
+        knots=_rel_knots((30.0, 39.0, 52.0, 65.0), _CALIB_AVG_27["sp_hrr"]),
+        slopes=(-0.00481, -0.00296, -0.00159, -0.00087, -0.00048),
+        relative=True,
+    ),
+    # [SP] "pbabip → BABIP": single line −0.00070 (D-PBABIP: ≈26; OOTP import ignores imported
+    # pbabip, so this channel is immaterial — wired to the locked 27 table value).
+    sp_babip=PiecewiseCoeffs(knots=(), slopes=(-0.00070,), relative=True),
+    # [RP] "Stuff → K%": 2 knots 33/75 (elite-RP re-steepen). R²0.998. Consumed via _stu_delta_rp
+    # (SP-POS +5 preserved); displayed Stuff capped at 88 first (D24).
     rp_stu=PiecewiseCoeffs(
         knots=_rel_knots((33.0, 75.0), _CALIB_AVG_27["rp_stu"]),
         slopes=(0.00846, 0.00389, 0.00649),
         relative=True,
     ),
+    # [RP] "Control → uBB%": clean-4. R²0.999.
+    rp_con=PiecewiseCoeffs(
+        knots=_rel_knots((27.0, 35.0, 48.0, 63.0), _CALIB_AVG_27["rp_con"]),
+        slopes=(-0.01555, -0.00654, -0.00283, -0.00156, -0.00110),
+        relative=True,
+    ),
+    # [RP] "Move → HR%": clean-4. R²1.000.
+    rp_hrr=PiecewiseCoeffs(
+        knots=_rel_knots((31.0, 40.0, 53.0, 67.0), _CALIB_AVG_27["rp_hrr"]),
+        slopes=(-0.00449, -0.00259, -0.00159, -0.00081, -0.00037),
+        relative=True,
+    ),
+    # [RP] "pbabip → BABIP": single line −0.00058 (D-PBABIP, as sp_babip).
+    rp_babip=PiecewiseCoeffs(knots=(), slopes=(-0.00058,), relative=True),
+    # BASERUNNING[pit] "SP Hold → SBA%": single line (ABSOLUTE — HLD). 27 splits SP/RP
+    # (D-SBASPLIT): `sba` carries the SP line, `rp_sba` the RP line; both reuse the shared 26
+    # canonical c0 (26 had a single SP/RP sba intercept).
+    sba=PiecewiseCoeffs(
+        knots=(),
+        slopes=(-0.00133,),
+        relative=False,
+        c0=0.0007224917422994285,
+    ),
+    rp_sba=PiecewiseCoeffs(
+        knots=(),
+        slopes=(-0.00096,),
+        relative=False,
+        c0=0.0007224917422994285,
+    ),
+    # BASERUNNING[pit] "SP Hold → SB%": 2 knots 42/63 (ABSOLUTE); c0 = canonical 26 sp_sb_pct.
+    sp_sb_pct=PiecewiseCoeffs(
+        knots=(42.0, 63.0),
+        slopes=(-0.00218, -0.00058, -0.00287),
+        relative=False,
+        c0=-0.01179124984884817,
+    ),
+    # BASERUNNING[pit] "RP Hold → SB%": 2 knots 42/64 (ABSOLUTE); c0 = canonical 26 rp_sb_pct.
+    rp_sb_pct=PiecewiseCoeffs(
+        knots=(42.0, 64.0),
+        slopes=(-0.00241, -0.00080, -0.00346),
+        relative=False,
+        c0=-0.007441413482453901,
+    ),
 )
 
+# Fielding: ABSOLUTE regime throughout (knots at absolute display). Range/framing rows are
+# PiecewiseCoeffs in the 26 scalar-slope slots (compute_fielding dispatches on type); single-line
+# 27 rows replace the scalar value; consts and the D-1BHT/D-DP slopes keep their 26 defaults.
 DEFAULT_FIELDING_REG_COEFFS_27 = FieldingRegressionCoeffs(
-    # KNOT_DECISIONS_27.md FIELDING "SS range → PM%" (H-pool FINAL): knots 62/68, R²0.991.
-    # ABSOLUTE regime (all fielding). Sits in the 26 scalar slot; compute_fielding dispatches on type.
+    # "SS range → PM%" (H-pool FINAL): flat-low → gentle → steep. R²0.991.
     ss_pm_rng_slope=PiecewiseCoeffs(
         knots=(62.0, 68.0),
         slopes=(0.00052, 0.00190, 0.00654),
         relative=False,
     ),
-    # KNOT_DECISIONS_27.md FIELDING "C C_Fram → fram/IP" (H-pool FINAL): clamp-both, R²0.998.
+    # "CF range → PM%" (H-pool FINAL): floor <62 / accelerating rise / saturate ≥71. R²0.994.
+    cf_pm_slope=PiecewiseCoeffs(
+        knots=(62.0, 66.0, 71.0),
+        slopes=(0.00009, 0.00665, 0.01200, 0.0),
+        relative=False,
+        clamp_hi=True,
+    ),
+    # "2B range → PM%" (H-pool FINAL): S-curve. R²0.996.
+    second_pm_rng_slope=PiecewiseCoeffs(
+        knots=(60.0, 69.0),
+        slopes=(0.00067, 0.00879, 0.00112),
+        relative=False,
+    ),
+    # "1B range → PM%" (H-pool FINAL): rise → saturate. R²0.940.
+    first_pm_rng_slope=PiecewiseCoeffs(
+        knots=(51.0,),
+        slopes=(0.00144, 0.00047),
+        relative=False,
+    ),
+    # "LF range → PM%" (H-pool FINAL): S-curve, top clamped. R²0.995.
+    lf_pm_slope=PiecewiseCoeffs(
+        knots=(48.0, 56.0),
+        slopes=(0.00125, 0.00715, 0.0),
+        relative=False,
+        clamp_hi=True,
+    ),
+    # "RF range → PM%" (H-pool FINAL): S-curve, top clamped. R²0.995.
+    rf_pm_slope=PiecewiseCoeffs(
+        knots=(50.0, 57.0),
+        slopes=(0.00075, 0.00676, 0.0),
+        relative=False,
+        clamp_hi=True,
+    ),
+    # "3B range → PM%" (H-pool FINAL): single line. R²0.972.
+    third_pm_rng_slope=0.00269,
+    # IF_Arm → PM% singles (H-pool FINAL).
+    second_pm_arm_slope=0.00074,
+    third_pm_arm_slope=0.00283,
+    ss_pm_arm_slope=0.00091,
+    # IF/OF error singles (LOCKED, spot-checked substrate-robust).
+    first_err_slope=-0.00004,
+    second_err_slope=-0.00008,
+    third_err_slope=-0.00025,
+    ss_err_slope=-0.00022,
+    lf_err_slope=-0.00022,
+    cf_err_slope=-0.00016,
+    rf_err_slope=-0.00028,
+    # OF_Arm → arm/opp singles (LOCKED, KEPT).
+    lf_arm_slope=0.00018,
+    cf_arm_slope=0.00019,
+    rf_arm_slope=0.00024,
+    # "C C_Fram → fram/IP" (H-pool FINAL, real-27-validated): clamp-both. R²0.998.
     c_frm_slope=PiecewiseCoeffs(
         knots=(37.0, 73.0),
         slopes=(0.0, 0.00120, 0.0),
@@ -564,6 +722,12 @@ DEFAULT_FIELDING_REG_COEFFS_27 = FieldingRegressionCoeffs(
         clamp_lo=True,
         clamp_hi=True,
     ),
+    # "C C_Arm → SBA/IP" (H-pool FINAL): single line. R²0.92.
+    c_sba_slope=-0.00086,
+    # "C C_Arm → RTO%" (LOCKED, KEPT — C-pool, bell-corroborated).
+    c_rto_slope=0.00119,
+    # NOT set (keep 26 defaults): every *_const; first_pm_ht_slope (D-1BHT); second_dp_* /
+    # ss_dp_* (D-DP).
 )
 
 
