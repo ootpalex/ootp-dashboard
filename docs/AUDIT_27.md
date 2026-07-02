@@ -1,5 +1,18 @@
 # AUDIT_27 — OOTP-27 coefficient port, audit-first record
 
+> **🔁 RE-LOCK EVENT (2026-07-02, evening) — hit/pit/BSR constants are now H-POOL-provenance.**
+> The H-pool's missing de-quantized display frame (D16) was built and validated
+> (`analysis/test-league-design/scripts/build_hpool_display_maps.py`, all hard gates pass), and
+> every hit/pit/baserunning row was re-derived on it and RE-LOCKED (60 jobs, roster-role SP/RP
+> split, C-pool-identical weights) — the H-pool is the single calibration substrate; the C-pool
+> is history. **Exception: `sp_hrr`/`rp_hrr` keep their C-pool locks** (the real-27 referee
+> rejected the H-pool candidates at 1.72×/1.46× real; conflict recorded in
+> `POOL_RECONCILIATION_PLAN.md` §2). `_CALIB_AVG_27` moved to the H-pool averages (paired with
+> the new offsets); all baserunning c0s remain 26-canonical; fielding untouched (H-pool FINAL
+> since 2026-07-01). Referee after wiring: adopted rows 0.83–1.33 of real-SSB, no sign errors;
+> suite 501 passed / 24 skipped incl. the 110-case 26 byte-identical gate. Per-row old→new:
+> `analysis/test-league-design/outputs/KNOT_DECISIONS_27.md`.
+
 > **⚠ Post-port adversarial audit (2026-07-02) —** the hit/pit/baserunning calibration was
 > pressure-tested against a REAL OOTP-27 league (SSB 2043) + bell@27 realistic rosters:
 > `analysis/test-league-design/docs/AUDIT_HITPIT_BR_27.md`. Outcome: **hit/pit slopes validated
@@ -20,9 +33,11 @@ protocol: every input traced (🟢 our calibration · 🟡 borrowed 26 constant 
 assumption), arithmetic re-derived against the evaluator, all flags resolved before merge.
 
 **Sources of truth:** `analysis/test-league-design/outputs/KNOT_DECISIONS_27.md` (43 locked
-relationships; fielding = H-pool FINAL re-fit 2026-07-01) via
+relationships; fielding = H-pool FINAL re-fit 2026-07-01; hit/pit/BSR = H-pool RE-LOCK
+2026-07-02, de-quantized frame, except the two kept Move rows) via
 `OOTP27_WIRING_IMPLEMENTATION_SPEC.md` §7; calibration-pool averages from
-`analysis/test-league-design/outputs/viz/viz_data.json` (`leagueAvg.display`, full precision).
+`analysis/test-league-design/outputs/viz/hpool_hitpit_bins.json` (`leagueAvg.display`, full
+precision; the kept `sp_hrr`/`rp_hrr` averages stay C-pool `viz_data.json`).
 Phase-A derivations (fielding re-fit, catcher decision, D-STATDEF):
 `analysis/test-league-design/docs/DERIVATION_NOTES.md`.
 
@@ -38,13 +53,12 @@ Phase-A derivations (fielding re-fit, catcher decision, D-STATDEF):
 | Pitching knots/slopes | `sp_stu, sp_con, sp_hrr, rp_stu, rp_con, rp_hrr` (relative), `sp_babip, rp_babip` (relative singles), `sba(SP), rp_sba, sp_sb_pct, rp_sb_pct` (absolute, +c0) | PITCHING[SP]/[RP] + BASERUNNING[pit] tables |
 | Fielding piecewise | `ss/second/first_pm_rng_slope, lf/cf/rf_pm_slope, c_frm_slope` | H-pool FINAL rows (LOCKED (H-pool)) |
 | Fielding singles | `third_pm_rng_slope, {second,third,ss}_pm_arm_slope, all 7 *_err_slope, {lf,cf,rf}_arm_slope, c_sba_slope, c_rto_slope` | H-pool / LOCKED-KEPT rows |
-| Calibration averages | `_CALIB_AVG_27` (13 values) | `viz_data.json` leagueAvg.display; used ONLY to convert absolute knots → stored offsets for relative rows |
+| Calibration averages | `_CALIB_AVG_27` (13 values) | H-pool `hpool_hitpit_bins.json` leagueAvg.display (re-lock 2026-07-02); `sp_hrr`/`rp_hrr` stay C-pool `viz_data.json`. Used ONLY to convert absolute knots → stored offsets for relative rows |
 
 **Transcription convention (relative rows):** stored `knots = knot_abs − calib_avg` at
-viz_data full precision (e.g. eye: 40/67/79 − 55.447). The spec's §7 tables round calib_avg to
-1 decimal; the ≤0.05-display-unit placement difference is immaterial (curves are continuous;
-slopes unchanged). `tests/test_regressions_27.py::TestAllConstants27` re-derives every stored
-offset back to the absolute KNOT_DECISIONS values and asserts equality.
+source full precision (e.g. eye: 26/49/79 − 56.038). `tests/test_regressions_27.py::
+TestAllConstants27` re-derives every stored offset back to the absolute KNOT_DECISIONS values
+and asserts equality.
 
 ### 1.2 🟡 Borrowed 26 constants (provenance = `data_points.py` 26 defaults)
 
