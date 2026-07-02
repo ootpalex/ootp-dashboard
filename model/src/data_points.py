@@ -548,27 +548,31 @@ DEFAULT_HITTING_REG_COEFFS_27 = HittingRegressionCoeffs(
         slopes=(0.01152, 0.00461, 0.00307, 0.00489),
         relative=True,
     ),
-    # "Speed → 3B%": clamp-low floor <34, knee 50 (ABSOLUTE — SPE). R²0.999.
+    # "Speed → 3B%": clamp-low floor <34, knee 50 (ABSOLUTE — SPE). H-pool re-base 2026-07-02
+    # (realistic OF defense; slopes at locked knots ≈ C-pool — the context worry dissolved). R²1.000.
     speed=PiecewiseCoeffs(
         knots=(34.0, 50.0),
-        slopes=(0.0, 0.00314, 0.00280),
+        slopes=(0.0, 0.00315, 0.00284),
         relative=False,
         clamp_lo=True,
     ),
     # BASERUNNING[hit] "Steal → SBA%": 3 knots 37/55/72, monotone-accelerating (ABSOLUTE — STE);
     # c0 = canonical 26 intercept.
+    # H-pool re-base 2026-07-02 (realistic defense/battery; slopes at locked knots, ≤6% moves).
     sba=PiecewiseCoeffs(
         knots=(37.0, 55.0, 72.0),
-        slopes=(0.00070, 0.00181, 0.00605, 0.01196),
+        slopes=(0.00075, 0.00181, 0.00639, 0.01157),
         relative=False,
         c0=0.009116895606791357,
     ),
     # BASERUNNING[hit] "Steal → SB%" (re-fit 2026-07-02, user-flagged): flat floor ≤26 (both
     # substrates show it — SB% of non-stealers bottoms out ~0.3), rise, decel ≥70 (locked knee
     # kept). C-pool clamp-lo fit R²0.983 (beats the old K=1's 0.981); c0 = canonical 26.
+    # H-pool re-base 2026-07-02 (realistic catcher arms — the flagged substrate divergence is
+    # resolved by adopting the H-pool: rise steeper, elite decel gentler than C-pool). R²0.985.
     sb_pct=PiecewiseCoeffs(
         knots=(26.0, 70.0),
-        slopes=(0.0, 0.01086, 0.00211),
+        slopes=(0.0, 0.01216, 0.00146),
         relative=False,
         clamp_lo=True,
         c0=-0.13320702812059265,
@@ -576,7 +580,7 @@ DEFAULT_HITTING_REG_COEFFS_27 = HittingRegressionCoeffs(
     # BASERUNNING[hit] "Running → UBR/opp": single line (ABSOLUTE — RUN); c0 = canonical 26.
     ubr=PiecewiseCoeffs(
         knots=(),
-        slopes=(0.00018,),
+        slopes=(0.00019,),
         relative=False,
         c0=3.093821597831973e-05,
     ),
@@ -628,29 +632,30 @@ DEFAULT_PITCHING_REG_COEFFS_27 = PitchingRegressionCoeffs(
     # BASERUNNING[pit] "SP Hold → SBA%": single line (ABSOLUTE — HLD). 27 splits SP/RP
     # (D-SBASPLIT): `sba` carries the SP line, `rp_sba` the RP line; both reuse the shared 26
     # canonical c0 (26 had a single SP/RP sba intercept).
+    # H-pool re-base 2026-07-02 (battery-routed; realistic defense substrate).
     sba=PiecewiseCoeffs(
         knots=(),
-        slopes=(-0.00133,),
+        slopes=(-0.00145,),
         relative=False,
         c0=0.0007224917422994285,
     ),
     rp_sba=PiecewiseCoeffs(
         knots=(),
-        slopes=(-0.00096,),
+        slopes=(-0.00102,),
         relative=False,
         c0=0.0007224917422994285,
     ),
     # BASERUNNING[pit] "SP Hold → SB%": 2 knots 42/63 (ABSOLUTE); c0 = canonical 26 sp_sb_pct.
     sp_sb_pct=PiecewiseCoeffs(
         knots=(42.0, 63.0),
-        slopes=(-0.00218, -0.00058, -0.00287),
+        slopes=(-0.00157, -0.00059, -0.00199),
         relative=False,
         c0=-0.01179124984884817,
     ),
     # BASERUNNING[pit] "RP Hold → SB%": 2 knots 42/64 (ABSOLUTE); c0 = canonical 26 rp_sb_pct.
     rp_sb_pct=PiecewiseCoeffs(
         knots=(42.0, 64.0),
-        slopes=(-0.00241, -0.00080, -0.00346),
+        slopes=(-0.00178, -0.00067, -0.00240),
         relative=False,
         c0=-0.007441413482453901,
     ),

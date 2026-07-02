@@ -216,12 +216,12 @@ class TestSliceConstants:
         c = DEFAULT_HITTING_REG_COEFFS_27.speed
         assert isinstance(c, PiecewiseCoeffs) and not c.relative and c.clamp_lo
         assert c.knots == (34.0, 50.0)
-        assert c.slopes == (0.0, 0.00314, 0.00280)
+        assert c.slopes == (0.0, 0.00315, 0.00284)
 
     def test_sb_pct_carries_canonical_c0(self):
         c = DEFAULT_HITTING_REG_COEFFS_27.sb_pct
         assert isinstance(c, PiecewiseCoeffs) and not c.relative and c.clamp_lo
-        assert c.knots == (26.0, 70.0) and c.slopes == (0.0, 0.01086, 0.00211)
+        assert c.knots == (26.0, 70.0) and c.slopes == (0.0, 0.01216, 0.00146)
         assert c.c0 == HittingRegressionCoeffs().sb_pct.c0   # 26 canonical intercept
 
     def test_rp_stu_matches_knot_decisions(self):
@@ -274,10 +274,10 @@ class TestSliceDeltasByHand:
         d20 = rating_to_delta(pd.Series([20.0]), avg, c).iloc[0]
         d34 = rating_to_delta(pd.Series([34.0]), avg, c).iloc[0]
         assert d20 == d34                                  # clamp floor
-        assert d34 == pytest.approx(-(0.00314 * (47.61 - 34.0)), abs=1e-9)
+        assert d34 == pytest.approx(-(0.00315 * (47.61 - 34.0)), abs=1e-9)
         # above the 50 knee: delta(60) = 0.00314*(50−47.61) + 0.00280*(60−50)
         d60 = rating_to_delta(pd.Series([60.0]), avg, c).iloc[0]
-        assert d60 == pytest.approx(0.00314 * (50.0 - 47.61) + 0.00280 * 10.0, abs=1e-9)
+        assert d60 == pytest.approx(0.00315 * (50.0 - 47.61) + 0.00284 * 10.0, abs=1e-9)
 
     def test_sb_pct_poly_with_c0(self):
         c = DEFAULT_HITTING_REG_COEFFS_27.sb_pct
@@ -285,7 +285,7 @@ class TestSliceDeltasByHand:
         # STE 80 (above the 70 knee; avg inside the 26–70 rise segment):
         #   c0 + 0.01086*(70−50.46) + 0.00211*(80−70)
         got = baserunning_poly(pd.Series([80.0]), avg, c).iloc[0]
-        want = c.c0 + 0.01086 * (70.0 - 50.46) + 0.00211 * 10.0
+        want = c.c0 + 0.01216 * (70.0 - 50.46) + 0.00146 * 10.0
         assert got == pytest.approx(want, abs=1e-9)
         # clamp-lo floor: STE 20 == STE 26
         d20 = baserunning_poly(pd.Series([20.0]), avg, c).iloc[0]
@@ -371,11 +371,11 @@ _HIT_EXPECTED = {
     "k":      ((24, 29, 69), (0.0, -0.02904, -0.00574, -0.00301), True, True, False, None),
     "babip":  ((26, 33), (0.01305, 0.00385, 0.00201), True, False, False, None),
     "gap":    ((25, 51, 76), (0.01152, 0.00461, 0.00307, 0.00489), True, False, False, None),
-    "speed":  ((34, 50), (0.0, 0.00314, 0.00280), False, True, False, None),
-    "sba":    ((37, 55, 72), (0.00070, 0.00181, 0.00605, 0.01196), False, False, False,
+    "speed":  ((34, 50), (0.0, 0.00315, 0.00284), False, True, False, None),
+    "sba":    ((37, 55, 72), (0.00075, 0.00181, 0.00639, 0.01157), False, False, False,
                0.009116895606791357),
-    "sb_pct": ((26, 70), (0.0, 0.01086, 0.00211), False, True, False, -0.13320702812059265),
-    "ubr":    ((), (0.00018,), False, False, False, 3.093821597831973e-05),
+    "sb_pct": ((26, 70), (0.0, 0.01216, 0.00146), False, True, False, -0.13320702812059265),
+    "ubr":    ((), (0.00019,), False, False, False, 3.093821597831973e-05),
 }
 _PIT_EXPECTED = {
     "sp_stu":   ((32, 52), (0.01449, 0.00361, 0.00425), True, False, False, None),
@@ -390,11 +390,11 @@ _PIT_EXPECTED = {
     "rp_hrr":   ((31, 40, 53, 67), (-0.00449, -0.00259, -0.00159, -0.00081, -0.00037),
                  True, False, False, None),
     "rp_babip": ((), (-0.00058,), True, False, False, None),
-    "sba":      ((), (-0.00133,), False, False, False, 0.0007224917422994285),
-    "rp_sba":   ((), (-0.00096,), False, False, False, 0.0007224917422994285),
-    "sp_sb_pct": ((42, 63), (-0.00218, -0.00058, -0.00287), False, False, False,
+    "sba":      ((), (-0.00145,), False, False, False, 0.0007224917422994285),
+    "rp_sba":   ((), (-0.00102,), False, False, False, 0.0007224917422994285),
+    "sp_sb_pct": ((42, 63), (-0.00157, -0.00059, -0.00199), False, False, False,
                   -0.01179124984884817),
-    "rp_sb_pct": ((42, 64), (-0.00241, -0.00080, -0.00346), False, False, False,
+    "rp_sb_pct": ((42, 64), (-0.00178, -0.00067, -0.00240), False, False, False,
                   -0.007441413482453901),
 }
 # Fielding piecewise rows (all ABSOLUTE, no c0).
@@ -547,7 +547,7 @@ class TestSynthetic27EndToEnd:
                                      0.5, dp=dp27_hit)
         lg = dp27_hit.league
         want = (-0.13320702812059265
-                + 0.01086 * (70.0 - lg.avg_steal) + 0.00211 * (80.0 - 70.0)
+                + 0.01216 * (70.0 - lg.avg_steal) + 0.00146 * (80.0 - 70.0)
                 + lg.sb_pct)
         assert out["SB%"].iloc[0] == pytest.approx(want, abs=1e-12)
 
@@ -599,7 +599,7 @@ class TestSynthetic27EndToEnd:
         assert out["SO vR"].iloc[0] == pytest.approx(want_so, rel=1e-9)
 
     def test_pit_rp_sba_split_applied(self):
-        """RP SBAT uses rp_sba (−0.00096), not the SP sba (−0.00133)."""
+        """RP SBAT uses rp_sba (−0.00102), not the SP sba (−0.00145)."""
         from src.ballparks import neutral_adjustments
         from src.pitchers import compute_pitcher_batting
 
@@ -625,7 +625,7 @@ class TestSynthetic27EndToEnd:
         lp = dp27.league
         on_first = (out["1B vR RP"] + out["uBB vR RP"] + out["HBP vR RP"]).iloc[0]
         sba_rate = (0.0007224917422994285                       # 26 canonical c0
-                    - 0.00096 * (70.0 - lp.avg_hld_rp)          # RP line, not −0.00133
+                    - 0.00102 * (70.0 - lp.avg_hld_rp)          # RP line, not −0.00145
                     + lp.rp_sba_rate)
         assert out["SBAT vR RP"].iloc[0] == pytest.approx(max(sba_rate * on_first, 0.0), rel=1e-9)
 
