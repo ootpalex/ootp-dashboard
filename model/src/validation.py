@@ -76,7 +76,17 @@ def _check_league_config_fields(config: LeagueConfig) -> None:
         )
 
 
+# OOTP versions whose coefficients are compiled piecewise constants in data_points.py
+# (Section 1b) rather than auto-fit from calibration sims. For these, the build NEVER reads
+# data/regressions/<version>/ (decision PD3b — the single-segment auto-fit cannot represent
+# the multi-knot curves), so a missing regressions dir is the expected state, not a warning.
+# Sim CSVs there, if any, are cross-check material only. See docs/MULTI_LEAGUE.md.
+_HARDCODED_COEFF_VERSIONS = ("27",)
+
+
 def _check_regressions_dir(ootp_version: str) -> None:
+    if ootp_version in _HARDCODED_COEFF_VERSIONS:
+        return
     rdir = regressions_dir_for(ootp_version)
     if not rdir.is_dir():
         # Soft warning: the runtime pipeline reads coefficients from data_points.py,
