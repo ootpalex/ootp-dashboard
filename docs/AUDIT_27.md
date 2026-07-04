@@ -174,6 +174,7 @@ sides). Details + the accepted ≲1% BB-vs-uBB denominator nit: `DERIVATION_NOTE
 | D-STATDEF 3B%/SBA% denominators | RESOLVED — frames match production exactly (§3 above). |
 | `c_sba` real-27 validation | Follow-up (non-blocking): SSB-2043 univariate CI is uninformative (n=56 part-season); re-validate on a full SSB-27 season together with `c_rto`. Tracked in KNOT_DECISIONS_27.md. |
 | WAR smell test 27-side bridge | Phase-E item: `ssb_war_smell_test` sources the 27 side via a retired bridge — see the Phase E report (HANDOFF.md) for status. |
+| 2B range curve challenged post-rollout (Alex, 2026-07-03: SSB 2B runsP ceiling +40; 2B>SS ordering) | **RESOLVED 2026-07-04 — lock KEPT, VALIDATED as engine truth** by two-substrate bucket decomposition (step synchronized across all difficulty buckets, mix rating-invariant, arm/error/neighbor/exposure null; bell@27 agrees at bucket level). The user-visible ordering symptom traces to the 26-era frozen `_FROZEN_POS_ADJ_BY_URL` spectrum not reflecting the 27 engine's redistribution of defensive value — design question OPEN: `analysis/test-league-design/docs/POSADJ_27_DESIGN_QUESTION.md`. Full derivation record: `analysis/test-league-design/docs/DERIVATION_NOTES.md` (fifth batch). |
 
 No un-traced constant ships: every field of the three 27 sets is asserted against its
 KNOT_DECISIONS row (or its 26 origin, for 🟡 fields) in `TestAllConstants27` — 104 passing
