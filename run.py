@@ -11,6 +11,7 @@ Pure stdlib — no `pip install` step before this runs.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import signal
@@ -74,7 +75,7 @@ def find_python() -> str:
             continue
         if out.returncode == 0 and out.stdout:
             try:
-                major, minor = eval(out.stdout.strip())
+                major, minor = ast.literal_eval(out.stdout.strip())
                 if (major, minor) >= (3, 11):
                     return path
             except Exception:

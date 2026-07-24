@@ -14,7 +14,9 @@ from pathlib import Path
 
 # Bump when the pipeline code changes in a way that should invalidate cached
 # builds (column additions, formula changes, new meta fields, etc.).
-_BUILD_CACHE_VERSION = "2026-05-21-v1"
+# 2026-07-19-v2: meta.posAdj added; compact JSON separators; app copy is
+# .gz-only (no uncompressed dashboard.json).
+_BUILD_CACHE_VERSION = "2026-07-19-v2"
 
 
 def _compute_build_input_hash(
@@ -385,10 +387,6 @@ def main() -> None:
             f"\nInputs unchanged since last run ({cached_build.get('built_at', 'unknown')})"
             f" — skipping rebuild. Pass --force to rebuild anyway."
         )
-        json_bytes = output_path.read_bytes()
-        # Decompress for the copy step below.
-        with gzip.open(output_path, "rb") as f:
-            raw_json = f.read()
         size_kb = output_path.stat().st_size / 1024
         print(f"Reusing {output_path} ({size_kb:.0f} KB)")
         elapsed = 0.0
@@ -402,12 +400,9 @@ def main() -> None:
                 league_app_dir = app_data_dir / league_config.slug
                 league_app_dir.mkdir(parents=True, exist_ok=True)
                 app_gz = league_app_dir / "dashboard.json.gz"
-                app_json = league_app_dir / "dashboard.json"
             else:
                 app_gz = app_data_dir / "dashboard.json.gz"
-                app_json = app_data_dir / "dashboard.json"
             shutil.copy2(output_path, app_gz)
-            app_json.write_bytes(raw_json)
             _update_leagues_index(app_data_dir)
             print(f"  Copied to {app_gz.parent}/")
         return
@@ -435,8 +430,9 @@ def main() -> None:
     # Write output
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        json_bytes = json.dumps(result).encode("utf-8")
-        with gzip.open(output_path, "wb") as f:
+        json_bytes = json.dumps(result, separators=(",", ":")).encode("utf-8")
+        # compresslevel=6 ≈ default-9's ratio at a fraction of the CPU time.
+        with gzip.open(output_path, "wb", compresslevel=6) as f:
             f.write(json_bytes)
     except OSError as e:
         print(f"Error: could not write output — {e}", file=sys.stderr)
@@ -462,12 +458,11 @@ def main() -> None:
             league_app_dir = app_data_dir / league_config.slug
             league_app_dir.mkdir(parents=True, exist_ok=True)
             app_gz = league_app_dir / "dashboard.json.gz"
-            app_json = league_app_dir / "dashboard.json"
         else:
             app_gz = app_data_dir / "dashboard.json.gz"
-            app_json = app_data_dir / "dashboard.json"
+        # .gz only — the app fetches dashboard.json.gz (leagues.json
+        # dashboardPath) with a .json fallback for stale local copies.
         shutil.copy2(output_path, app_gz)
-        app_json.write_bytes(json_bytes)
         print(f"  Copied to {app_gz.parent}/")
         # Refresh the leagues.json index so the SPA can switch leagues
         _update_leagues_index(app_data_dir)

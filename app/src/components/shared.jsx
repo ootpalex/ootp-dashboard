@@ -465,7 +465,7 @@ export function Pagination({ page, totalPages, total, onPrev, onNext }) {
   );
 }
 
-export function DataLoader({ onDataLoaded, initSettings }) {
+export function DataLoader({ onDataLoaded, initSettings, autoLoadError }) {
   const [hittersFile, setHittersFile] = useState(null);
   const [pitchersFile, setPitchersFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -486,6 +486,7 @@ export function DataLoader({ onDataLoaded, initSettings }) {
           <span style={{ fontSize: 42, fontWeight: 800, letterSpacing: -2, color: "#e2e8f0" }}>{leagueName}</span>
           <span style={{ fontSize: 14, color: "#64748b", marginTop: 4, letterSpacing: 3, textTransform: "uppercase" }}>GM Dashboard</span>
         </div>
+        {autoLoadError && <div style={S.errorBox}>Auto-load failed: {autoLoadError}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
           <FileDropZone label="Hitters CSV" fileName={hittersFile} onFile={(f) => handleFile(f, "h")} ready={hReady} />
           <FileDropZone label="Pitchers CSV" fileName={pitchersFile} onFile={(f) => handleFile(f, "p")} ready={pReady} />

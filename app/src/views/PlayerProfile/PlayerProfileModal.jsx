@@ -12,7 +12,7 @@ import FieldingTab from "./FieldingTab.jsx";
 import BaserunningTab from "./BaserunningTab.jsx";
 import PitchingTab from "./PitchingTab.jsx";
 import ContractTab from "./ContractTab.jsx";
-import { buildHitterPeerPools, buildPitcherPeerPools } from "./_shared.js";
+import { buildHitterPeerPools, buildPitcherPeerPools, resolvePosAdj } from "./_shared.js";
 
 const HITTER_TABS = [
   { id: "batting", label: "Batting" },
@@ -234,7 +234,7 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
 
   // Peer pools for the percentile header. Recomputed when role changes (pitchers).
   const peerPools = useMemo(() => {
-    if (isHitter) return buildHitterPeerPools(data.hitters);
+    if (isHitter) return buildHitterPeerPools(data.hitters, resolvePosAdj(data.meta));
     return { ...buildPitcherPeerPools(data.pitchers, role), role };
   }, [isHitter, data, role]);
 

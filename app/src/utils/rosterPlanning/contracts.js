@@ -13,6 +13,10 @@ import Papa from "papaparse";
 export async function fetchContracts(statsplusBase) {
   const contracts = new Map();
 
+  // No StatsPlus URL configured for this league — return empty rather than
+  // fetching some other league's contract data.
+  if (!statsplusBase) return contracts;
+
   try {
     const [contractResp, extResp] = await Promise.all([
       fetch(`${statsplusBase}/contract`).then(r => r.ok ? r.text() : ""),

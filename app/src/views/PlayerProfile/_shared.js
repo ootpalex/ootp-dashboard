@@ -51,14 +51,22 @@ function sortPool(values) {
     .sort((a, b) => a - b);
 }
 
+// Resolve the positional-adjustment table for the loaded league: the
+// pipeline-emitted per-league table (dashboard meta.posAdj, runs/162) when
+// present, else the hardcoded BLM fallback (older data files / manual loads).
+export function resolvePosAdj(meta) {
+  const posAdj = meta?.posAdj;
+  return posAdj && typeof posAdj === "object" ? posAdj : POS_DEF_ADJ;
+}
+
 // Best fielding value across eligible positions: RunsP + positional adjustment.
-function bestFieldingValue(player) {
+function bestFieldingValue(player, posAdj = POS_DEF_ADJ) {
   let best = null;
   for (const pos of ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"]) {
     if (!isEligible(player, pos)) continue;
     const v = getRunsP(player, pos);
     if (v == null) continue;
-    const adj = v + (POS_DEF_ADJ[pos] ?? 0);
+    const adj = v + (posAdj[pos] ?? 0);
     if (best == null || adj > best) best = adj;
   }
   return best;
@@ -73,7 +81,11 @@ function bestFieldingValue(player) {
 // at that position — used by FieldingTab to show "this player's RunsP at SS
 // ranks Nth among MLB SS-eligibles". Keyed by lowercase pos-key (c, 1b, …, rf)
 // to match the dashboard.positions.* schema.
-export function buildHitterPeerPools(hitters) {
+//
+// `posAdj` is the league's positional-adjustment table (see resolvePosAdj);
+// it is echoed back on the returned object so per-player component values
+// (getHitterValueComponents) are guaranteed to use the same table as the pool.
+export function buildHitterPeerPools(hitters, posAdj = POS_DEF_ADJ) {
   const mlb = (hitters || []).filter((h) => (h.meta?.lev ?? h.Lev) === "MLB");
   const POS_KEYS = ["c", "1b", "2b", "3b", "ss", "lf", "cf", "rf"];
   const fieldingByPos = {};
@@ -85,6 +97,7 @@ export function buildHitterPeerPools(hitters) {
     );
   }
   return {
+    posAdj,
     overall: {
       current: sortPool(mlb.map((h) => getMaxWar(h))),
       potential: sortPool(mlb.map((h) => getMaxWarP(h))),
@@ -94,7 +107,7 @@ export function buildHitterPeerPools(hitters) {
       potential: sortPool(mlb.map((h) => num(h.prospect?.batting?.batR))),
     },
     fielding: {
-      current: sortPool(mlb.map((h) => bestFieldingValue(h))),
+      current: sortPool(mlb.map((h) => bestFieldingValue(h, posAdj))),
       byPos: fieldingByPos,
     },
     baserunning: {
@@ -162,7 +175,9 @@ export function buildPitcherPeerPools(pitchers, role) {
 }
 
 // Hitter component values for the percentile header. Each entry: { current, potential? }.
-export function getHitterValueComponents(player) {
+// `posAdj` must match the table the peer pools were built with (pass
+// peerPools.posAdj) so the fielding percentile compares like with like.
+export function getHitterValueComponents(player, posAdj = POS_DEF_ADJ) {
   return {
     overall: {
       current: getMaxWar(player),
@@ -173,7 +188,7 @@ export function getHitterValueComponents(player) {
       potential: num(player.prospect?.batting?.batR),
     },
     fielding: {
-      current: bestFieldingValue(player),
+      current: bestFieldingValue(player, posAdj),
     },
     baserunning: {
       current: getBsr(player),

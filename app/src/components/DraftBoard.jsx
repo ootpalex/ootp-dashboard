@@ -75,8 +75,11 @@ const isFilledRow = (d) => {
 };
 
 async function fetchDraftData(statsplusBase) {
+  const base = statsplusBase || getStatsplusBase();
+  if (!base) {
+    return { data: null, error: "No StatsPlus URL configured for this league — set it in League Settings (gear icon in the sidebar), or use the manual paste option." };
+  }
   try {
-    const base = statsplusBase || getStatsplusBase();
     // ?all=1 returns the full draft order (every owned pick slot), not just
     // picks already made — lets us pre-load a team's whole draft class.
     const resp = await fetch(`${base}/draftv2/?all=1`);

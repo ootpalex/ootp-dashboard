@@ -8,7 +8,12 @@ export const STATSPLUS_PROXY = "/statsplus";
 export const LEAGUE_SETTINGS_KEY = "league_settings";
 export const DEFAULT_LEAGUE_SETTINGS = {
   leagueName: "SSB",
-  statsplusUrl: "https://atl-01.statsplus.net/ssb/",
+  // Deliberately empty — there is no safe default StatsPlus URL. Each league
+  // must configure its own in League Settings; a hardcoded default would make
+  // unconfigured leagues silently fetch another league's salary/contract data.
+  // (Leagues that explicitly saved a URL are unaffected: loadLeagueSettings
+  // merges saved values over these defaults.)
+  statsplusUrl: "",
   manualExclusions: [],
   manualInclusions: [],
   iafaTag: "IAFA",
@@ -19,11 +24,13 @@ export const DEFAULT_LEAGUE_SETTINGS = {
 export const HITTER_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];
 export const ALL_DISPLAY_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "SP", "RP"];
 
-// WAR positional-adjustment spectrum (frozen blended at H_def=5/cut_def=20 + H_off=2.5/cut_off=8,
-// field-8 mean = 0). Mirrors Project/model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"].
-// Used by views/PlayerProfile/_shared.js:bestFieldingValue for the percentile-pool calc.
-// (The full per-universe lookup lives server-side; this is the BLM default that ships in JSON
-// via the FieldingParams dataclass.)
+// FALLBACK ONLY — WAR positional-adjustment spectrum for the BLM universe (frozen blended at
+// H_def=5/cut_def=20 + H_off=2.5/cut_off=8, field-8 mean = 0). Mirrors
+// Project/model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"].
+// The pipeline now ships each league's own table at dashboard meta.posAdj
+// ({C,1B,2B,3B,SS,LF,CF,RF,DH} runs/162); views/PlayerProfile/_shared.js:bestFieldingValue
+// uses that when present and only falls back to this table for older data files
+// (or manual CSV loads) that predate meta.posAdj.
 export const POS_DEF_ADJ = { C: 16.1, "1B": -13.1, "2B": -2.3, "3B": -0.7, SS: 9.6, LF: -8.4, CF: 5.1, RF: -6.2 };
 export const POT_DISPLAY_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "SP", "RP"];
 export const DEF_SPECTRUM = ["C", "SS", "CF", "2B", "3B", "LF", "RF", "1B", "DH"];

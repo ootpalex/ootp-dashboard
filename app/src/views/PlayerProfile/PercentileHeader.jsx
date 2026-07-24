@@ -20,7 +20,9 @@ function computePctPair(comp, pool, opts = {}) {
 }
 
 function HitterBars({ player, peerPools }) {
-  const c = useMemo(() => getHitterValueComponents(player), [player]);
+  // peerPools.posAdj = the per-league positional-adjustment table the pools
+  // were built with — the player's own value must use the same table.
+  const c = useMemo(() => getHitterValueComponents(player, peerPools.posAdj), [player, peerPools.posAdj]);
   const matured = !!player._matured;
   const opts = { hidePotential: matured };
   const overall = computePctPair(c.overall, peerPools.overall, opts);

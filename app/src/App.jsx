@@ -27,6 +27,45 @@ class ErrorBoundary extends Component {
 // exactly once at module load — BEFORE React's StrictMode double-mount can
 // re-invoke a useMemo factory and clobber the captured value by stripping
 // the URL on the first call and reading null on the second.
+// Decode a dashboard payload that may be gzip-compressed (.json.gz). Some
+// static servers serve .gz files with `Content-Encoding: gzip`, in which case
+// the browser has ALREADY transparently decompressed the body — so we can't
+// trust the file extension. Sniff the gzip magic bytes (0x1f 0x8b) and only
+// run DecompressionStream when they're actually present; otherwise treat the
+// body as plain JSON text.
+async function decodeDashboardResponse(resp) {
+  const buf = await resp.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  let text;
+  if (isGzip && typeof DecompressionStream !== "undefined") {
+    const stream = new Response(buf).body.pipeThrough(new DecompressionStream("gzip"));
+    text = await new Response(stream).text();
+  } else {
+    text = new TextDecoder().decode(bytes);
+  }
+  return JSON.parse(text);
+}
+
+// Try each candidate URL in order (compressed first, uncompressed fallback for
+// older generated data). Throws the last error when every candidate fails.
+async function fetchDashboard(candidateUrls) {
+  let lastError = null;
+  for (const url of candidateUrls) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        lastError = new Error(`Dashboard JSON not found at ${url} (HTTP ${resp.status})`);
+        continue;
+      }
+      return await decodeDashboardResponse(resp);
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  throw lastError ?? new Error("No dashboard URL candidates to fetch");
+}
+
 const URL_LEAGUE_PARAM = (() => {
   if (typeof window === "undefined") return null;
   try {
@@ -47,6 +86,7 @@ export default function App() {
   const [rawData, setRawData] = useState(null);
   const [platoonSplits, setPlatoonSplits] = useState(null);
   const [autoLoading, setAutoLoading] = useState(true);
+  const [autoLoadError, setAutoLoadError] = useState(null);
   const [leagues, setLeagues] = useState([]);
   const [currentLeague, setCurrentLeague] = useLocalStorage("ssb_current_league", null);
   const initSettings = useMemo(() => loadLeagueSettings(), []);
@@ -58,6 +98,7 @@ export default function App() {
     async function autoLoad() {
       setAutoLoading(true);
       setRawData(null);
+      setAutoLoadError(null);
       try {
         // Multi-league path: prefer leagues.json index when available.
         let activeSlug = null;
@@ -90,12 +131,17 @@ export default function App() {
           }
         }
 
-        const dashboardUrl = activeSlug
-          ? `/data/${activeSlug}/dashboard.json`
-          : "/data/dashboard.json";
-        const resp = await fetch(dashboardUrl);
-        if (!resp.ok) throw new Error(`Dashboard JSON not found at ${dashboardUrl}`);
-        const dashboard = await resp.json();
+        // Prefer the registry entry's dashboardPath, then the compressed
+        // default, then the legacy uncompressed file (older generated data).
+        const entry = activeSlug ? leaguesList.find((l) => l.slug === activeSlug) : null;
+        const candidates = activeSlug
+          ? [
+              ...(entry?.dashboardPath ? [`/data/${entry.dashboardPath}`] : []),
+              `/data/${activeSlug}/dashboard.json.gz`,
+              `/data/${activeSlug}/dashboard.json`,
+            ]
+          : ["/data/dashboard.json.gz", "/data/dashboard.json"];
+        const dashboard = await fetchDashboard([...new Set(candidates)]);
         if (!cancelled) {
           // Calibrate the WAR color scale to THIS league's MLB distribution
           // (pipeline-embedded). Resets to the built-in default when absent.
@@ -108,8 +154,9 @@ export default function App() {
           });
           if (dashboard.platoonSplits) setPlatoonSplits(dashboard.platoonSplits);
         }
-      } catch {
-        // auto-load failed — fall through to manual load UI
+      } catch (e) {
+        // auto-load failed — fall through to manual load UI, surfacing the reason
+        if (!cancelled) setAutoLoadError(e?.message || String(e));
       } finally {
         if (!cancelled) setAutoLoading(false);
       }
@@ -153,5 +200,5 @@ export default function App() {
     );
   }
 
-  return <DataLoader onDataLoaded={(rawH, rawP) => setRawData({ rawHitters: rawH, rawPitchers: rawP })} initSettings={initSettings} />;
+  return <DataLoader onDataLoaded={(rawH, rawP) => setRawData({ rawHitters: rawH, rawPitchers: rawP })} initSettings={initSettings} autoLoadError={autoLoadError} />;
 }

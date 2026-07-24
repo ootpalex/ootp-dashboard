@@ -580,8 +580,8 @@ def _safe_str(val) -> str | None:
 def _safe_int(val) -> int | None:
     """Convert to int, NaN → None."""
     try:
-        v = pd.to_numeric(val, errors="coerce")
-        if pd.isna(v):
+        v = float(val)
+        if np.isnan(v):
             return None
         return int(v)
     except (ValueError, TypeError):
@@ -649,10 +649,9 @@ def _safe_bool(val) -> bool:
 
 
 def _row_val(row, col, default=None):
-    """Get a value from a row, returning default if column missing."""
-    if col in row.index:
-        return row[col]
-    return default
+    """Get a value from a row (plain dict or pandas Series), returning default
+    if the column is missing."""
+    return row.get(col, default)
 
 
 # Columns already explicitly mapped into structured sub-dicts (meta, ratings,
@@ -694,10 +693,14 @@ _MAPPED_COLS: set[str] = {
 }
 
 
-def _collect_extra(row: pd.Series) -> dict:
-    """Collect all CSV columns not already in structured sub-dicts."""
+def _collect_extra(row) -> dict:
+    """Collect all CSV columns not already in structured sub-dicts.
+
+    ``row`` is a plain dict (hot path) or a pandas Series (``.keys()`` works
+    for both).
+    """
     extra = {}
-    for col in row.index:
+    for col in row.keys():
         if col in _MAPPED_COLS:
             continue
         val = _v(row[col])
@@ -728,7 +731,7 @@ _PITCH_KEYS = ["fb", "ch", "cb", "sl", "si", "sp", "ct", "fo", "cc", "sc", "kc",
 # ---------------------------------------------------------------------------
 
 
-def _build_hitter_meta(row: pd.Series, ht_cm_val: float, salary_val, price_val, demand_val=None) -> dict:
+def _build_hitter_meta(row, ht_cm_val: float, salary_val, price_val, demand_val=None) -> dict:
     """Build the meta sub-dict for a hitter."""
     return {
         "name": _safe_str(_row_val(row, "Name")),
@@ -784,7 +787,7 @@ def _build_hitter_meta(row: pd.Series, ht_cm_val: float, salary_val, price_val, 
     }
 
 
-def _build_hitter_ratings(row: pd.Series) -> dict:
+def _build_hitter_ratings(row) -> dict:
     """Build ratings sub-dict for a hitter."""
     return {
         "vR": {
@@ -820,7 +823,7 @@ def _build_hitter_ratings(row: pd.Series) -> dict:
     }
 
 
-def _build_fielding_ratings(row: pd.Series) -> dict:
+def _build_fielding_ratings(row) -> dict:
     """Build fieldingRatings sub-dict."""
     pos_keys = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"]
     pos_json_keys = ["c", "1b", "2b", "3b", "ss", "lf", "cf", "rf"]
@@ -848,7 +851,7 @@ def _build_fielding_ratings(row: pd.Series) -> dict:
     }
 
 
-def _batting_split_dict(batting_row: pd.Series, suffix: str) -> dict:
+def _batting_split_dict(batting_row, suffix: str) -> dict:
     """Extract one batting split's stats."""
     return {
         "hbp": _v(batting_row.get(f"HBP {suffix}")),
@@ -866,7 +869,7 @@ def _batting_split_dict(batting_row: pd.Series, suffix: str) -> dict:
     }
 
 
-def _build_hitter_batting(batting_row: pd.Series) -> dict:
+def _build_hitter_batting(batting_row) -> dict:
     """Build the batting sub-dict for a hitter."""
     return {
         "vR": _batting_split_dict(batting_row, "vR"),
@@ -893,7 +896,7 @@ def _build_hitter_batting(batting_row: pd.Series) -> dict:
     }
 
 
-def _build_baserunning(batting_row: pd.Series) -> dict:
+def _build_baserunning(batting_row) -> dict:
     """Build baserunning sub-dict from batting output."""
     return {
         "sbPct": _v(batting_row.get("SB%")),
@@ -978,15 +981,18 @@ _WAR_MAP = {
 
 def _build_positions(
     idx: int,
-    eligibility: pd.DataFrame,
-    fielding: pd.DataFrame,
-    waa_df: pd.DataFrame,
+    eligibility: dict,
+    fielding: dict,
+    waa_df: dict,
 ) -> dict:
-    """Build the positions sub-dict for a hitter."""
+    """Build the positions sub-dict for a hitter.
+
+    All three inputs are ``{idx: {col: val}}`` maps (``DataFrame.to_dict("index")``).
+    """
     positions = {}
-    elig_row = eligibility.loc[idx]
-    field_row = fielding.loc[idx] if idx in fielding.index else None
-    waa_row = waa_df.loc[idx] if idx in waa_df.index else None
+    elig_row = eligibility[idx]
+    field_row = fielding.get(idx)
+    waa_row = waa_df.get(idx)
 
     for pos_key, elig_col in _ELIG_MAP.items():
         eligible = bool(elig_row.get(elig_col, False))
@@ -1022,15 +1028,16 @@ def _build_positions(
 
 def _build_max_value(
     idx: int,
-    waa_df: pd.DataFrame,
-    eligibility: pd.DataFrame,
+    waa_df: dict,
+    eligibility: dict,
     metric: str,
 ) -> dict:
     """Build maxWaa or maxWar sub-dict with best position.
 
     metric: "WAA" or "WAR". Uses _WAA_MAP/_WAR_MAP for the column-name prefix.
+    ``waa_df`` / ``eligibility`` are ``{idx: {col: val}}`` maps.
     """
-    waa_row = waa_df.loc[idx] if idx in waa_df.index else None
+    waa_row = waa_df.get(idx)
     if waa_row is None:
         return {"vR": None, "vL": None, "wtd": None, "bestPos": None}
 
@@ -1042,9 +1049,10 @@ def _build_max_value(
     # Find best position by wtd metric value
     best_pos = None
     best_val = None
+    elig_row = eligibility[idx]
     for pos_key, prefix in prefix_map.items():
         elig_col = _ELIG_MAP[pos_key]
-        if not bool(eligibility.loc[idx].get(elig_col, False)):
+        if not bool(elig_row.get(elig_col, False)):
             continue
         wtd = waa_row.get(f"{prefix} wtd")
         if wtd is not None and not (isinstance(wtd, float) and np.isnan(wtd)):
@@ -1055,17 +1063,17 @@ def _build_max_value(
     return {"vR": max_vr, "vL": max_vl, "wtd": max_wtd, "bestPos": best_pos}
 
 
-def _build_max_waa(idx: int, waa_df: pd.DataFrame, eligibility: pd.DataFrame) -> dict:
+def _build_max_waa(idx: int, waa_df: dict, eligibility: dict) -> dict:
     """Build maxWaa sub-dict with best position (kept for back-compat)."""
     return _build_max_value(idx, waa_df, eligibility, "WAA")
 
 
-def _build_max_war(idx: int, waa_df: pd.DataFrame, eligibility: pd.DataFrame) -> dict:
+def _build_max_war(idx: int, waa_df: dict, eligibility: dict) -> dict:
     """Build maxWar sub-dict with best position."""
     return _build_max_value(idx, waa_df, eligibility, "WAR")
 
 
-def _build_floor_hitter(idx: int, floor_waa: pd.DataFrame | None) -> dict:
+def _build_floor_hitter(idx: int, floor_waa: dict | None) -> dict:
     """Build floorWaa sub-dict for a hitter.
 
     Floor = WAA when developable bat ratings are at the cohort min, with
@@ -1073,9 +1081,9 @@ def _build_floor_hitter(idx: int, floor_waa: pd.DataFrame | None) -> dict:
     unchanged. Used as the lower bound for the progress metric:
         progress = (cur - floor) / (pot - floor)
     """
-    if floor_waa is None or idx not in floor_waa.index:
+    fw_row = floor_waa.get(idx) if floor_waa is not None else None
+    if fw_row is None:
         return {"vR": None, "vL": None, "wtd": None}
-    fw_row = floor_waa.loc[idx]
     return {
         "vR": _v(fw_row.get("Max WAA vR")),
         "vL": _v(fw_row.get("Max WAA vL")),
@@ -1083,11 +1091,11 @@ def _build_floor_hitter(idx: int, floor_waa: pd.DataFrame | None) -> dict:
     }
 
 
-def _build_floor_hitter_war(idx: int, floor_waa: pd.DataFrame | None) -> dict:
+def _build_floor_hitter_war(idx: int, floor_waa: dict | None) -> dict:
     """Build floorWar sub-dict for a hitter (parallel to _build_floor_hitter)."""
-    if floor_waa is None or idx not in floor_waa.index:
+    fw_row = floor_waa.get(idx) if floor_waa is not None else None
+    if fw_row is None:
         return {"vR": None, "vL": None, "wtd": None}
-    fw_row = floor_waa.loc[idx]
     return {
         "vR": _v(fw_row.get("Max WAR vR")),
         "vL": _v(fw_row.get("Max WAR vL")),
@@ -1097,11 +1105,11 @@ def _build_floor_hitter_war(idx: int, floor_waa: pd.DataFrame | None) -> dict:
 
 def _build_prospect_hitter(
     idx: int,
-    prospect_batting: pd.DataFrame,
-    prospect_waa: pd.DataFrame | None,
+    prospect_batting: dict,
+    prospect_waa: dict | None,
 ) -> dict:
     """Build prospect sub-dict for a hitter."""
-    bat_row = prospect_batting.loc[idx]
+    bat_row = prospect_batting[idx]
 
     batting = {
         "hbp": _v(bat_row.get("HBP vR")),
@@ -1125,8 +1133,8 @@ def _build_prospect_hitter(
 
     waa = {}
     war = {}
-    if prospect_waa is not None and idx in prospect_waa.index:
-        pw_row = prospect_waa.loc[idx]
+    pw_row = prospect_waa.get(idx) if prospect_waa is not None else None
+    if pw_row is not None:
         for pos_key, waa_prefix in _WAA_MAP.items():
             waa[pos_key] = _v(pw_row.get(f"{waa_prefix} wtd"))
         waa["max"] = _v(pw_row.get("Max WAA wtd"))
@@ -1139,30 +1147,35 @@ def _build_prospect_hitter(
 
 def _build_hitter_dict(
     idx: int,
-    players: pd.DataFrame,
-    ht_cm: pd.Series,
-    salary: pd.Series,
-    price: pd.Series,
-    batting: pd.DataFrame,
-    eligibility: pd.DataFrame,
-    fielding: pd.DataFrame,
-    waa_df: pd.DataFrame,
-    prospect_batting: pd.DataFrame,
-    prospect_waa: pd.DataFrame | None,
-    floor_waa: pd.DataFrame | None = None,
+    players: dict,
+    ht_cm: dict,
+    salary: dict,
+    price: dict,
+    batting: dict,
+    eligibility: dict,
+    fielding: dict,
+    waa_df: dict,
+    prospect_batting: dict,
+    prospect_waa: dict | None,
+    floor_waa: dict | None = None,
     sp_contract: dict | None = None,
-    demand: pd.Series | None = None,
+    demand: dict | None = None,
     game_year: int | None = None,
     super_two_ids: set | None = None,
     salary_report_entry: dict | None = None,
 ) -> dict:
-    """Build one hitter's nested dict."""
-    row = players.loc[idx]
-    bat_row = batting.loc[idx]
+    """Build one hitter's nested dict.
+
+    All frame/series arguments are plain-python maps produced once per build
+    (``DataFrame.to_dict("index")`` / ``Series.to_dict()``) — per-player pandas
+    scalar access was the dominant cost of the whole export.
+    """
+    row = players[idx]
+    bat_row = batting[idx]
 
     d = {
         "id": int(row["ID"]),
-        "meta": _build_hitter_meta(row, ht_cm.loc[idx], salary.loc[idx], price.loc[idx], demand.loc[idx] if demand is not None else None),
+        "meta": _build_hitter_meta(row, ht_cm[idx], salary[idx], price[idx], demand[idx] if demand is not None else None),
         "ratings": _build_hitter_ratings(row),
         "fieldingRatings": _build_fielding_ratings(row),
         "batting": _build_hitter_batting(bat_row),
@@ -1187,7 +1200,7 @@ def _build_hitter_dict(
 # ---------------------------------------------------------------------------
 
 
-def _build_pitcher_meta(row: pd.Series, salary_val, price_val, demand_val=None) -> dict:
+def _build_pitcher_meta(row, salary_val, price_val, demand_val=None) -> dict:
     """Build the meta sub-dict for a pitcher."""
     return {
         "name": _safe_str(_row_val(row, "Name")),
@@ -1244,7 +1257,7 @@ def _build_pitcher_meta(row: pd.Series, salary_val, price_val, demand_val=None) 
     }
 
 
-def _build_pitcher_ratings(row: pd.Series) -> dict:
+def _build_pitcher_ratings(row) -> dict:
     """Build ratings sub-dict for a pitcher."""
     return {
         "vR": {
@@ -1273,7 +1286,7 @@ def _build_pitcher_ratings(row: pd.Series) -> dict:
     }
 
 
-def _build_pitch_grades(row: pd.Series) -> dict:
+def _build_pitch_grades(row) -> dict:
     """Build pitchGrades sub-dict."""
     current = {}
     potential = {}
@@ -1285,7 +1298,7 @@ def _build_pitch_grades(row: pd.Series) -> dict:
     return {"current": current, "potential": potential}
 
 
-def _pitcher_split_dict(stats_row: pd.Series, suffix: str, include_waa: bool = True) -> dict:
+def _pitcher_split_dict(stats_row, suffix: str, include_waa: bool = True) -> dict:
     """Extract one pitcher split's stats (SP or RP section)."""
     d = {
         "hbp": _v(stats_row.get(f"HBP{suffix}")),
@@ -1306,7 +1319,7 @@ def _pitcher_split_dict(stats_row: pd.Series, suffix: str, include_waa: bool = T
     return d
 
 
-def _build_pitcher_role_stats(stats_row: pd.Series, role: str) -> dict:
+def _build_pitcher_role_stats(stats_row, role: str) -> dict:
     """Build SP or RP stats sub-dict."""
     is_sp = role == "SP"
     vr_suffix = " vR" if is_sp else " vR RP"
@@ -1324,10 +1337,10 @@ def _build_pitcher_role_stats(stats_row: pd.Series, role: str) -> dict:
 
 def _build_prospect_pitcher(
     idx: int,
-    prospect_stats: pd.DataFrame,
+    prospect_stats: dict,
 ) -> dict:
     """Build prospect sub-dict for a pitcher."""
-    stats_row = prospect_stats.loc[idx]
+    stats_row = prospect_stats[idx]
 
     sp = {
         "so": _v(stats_row.get("SO wtd")),
@@ -1353,15 +1366,15 @@ def _build_prospect_pitcher(
     return {"sp": sp, "rp": rp}
 
 
-def _build_floor_pitcher(idx: int, floor_stats: pd.DataFrame | None) -> dict:
+def _build_floor_pitcher(idx: int, floor_stats: dict | None) -> dict:
     """Build floor sub-dict for a pitcher (raw WAA/WAR, unscaled).
 
     The frontend reads RP floor WAR raw (scaleRpWarP is a no-op under WAR); the
     WAA path would still apply scaleRpWaaP consistently with cur and pot.
     """
-    if floor_stats is None or idx not in floor_stats.index:
+    stats_row = floor_stats.get(idx) if floor_stats is not None else None
+    if stats_row is None:
         return {"sp": {"waa": None, "war": None}, "rp": {"waa": None, "war": None}}
-    stats_row = floor_stats.loc[idx]
     return {
         "sp": {
             "waa": _v(stats_row.get("WAA wtd")),
@@ -1376,29 +1389,33 @@ def _build_floor_pitcher(idx: int, floor_stats: pd.DataFrame | None) -> dict:
 
 def _build_pitcher_dict(
     idx: int,
-    players: pd.DataFrame,
-    pitch_counts: pd.DataFrame,
-    starter: pd.Series,
-    starter_p: pd.Series,
-    salary: pd.Series,
-    price: pd.Series,
-    stats: pd.DataFrame,
-    prospect_stats: pd.DataFrame,
-    floor_stats: pd.DataFrame | None = None,
+    players: dict,
+    pitch_counts: dict,
+    starter: dict,
+    starter_p: dict,
+    salary: dict,
+    price: dict,
+    stats: dict,
+    prospect_stats: dict,
+    floor_stats: dict | None = None,
     sp_contract: dict | None = None,
-    demand: pd.Series | None = None,
+    demand: dict | None = None,
     game_year: int | None = None,
     super_two_ids: set | None = None,
     salary_report_entry: dict | None = None,
 ) -> dict:
-    """Build one pitcher's nested dict."""
-    row = players.loc[idx]
-    stats_row = stats.loc[idx]
-    pc_row = pitch_counts.loc[idx]
+    """Build one pitcher's nested dict.
+
+    All frame/series arguments are plain-python maps produced once per build
+    (``DataFrame.to_dict("index")`` / ``Series.to_dict()``).
+    """
+    row = players[idx]
+    stats_row = stats[idx]
+    pc_row = pitch_counts[idx]
 
     d = {
         "id": int(row["ID"]),
-        "meta": _build_pitcher_meta(row, salary.loc[idx], price.loc[idx], demand.loc[idx] if demand is not None else None),
+        "meta": _build_pitcher_meta(row, salary[idx], price[idx], demand[idx] if demand is not None else None),
         "ratings": _build_pitcher_ratings(row),
         "pitchGrades": _build_pitch_grades(row),
         "pitchCounts": {
@@ -1406,8 +1423,8 @@ def _build_pitcher_dict(
             "spPPitch": _safe_int(pc_row.get("SP P Pitch")),
             "spPitch": _safe_int(pc_row.get("SP Pitch")),
         },
-        "starter": bool(starter.loc[idx]),
-        "starterP": bool(starter_p.loc[idx]),
+        "starter": bool(starter[idx]),
+        "starterP": bool(starter_p[idx]),
         "sp": _build_pitcher_role_stats(stats_row, "SP"),
         "rp": _build_pitcher_role_stats(stats_row, "RP"),
         "prospect": _build_prospect_pitcher(idx, prospect_stats),
@@ -1728,8 +1745,9 @@ def build_dashboard(
     # org for the free-agent guard, and StatsPlus mlb_service_days_this_year for
     # the 86-day rule).
     proj_seed = []
-    for idx in players.index:
-        prow = players.loc[idx]
+    _seed_cols = [c for c in ("ID", "MLD", "MLY", "ACT", "IC", "Lev", "ORG")
+                  if c in players.columns]
+    for prow in players[_seed_cols].to_dict("records"):
         pid = int(prow["ID"])
         extra = (players_extra or {}).get(str(pid)) or {}
         proj_seed.append({
@@ -1755,6 +1773,34 @@ def build_dashboard(
     hitter_id_strs = hitter_players["ID"].astype(int).astype(str)
     pitcher_id_strs = pitcher_players["ID"].astype(int).astype(str)
 
+    # Convert every per-player result frame/series to plain-python dicts ONCE,
+    # keyed by the same index the loops iterate. The per-player builders then do
+    # cheap dict lookups instead of pandas .loc row extraction + Series scalar
+    # gets (~3M of them per build — the dominant cost of the whole export).
+    hitter_players_map = hitter_players.to_dict("index")
+    batting_map = batting.to_dict("index")
+    eligibility_map = eligibility.to_dict("index")
+    fielding_map = fielding_stats.to_dict("index")
+    waa_map = waa_stats.to_dict("index")
+    prospect_batting_map = prospect_batting.to_dict("index")
+    prospect_waa_map = prospect_waa.to_dict("index")
+    floor_waa_map = floor_waa.to_dict("index")
+    ht_cm_map = ht_cm.to_dict()
+    h_slr_map = h_slr.to_dict()
+    h_dem_map = h_dem.to_dict()
+    h_price_map = h_price.to_dict()
+
+    pitcher_players_map = pitcher_players.to_dict("index")
+    pitch_counts_map = pitch_counts.to_dict("index")
+    starter_map = starter.to_dict()
+    starter_p_map = starter_p.to_dict()
+    pitcher_stats_map = pitcher_stats.to_dict("index")
+    prospect_pitcher_stats_map = prospect_pitcher_stats.to_dict("index")
+    floor_pitcher_stats_map = floor_pitcher_stats.to_dict("index")
+    p_slr_map = p_slr.to_dict()
+    p_dem_map = p_dem.to_dict()
+    p_price_map = p_price.to_dict()
+
     def _merge_players_extra(d: dict, pid_str: str) -> dict:
         if not players_extra:
             return d
@@ -1776,10 +1822,11 @@ def build_dashboard(
                 sp_contract = contract_to_json(raw)
         sr_entry = sr_map.get(pid_str)
         d = _build_hitter_dict(
-            idx, hitter_players, ht_cm, h_slr, h_price, batting, eligibility,
-            fielding_stats, waa_stats, prospect_batting, prospect_waa,
-            floor_waa=floor_waa,
-            sp_contract=sp_contract, demand=h_dem,
+            idx, hitter_players_map, ht_cm_map, h_slr_map, h_price_map,
+            batting_map, eligibility_map,
+            fielding_map, waa_map, prospect_batting_map, prospect_waa_map,
+            floor_waa=floor_waa_map,
+            sp_contract=sp_contract, demand=h_dem_map,
             game_year=game_year, super_two_ids=super_two_ids,
             salary_report_entry=sr_entry,
         )
@@ -1796,11 +1843,11 @@ def build_dashboard(
                 sp_contract = contract_to_json(raw)
         sr_entry = sr_map.get(pid_str)
         d = _build_pitcher_dict(
-            idx, pitcher_players, pitch_counts, starter, starter_p,
-            p_slr, p_price,
-            pitcher_stats, prospect_pitcher_stats,
-            floor_stats=floor_pitcher_stats,
-            sp_contract=sp_contract, demand=p_dem,
+            idx, pitcher_players_map, pitch_counts_map, starter_map, starter_p_map,
+            p_slr_map, p_price_map,
+            pitcher_stats_map, prospect_pitcher_stats_map,
+            floor_stats=floor_pitcher_stats_map,
+            sp_contract=sp_contract, demand=p_dem_map,
             game_year=game_year, super_two_ids=super_two_ids,
             salary_report_entry=sr_entry,
         )
@@ -1887,6 +1934,16 @@ def build_dashboard(
 
     war_color = _compute_war_color(hitter_dicts, pitcher_dicts)
 
+    # Per-league positional-adjustment spectrum (runs/162), taken from the SAME
+    # resolved FieldingParams the pipeline just used for this build (NOT a fresh
+    # lookup) so the frontend always displays what the model actually applied.
+    fp = dp_h.fielding
+    pos_adj = {
+        "C": float(fp.pos_c), "1B": float(fp.pos_1b), "2B": float(fp.pos_2b),
+        "3B": float(fp.pos_3b), "SS": float(fp.pos_ss), "LF": float(fp.pos_lf),
+        "CF": float(fp.pos_cf), "RF": float(fp.pos_rf), "DH": float(fp.pos_dh),
+    }
+
     result = {
         "meta_projection": {
             "gameYear": game_year,
@@ -1914,6 +1971,7 @@ def build_dashboard(
             },
             "csvPresence": _detect_csv_presence(player_dir),
             "warColor": war_color,
+            "posAdj": pos_adj,
             "progressCurve": {
                 "hit": progress_curve_hit,
                 "sp": progress_curve_sp,
