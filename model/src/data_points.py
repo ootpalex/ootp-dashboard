@@ -482,7 +482,7 @@ class PitchingRegressionCoeffs:
 # ---------------------------------------------------------------------------
 # Section 1b — OOTP-27 regression coefficients (hardcoded piecewise constants)
 # ---------------------------------------------------------------------------
-# Source of truth: analysis/test-league-design/outputs/KNOT_DECISIONS_27.md (knots at absolute
+# Source of truth: ootp27-conversion/test-league-design/outputs/KNOT_DECISIONS_27.md (knots at absolute
 # de-quantized display; slopes per display point) via OOTP27_WIRING_IMPLEMENTATION_SPEC.md §7.
 # 27 does NOT use the sims auto-fit (decision PD3b): the fit machinery is single-segment-@50 and
 # cannot represent these multi-knot / off-50 / clamped curves. `export._detect_metadata` selects
@@ -490,7 +490,7 @@ class PitchingRegressionCoeffs:
 #
 # Transcription rule (spec §2/§7): RELATIVE-regime rows store knot OFFSETS = knot_abs − calib_avg
 # (calib_avg = the calibration pool's leagueAvg.display for that rating — since the 2026-07-02
-# H-pool RE-LOCK from analysis/test-league-design/outputs/viz/hpool_hitpit_bins.json, except the
+# H-pool RE-LOCK from ootp27-conversion/test-league-design/outputs/viz/hpool_hitpit_bins.json, except the
 # two kept Move rows whose averages stay C-pool viz_data.json; full precision); the applicator
 # re-adds the per-league lg.avg at build time so knots slide with each league's average.
 # ABSOLUTE-regime rows (SPE/STE/RUN/HLD + all fielding) store knots at absolute display, unchanged.

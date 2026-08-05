@@ -91,7 +91,7 @@ OOTP simulator mechanics change between major versions. New mechanics produce di
 
 The OOTP-27 calibration is **multi-knot piecewise-linear** (up to 4 knots, off-50 breaks, flat-end clamps, two placement regimes) — a structure the single-segment auto-fit **cannot represent**. So 27 does not use `data/regressions/ootp27/` sims at build time at all (decision PD3b). Instead:
 
-- The constants live in `model/src/data_points.py` **Section 1b** (`DEFAULT_HITTING/PITCHING/FIELDING_REG_COEFFS_27`, built from `PiecewiseCoeffs`), transcribed from the test-league calibration (`analysis/test-league-design/outputs/KNOT_DECISIONS_27.md` in the research workspace). Provenance + audit: [`AUDIT_27.md`](AUDIT_27.md).
+- The constants live in `model/src/data_points.py` **Section 1b** (`DEFAULT_HITTING/PITCHING/FIELDING_REG_COEFFS_27`, built from `PiecewiseCoeffs`), transcribed from the test-league calibration (`ootp27-conversion/test-league-design/outputs/KNOT_DECISIONS_27.md` in the research workspace). Provenance + audit: [`AUDIT_27.md`](AUDIT_27.md).
 - A league with `ootpVersion: "27"` in `league.json` routes to these constants in `export._detect_metadata` (threaded via `settings.ootp_version`); the auto-fit is bypassed. Sim CSVs in `data/regressions/ootp27/`, if present, are cross-check material only — never the build.
 - Guarded by `model/tests/test_regressions_27.py` (constants vs the calibration tables, evaluator continuity/anchor, 26-dispatch no-op proofs, end-to-end spot checks).
 

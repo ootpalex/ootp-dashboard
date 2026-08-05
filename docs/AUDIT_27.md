@@ -2,7 +2,7 @@
 
 > **🔁 RE-LOCK EVENT (2026-07-02, evening) — hit/pit/BSR constants are now H-POOL-provenance.**
 > The H-pool's missing de-quantized display frame (D16) was built and validated
-> (`analysis/test-league-design/scripts/build_hpool_display_maps.py`, all hard gates pass), and
+> (`ootp27-conversion/test-league-design/scripts/build_hpool_display_maps.py`, all hard gates pass), and
 > every hit/pit/baserunning row was re-derived on it and RE-LOCKED (60 jobs, roster-role SP/RP
 > split, C-pool-identical weights) — the H-pool is the single calibration substrate; the C-pool
 > is history. **Exception: `sp_hrr`/`rp_hrr` keep their C-pool locks** (the real-27 referee
@@ -11,7 +11,7 @@
 > the new offsets); all baserunning c0s remain 26-canonical; fielding untouched (H-pool FINAL
 > since 2026-07-01). Referee after wiring: adopted rows 0.83–1.33 of real-SSB, no sign errors;
 > suite 501 passed / 24 skipped incl. the 110-case 26 byte-identical gate. Per-row old→new:
-> `analysis/test-league-design/outputs/KNOT_DECISIONS_27.md`.
+> `ootp27-conversion/test-league-design/outputs/KNOT_DECISIONS_27.md`.
 
 > **✅ F1 FIXED (2026-07-02, rollout session) —** the hitter Steal→SBA% c0 finding below is
 > RESOLVED by the league-adaptive normalization (§6): on the 27 path `compose_data_points`
@@ -22,7 +22,7 @@
 
 > **⚠ Post-port adversarial audit (2026-07-02) —** the hit/pit/baserunning calibration was
 > pressure-tested against a REAL OOTP-27 league (SSB 2043) + bell@27 realistic rosters:
-> `analysis/test-league-design/docs/AUDIT_HITPIT_BR_27.md`. Outcome: **hit/pit slopes validated
+> `ootp27-conversion/test-league-design/docs/AUDIT_HITPIT_BR_27.md`. Outcome: **hit/pit slopes validated
 > on the real 27 engine** (9 relationships at 0.82–1.19 of wired; the 26 coefficients fit worse
 > nearly everywhere) and the SP Move→HR% ALARM closed (real ratio 0.97). **One real finding: the
 > hitter Steal→SBA% canonical c0 (+0.0091, 🟡 26-borrowed below) is a bell-substrate artifact,
@@ -39,14 +39,14 @@ landed on branch `ootp27-wiring` (`model/src/data_points.py` Section 1b, `utils.
 protocol: every input traced (🟢 our calibration · 🟡 borrowed 26 constant · 🔵 deliberate
 assumption), arithmetic re-derived against the evaluator, all flags resolved before merge.
 
-**Sources of truth:** `analysis/test-league-design/outputs/KNOT_DECISIONS_27.md` (43 locked
+**Sources of truth:** `ootp27-conversion/test-league-design/outputs/KNOT_DECISIONS_27.md` (43 locked
 relationships; fielding = H-pool FINAL re-fit 2026-07-01; hit/pit/BSR = H-pool RE-LOCK
 2026-07-02, de-quantized frame, except the two kept Move rows) via
 `OOTP27_WIRING_IMPLEMENTATION_SPEC.md` §7; calibration-pool averages from
-`analysis/test-league-design/outputs/viz/hpool_hitpit_bins.json` (`leagueAvg.display`, full
+`ootp27-conversion/test-league-design/outputs/viz/hpool_hitpit_bins.json` (`leagueAvg.display`, full
 precision; the kept `sp_hrr`/`rp_hrr` averages stay C-pool `viz_data.json`).
 Phase-A derivations (fielding re-fit, catcher decision, D-STATDEF):
-`analysis/test-league-design/docs/DERIVATION_NOTES.md`.
+`ootp27-conversion/test-league-design/docs/DERIVATION_NOTES.md`.
 
 ---
 
@@ -174,7 +174,7 @@ sides). Details + the accepted ≲1% BB-vs-uBB denominator nit: `DERIVATION_NOTE
 | D-STATDEF 3B%/SBA% denominators | RESOLVED — frames match production exactly (§3 above). |
 | `c_sba` real-27 validation | Follow-up (non-blocking): SSB-2043 univariate CI is uninformative (n=56 part-season); re-validate on a full SSB-27 season together with `c_rto`. Tracked in KNOT_DECISIONS_27.md. |
 | WAR smell test 27-side bridge | Phase-E item: `ssb_war_smell_test` sources the 27 side via a retired bridge — see the Phase E report (HANDOFF.md) for status. |
-| 2B range curve challenged post-rollout (Alex, 2026-07-03: SSB 2B runsP ceiling +40; 2B>SS ordering) | **RESOLVED 2026-07-04 — lock KEPT, VALIDATED as engine truth** by two-substrate bucket decomposition (step synchronized across all difficulty buckets, mix rating-invariant, arm/error/neighbor/exposure null; bell@27 agrees at bucket level). The user-visible ordering symptom traces to the 26-era frozen `_FROZEN_POS_ADJ_BY_URL` spectrum not reflecting the 27 engine's redistribution of defensive value — design question OPEN: `analysis/test-league-design/docs/POSADJ_27_DESIGN_QUESTION.md`. Full derivation record: `analysis/test-league-design/docs/DERIVATION_NOTES.md` (fifth batch). |
+| 2B range curve challenged post-rollout (Alex, 2026-07-03: SSB 2B runsP ceiling +40; 2B>SS ordering) | **RESOLVED 2026-07-04 — lock KEPT, VALIDATED as engine truth** by two-substrate bucket decomposition (step synchronized across all difficulty buckets, mix rating-invariant, arm/error/neighbor/exposure null; bell@27 agrees at bucket level). The user-visible ordering symptom traces to the 26-era frozen `_FROZEN_POS_ADJ_BY_URL` spectrum not reflecting the 27 engine's redistribution of defensive value — design question OPEN: `ootp27-conversion/test-league-design/docs/POSADJ_27_DESIGN_QUESTION.md`. Full derivation record: `ootp27-conversion/test-league-design/docs/DERIVATION_NOTES.md` (fifth batch). |
 
 No un-traced constant ships: every field of the three 27 sets is asserted against its
 KNOT_DECISIONS row (or its 26 origin, for 🟡 fields) in `TestAllConstants27` — 104 passing
