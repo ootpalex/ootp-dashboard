@@ -25,6 +25,7 @@ def _compute_build_input_hash(
     metadata_dir: Path | None,
     league_config_path: Path | None,
     statsplus_date: str | None,
+    ratings_dir: Path | None = None,
 ) -> str:
     """Hash of everything the pipeline reads. If this matches the previous
     successful build's hash and the output still exists, we can skip the
@@ -54,6 +55,12 @@ def _compute_build_input_hash(
         hash_dir(metadata_dir)
     if league_config_path:
         hash_file(league_config_path)
+    # StatsPlus ratings dumps (name + size only — the .gz payloads are large
+    # and a re-export always changes filename date or size).
+    if ratings_dir and ratings_dir.is_dir():
+        for child in sorted(ratings_dir.iterdir()):
+            if child.is_file() and child.name.endswith(".csv.gz"):
+                h.update(f"ratings:{child.name}:{child.stat().st_size}\n".encode())
     return f"sha256:{h.hexdigest()}"
 
 
@@ -113,6 +120,7 @@ def _resolve_paths_from_league(
         "output_path": Path(overrides.output) if overrides.output else paths["output_gz"],
         "regressions_dir": regressions_dir_for(config.ootp_version),
         "statsplus_cache": paths["statsplus_cache"],
+        "ratings_dir": paths["ratings_dir"],
     }
 
 
@@ -125,6 +133,7 @@ def _resolve_paths_legacy(args: argparse.Namespace) -> dict[str, Path]:
         "output_path": Path(args.output or "output/dashboard.json.gz"),
         "regressions_dir": None,  # legacy mode does not surface regressions dir
         "statsplus_cache": None,  # legacy mode has no per-league cache dir
+        "ratings_dir": None,      # legacy mode has no StatsPlus ratings dumps
     }
 
 
@@ -373,6 +382,7 @@ def main() -> None:
     sp_date_for_hash = current_date if statsplus_url else None
     build_hash = _compute_build_input_hash(
         player_dir, ballpark_path, metadata_dir, league_cfg_path, sp_date_for_hash,
+        ratings_dir=paths.get("ratings_dir"),
     )
     cached_build = (
         None if (args.force or args.refresh_statsplus)
@@ -415,6 +425,8 @@ def main() -> None:
             contracts, salary_reports, players_extra,
             statsplus_game_date=current_date if statsplus_url else None,
             regressions_dir=regressions_dir,
+            ratings_dir=paths.get("ratings_dir"),
+            statsplus_url=statsplus_url,
         )
         elapsed = time.time() - t0
     except FileNotFoundError as e:

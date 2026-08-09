@@ -1528,13 +1528,16 @@ def _detect_metadata(
 # ---------------------------------------------------------------------------
 
 
-def _detect_csv_presence(player_dir: Path) -> dict:
+def _detect_csv_presence(player_dir: Path, api_draft_loaded: bool = False) -> dict:
     """Report which player-source CSVs exist in `player_dir`.
 
     Returned flags drive view visibility on the frontend (e.g. hide the IAFA
     Board when there's no iafa.csv). `hasOrg` is informational only — the
     pipeline already requires `org.csv` via validation. `hasIntl` flags the
     optional IntlComplex split file used when the OOTP export paginates.
+    `hasDraft` is true when a draft<YYYY>.csv exists OR the StatsPlus
+    draft-pool API supplied the draft class this build (`api_draft_loaded`,
+    threaded from the player-load step so a failed fetch never flips it on).
     """
     files = {p.name.lower() for p in player_dir.iterdir() if p.is_file() and p.suffix.lower() == ".csv"}
     has_draft = any(re.match(r"^draft\d{4}\.csv$", f) for f in files)
@@ -1543,7 +1546,7 @@ def _detect_csv_presence(player_dir: Path) -> dict:
         "hasIntl": "intl.csv" in files,
         "hasFreeAgents": "freeagents.csv" in files,
         "hasIAFA": "iafa.csv" in files,
-        "hasDraft": has_draft,
+        "hasDraft": has_draft or bool(api_draft_loaded),
     }
 
 
@@ -1589,6 +1592,8 @@ def build_dashboard(
     players_extra: dict | None = None,
     statsplus_game_date: str | None = None,
     regressions_dir: str | Path | None = None,
+    ratings_dir: str | Path | None = None,
+    statsplus_url: str | None = None,
 ) -> dict:
     """Full pipeline: load → compute → build JSON dict.
 
@@ -1605,7 +1610,8 @@ def build_dashboard(
     player_dir = Path(player_dir)
     ballpark_path = Path(ballpark_path)
 
-    # 1. Load players
+    # 1. Load players (draft class falls back to the StatsPlus draft-pool API
+    # when no draft CSV exists — see players.load_players)
     print("Loading players...")
     players = load_players(
         player_dir,
@@ -1613,7 +1619,10 @@ def build_dashboard(
         osa_blend=settings.osa_blend,
         scout_weight=settings.scout_weight,
         osa_weight=settings.osa_weight,
+        statsplus_url=(statsplus_url if statsplus_url is not None else settings.statsplus_url),
+        ratings_dir=ratings_dir,
     )
+    api_draft_loaded = bool(players.attrs.get("api_draft_loaded", False))
 
     # 2. Load ballparks + compute park factors
     print("Computing park factors...")
@@ -1976,7 +1985,7 @@ def build_dashboard(
                 "hitters": len(hitter_dicts),
                 "pitchers": len(pitcher_dicts),
             },
-            "csvPresence": _detect_csv_presence(player_dir),
+            "csvPresence": _detect_csv_presence(player_dir, api_draft_loaded),
             "warColor": war_color,
             "posAdj": pos_adj,
             "progressCurve": {

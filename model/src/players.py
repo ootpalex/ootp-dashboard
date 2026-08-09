@@ -312,6 +312,8 @@ def load_players(
     osa_blend: bool = False,
     scout_weight: float = 0.8,
     osa_weight: float = 0.2,
+    statsplus_url: str = "",
+    ratings_dir: Path | str | None = None,
 ) -> pd.DataFrame:
     """Load and merge all OOTP CSV exports from a directory.
 
@@ -330,6 +332,15 @@ def load_players(
     When osa_blend=True, for each scout file, looks for a paired _osa.csv
     (e.g., org_osa.csv) and blends rating columns using the specified
     weights before concatenation.
+
+    When NO draft<YYYY>.csv exists AND `statsplus_url` is set AND
+    `ratings_dir` holds a StatsPlus scout ratings dump, the draft class is
+    fetched from the StatsPlus draft-pool API instead and gets the same
+    downstream treatment as a CSV draft class (source tag "Draft <year>",
+    OSA blend over the _RATING_COLUMNS whitelist). A hand-exported draft CSV
+    always wins — when present the API path is skipped entirely. The result
+    DataFrame's ``attrs["api_draft_loaded"]`` reports whether API draftees
+    were actually loaded (False on any fetch failure).
 
     Pipeline order: load → relative blend → OSA blend → concat.
 
@@ -382,8 +393,34 @@ def load_players(
 
         frames.append(df)
 
+    # API draft pool — only when no hand-exported draft CSV exists (CSV wins).
+    api_draft_loaded = False
+    has_draft_csv = any(
+        re.match(r"^draft\d{4}\.csv$", scout_path.name, re.IGNORECASE)
+        for scout_path, _ in csv_pairs
+    )
+    if not has_draft_csv and statsplus_url and ratings_dir is not None:
+        from src.draftpool import load_api_draft_pool
+
+        api = load_api_draft_pool(statsplus_url, ratings_dir)
+        if api is not None:
+            api_scout, api_osa, year = api
+            df = api_scout.rename(columns=_COLUMN_RENAMES)
+            if source_tags:
+                df["source"] = f"Draft {year}"
+            if osa_blend and api_osa is not None:
+                osa_df = api_osa.rename(columns=_COLUMN_RENAMES)
+                df = _blend_single_file(df, osa_df, scout_weight, osa_weight)
+                if source_tags:
+                    df["source"] = f"Draft {year}"
+            status = "scout only" if api_osa is None else f"scout + OSA ({scout_weight:g}/{osa_weight:g})"
+            print(f"  {('draftpool API:').ljust(name_width)} {status}")
+            frames.append(df)
+            api_draft_loaded = True
+
     combined = pd.concat(frames, ignore_index=True)
     combined["is_pitcher"] = _detect_pitcher(combined["POS"])
     combined["is_two_way"] = _detect_two_way(combined)
+    combined.attrs["api_draft_loaded"] = api_draft_loaded
 
     return combined

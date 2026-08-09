@@ -361,6 +361,7 @@ def league_paths(slug: str, root: Path | None = None) -> dict[str, Path]:
         "player_dir": base / "csv" / "players",
         "ballpark_csv": base / "csv" / "ballparks.csv",
         "metadata_dir": base / "metadata",
+        "ratings_dir": base / "ratings",
         "output_dir": base / "output",
         "output_gz": base / "output" / "dashboard.json.gz",
         "statsplus_cache": base / ".statsplus_cache.json.gz",
