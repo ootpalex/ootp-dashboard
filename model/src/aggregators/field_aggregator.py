@@ -176,6 +176,44 @@ def _compute_fielding_rating_averages(fielding_helper: pd.DataFrame,
     return result
 
 
+def _compute_fielding_rating_dists(fielding_helper: pd.DataFrame) -> dict:
+    """IP-weighted rating distributions per position for build-time centring (change C3).
+
+    Same helper rows and the same IP weights as ``_compute_fielding_rating_averages`` — the
+    centring expectation must be taken over exactly the population that defines the avg_*
+    anchors (FIELDING_PIPELINE_27, decision D2). Returns
+    ``{pos: {rating_name: [[value, ip], ...]}}`` with zero-weight rows dropped.
+    """
+    helper = fielding_helper.copy()
+    for col in helper.columns:
+        if col != "ID":
+            helper[col] = pd.to_numeric(helper[col], errors="coerce").fillna(0)
+
+    dist_cols = {
+        "IF RNG": "IF RNG", "OF RNG": "OF RNG", "IF ARM": "IF ARM",
+        "C FRM": "C FRM Fix", "C ARM": "C ARM Fix",
+    }
+    result: dict = {}
+    for pos, ip_col in _POS_IP_MAP.items():
+        if ip_col not in helper.columns:
+            continue
+        ip_weights = helper[ip_col]
+        mask = ip_weights > 0
+        if not mask.any():
+            continue
+        pos_dists = {}
+        for name, col in dist_cols.items():
+            if col not in helper.columns:
+                continue
+            grouped = (
+                pd.DataFrame({"v": helper.loc[mask, col], "w": ip_weights[mask]})
+                .groupby("v")["w"].sum().sort_index()
+            )
+            pos_dists[name] = [[float(v), float(w)] for v, w in grouped.items()]
+        result[pos] = pos_dists
+    return result
+
+
 def _compute_position_adjustments(statsplus_url: str | None) -> dict[str, float]:
     """Return the frozen multi-year blended defensive-switcher spectrum (runs/162).
 
@@ -214,6 +252,7 @@ def compute_fielding_constants(inputs,
     agg = _compute_fielding_aggregates(inputs.fielding_data)
     rating_avgs = _compute_fielding_rating_averages(
         fielding_helper, inputs.fielding_ratings)
+    rating_dists = _compute_fielding_rating_dists(fielding_helper)
     pos_adj = _compute_position_adjustments(inputs.statsplus_url)
 
     # Helper to get aggregate value
@@ -334,4 +373,16 @@ def compute_fielding_constants(inputs,
         rf_arm_lg=arm_per_1200("rf"),
 
         ss_dp_pa=stats["ss"]["dp_per_1200"],
+
+        # Rating distributions for build-time centring (change C3) — same rows/weights as avg_*
+        rng_ip_dist_1b=rating_dists.get("1b", {}).get("IF RNG"),
+        rng_ip_dist_2b=rating_dists.get("2b", {}).get("IF RNG"),
+        rng_ip_dist_3b=rating_dists.get("3b", {}).get("IF RNG"),
+        rng_ip_dist_ss=rating_dists.get("ss", {}).get("IF RNG"),
+        rng_ip_dist_lf=rating_dists.get("lf", {}).get("OF RNG"),
+        rng_ip_dist_cf=rating_dists.get("cf", {}).get("OF RNG"),
+        rng_ip_dist_rf=rating_dists.get("rf", {}).get("OF RNG"),
+        arm_ip_dist_3b=rating_dists.get("3b", {}).get("IF ARM"),
+        frm_ip_dist_c=rating_dists.get("c", {}).get("C FRM"),
+        arm_ip_dist_c=rating_dists.get("c", {}).get("C ARM"),
     )

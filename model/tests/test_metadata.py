@@ -1029,18 +1029,38 @@ class TestMultiSeasonGenerate:
         _make_season(multi, "2025")
         h_flat, p_flat, f_flat = generate_data_points(flat, use_cache=False)
         h_multi, p_multi, f_multi = generate_data_points(multi, use_cache=False)
-        # ste_pa_dist is a list of [value, weight] pairs — pytest.approx can't diff it inside
-        # the dict, so compare it pairwise and the scalar fields as before.
-        hd_flat, hd_multi = dataclasses.asdict(h_flat), dataclasses.asdict(h_multi)
-        dist_flat, dist_multi = hd_flat.pop("ste_pa_dist"), hd_multi.pop("ste_pa_dist")
-        if dist_flat is None:
-            assert dist_multi is None
-        else:
-            assert [v for v, _ in dist_multi] == [v for v, _ in dist_flat]
-            assert [w for _, w in dist_multi] == pytest.approx([w for _, w in dist_flat])
+
+        # Distribution fields ([[value, weight], ...]) can't go through pytest.approx inside
+        # the dict, and the multi path renormalizes weights while the flat path keeps raw
+        # weights — identical distributions up to normalization. Compare values exactly and
+        # weights as normalized shares.
+        def _assert_dist_equal(a, b):
+            if a is None or b is None:
+                assert a is None and b is None
+                return
+            assert [v for v, _ in b] == [v for v, _ in a]
+            ta, tb = sum(w for _, w in a), sum(w for _, w in b)
+            assert [w / tb for _, w in b] == pytest.approx([w / ta for _, w in a])
+
+        def _split_dists(params):
+            d = dataclasses.asdict(params)
+            dists = {k: d.pop(k) for k in list(d)
+                     if k == "ste_pa_dist" or "_dist_" in k or k.endswith("_dist")}
+            return d, dists
+
+        hd_flat, hdist_flat = _split_dists(h_flat)
+        hd_multi, hdist_multi = _split_dists(h_multi)
+        assert hdist_multi.keys() == hdist_flat.keys()
+        for k in hdist_flat:
+            _assert_dist_equal(hdist_flat[k], hdist_multi[k])
         assert hd_multi == pytest.approx(hd_flat)
         assert dataclasses.asdict(p_multi) == pytest.approx(dataclasses.asdict(p_flat))
-        assert dataclasses.asdict(f_multi) == pytest.approx(dataclasses.asdict(f_flat))
+        fd_flat, fdist_flat = _split_dists(f_flat)
+        fd_multi, fdist_multi = _split_dists(f_multi)
+        assert fdist_multi.keys() == fdist_flat.keys()
+        for k in fdist_flat:
+            _assert_dist_equal(fdist_flat[k], fdist_multi[k])
+        assert fd_multi == pytest.approx(fd_flat)
 
     def test_cache_at_parent(self, tmp_path):
         _make_season(tmp_path, "2026")

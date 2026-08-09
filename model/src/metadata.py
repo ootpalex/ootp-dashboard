@@ -422,7 +422,9 @@ def load_metadata_inputs(
 # OOTP-27 league-adaptive sba c0 (AUDIT_HITPIT_BR_27 §F1). v5 caches load fine (defaulted field)
 # but would silently keep the canonical c0 on 27 leagues; bump forces recompute so the
 # distribution is present. No 26 constant changes.
-_CACHE_VERSION = 6
+# v7: engine-boundary season filtering (C1, FIELDING_PIPELINE_27) — a 27 league's constants
+# may no longer pool pre-boundary (OOTP 26) metadata seasons.
+_CACHE_VERSION = 7
 _CACHE_FILENAME = ".metadata_cache.json"
 
 
@@ -458,11 +460,15 @@ def _compute_config_hash(
     scout_weight: float,
     osa_weight: float,
     season_weights: Sequence[float] | None = None,
+    ootp_version: str | None = None,
+    engine_first_season: dict[str, int] | None = None,
 ) -> str:
     """Short hash of blending parameters for cache invalidation."""
     sw = ",".join(f"{w:.6f}" for w in (season_weights or ()))
+    efs = ",".join(f"{k}:{v}" for k, v in sorted((engine_first_season or {}).items()))
     cfg = (f"rel={relative_blend},osa={osa_blend},"
-           f"sw={scout_weight:.6f},ow={osa_weight:.6f},seasons=[{sw}]")
+           f"sw={scout_weight:.6f},ow={osa_weight:.6f},seasons=[{sw}],"
+           f"ver={ootp_version or ''},efs=[{efs}]")
     return hashlib.sha256(cfg.encode()).hexdigest()[:16]
 
 
@@ -519,6 +525,65 @@ def _save_cache(
 _DEFAULT_SEASON_WEIGHTS: tuple[float, ...] = (3.0, 2.0, 1.0)
 
 
+class MetadataVersionError(RuntimeError):
+    """A league's metadata cannot be safely resolved for its engine version.
+
+    Raised instead of guessing: pooling metadata seasons across an OOTP engine boundary
+    silently feeds stale-engine constants (chance counts, run values, rating averages) into the
+    current-engine model — the root cause of the 2B/MI overvaluation
+    (ootp27-conversion/proposals/FIELDING_PIPELINE_27.md, change C1). Loud failure is the fix.
+    """
+
+
+def _enforce_engine_boundary(
+    year_dirs: list[tuple[int, "Path"]],
+    directory: "Path",
+    ootp_version: str | None,
+    engine_first_season: dict[str, int] | None,
+) -> list[tuple[int, "Path"]]:
+    """Filter metadata season dirs to the league's current engine era.
+
+    Version "26" (and None — legacy/direct callers) is the pre-boundary base: no filtering.
+    Any later version REQUIRES league.json to declare its first season
+    (``"engineFirstSeason": {"27": 2043}``); seasons before it are excluded. Missing
+    declaration, a flat (year-less) metadata dir, or zero surviving seasons all raise
+    MetadataVersionError with the operator fix in the message.
+    """
+    if ootp_version in (None, "", "26"):
+        return year_dirs
+    boundary = (engine_first_season or {}).get(str(ootp_version))
+    if boundary is None:
+        raise MetadataVersionError(
+            f"League is on OOTP {ootp_version} but league.json declares no "
+            f'"engineFirstSeason" entry for it. Add e.g. "engineFirstSeason": '
+            f'{{"{ootp_version}": <first {ootp_version} in-game season>}} so metadata from the '
+            f"previous engine cannot pool into this league's constants. (metadata dir: {directory})"
+        )
+    if not year_dirs:
+        raise MetadataVersionError(
+            f"League is on OOTP {ootp_version} but its metadata dir is flat (no year "
+            f"subfolders), so seasons cannot be classified by engine. Move the CSVs into a "
+            f"year-named subfolder (e.g. {directory}/<season>/) on the correct side of the "
+            f"engineFirstSeason boundary ({boundary})."
+        )
+    kept = [(y, p) for y, p in year_dirs if y >= int(boundary)]
+    if not kept:
+        have = ", ".join(str(y) for y, _ in sorted(year_dirs))
+        raise MetadataVersionError(
+            f"League is on OOTP {ootp_version} (first season {boundary}) but its metadata dir "
+            f"only holds pre-boundary seasons [{have}]. Export/build a {ootp_version}-era "
+            f"metadata season under {directory}/<year>/ — refusing to fall back to "
+            f"previous-engine constants."
+        )
+    dropped = sorted(y for y, _ in year_dirs if y < int(boundary))
+    if dropped:
+        print(
+            f"Engine boundary {boundary} (OOTP {ootp_version}): excluding pre-boundary "
+            f"metadata seasons {dropped}"
+        )
+    return kept
+
+
 def has_metadata_inputs(directory: Path | str) -> bool:
     """True if *directory* holds metadata CSVs directly or in year subfolders.
 
@@ -540,6 +605,9 @@ def has_metadata_inputs(directory: Path | str) -> bool:
 def _resolve_season_dirs(
     directory: Path | str,
     season_weights: Sequence[float],
+    *,
+    ootp_version: str | None = None,
+    engine_first_season: dict[str, int] | None = None,
 ) -> list[tuple[Path, float]]:
     """Resolve which season subfolders to pool, with their recency weights.
 
@@ -560,6 +628,9 @@ def _resolve_season_dirs(
         for child in directory.iterdir():
             if child.is_dir() and child.name.isdigit():
                 year_dirs.append((int(child.name), child))
+
+    year_dirs = _enforce_engine_boundary(
+        year_dirs, directory, ootp_version, engine_first_season)
 
     if not year_dirs:
         return [(directory, 1.0)]
@@ -645,6 +716,8 @@ def generate_data_points(
     scout_weight: float = 0.8,
     osa_weight: float = 0.2,
     season_weights: Sequence[float] | None = None,
+    ootp_version: str | None = None,
+    engine_first_season: dict[str, int] | None = None,
 ) -> tuple[HitterLeagueParams, PitcherLeagueParams, FieldingParams]:
     """Full pipeline: load inputs → compute all calibration constants.
 
@@ -692,7 +765,9 @@ def generate_data_points(
         "osa_weight": osa_weight,
     }
 
-    seasons = _resolve_season_dirs(directory, season_weights)
+    seasons = _resolve_season_dirs(
+        directory, season_weights,
+        ootp_version=ootp_version, engine_first_season=engine_first_season)
     is_flat = len(seasons) == 1 and seasons[0][0] == directory
 
     if use_cache:
@@ -700,7 +775,9 @@ def generate_data_points(
             _compute_input_hash(directory) if is_flat
             else _compute_seasons_input_hash([d for d, _ in seasons])
         )
-        config_hash = _compute_config_hash(**blend_kw, season_weights=season_weights)
+        config_hash = _compute_config_hash(
+            **blend_kw, season_weights=season_weights,
+            ootp_version=ootp_version, engine_first_season=engine_first_season)
         if not force_recompute:
             cached = _load_cache(directory, input_hash, config_hash)
             if cached is not None:
@@ -766,6 +843,125 @@ def _with_league_adaptive_sba_c0(
     return dataclasses.replace(hitting_reg, sba=dataclasses.replace(sba, c0=-e_pw))
 
 
+# Fielding channels centred at compose time (change C3). Each entry: the const slot to set,
+# then (slope attr, avg attr on FieldingParams, dist attr on FieldingParams) per rating term.
+# Linear terms need no centring (E_w[linear(r − avg)] = 0 exactly, same rows/weights as avg);
+# they are listed anyway so a future piecewise upgrade of that term is picked up automatically.
+_FIELDING_CENTRE_CHANNELS: tuple = (
+    ("first_pm_const",  (("first_pm_rng_slope",  "avg_rng_1b", "rng_ip_dist_1b"),)),
+    ("second_pm_const", (("second_pm_rng_slope", "avg_rng_2b", "rng_ip_dist_2b"),
+                         ("second_pm_arm_slope", "avg_arm_2b", None))),
+    ("third_pm_const",  (("third_pm_rng_slope",  "avg_rng_3b", "rng_ip_dist_3b"),
+                         ("third_pm_arm_slope",  "avg_arm_3b", "arm_ip_dist_3b"))),
+    ("ss_pm_const",     (("ss_pm_rng_slope",     "avg_rng_ss", "rng_ip_dist_ss"),
+                         ("ss_pm_arm_slope",     "avg_arm_ss", None))),
+    ("lf_pm_const",     (("lf_pm_slope",         "avg_rng_lf", "rng_ip_dist_lf"),)),
+    ("cf_pm_const",     (("cf_pm_slope",         "avg_rng_cf", "rng_ip_dist_cf"),)),
+    ("rf_pm_const",     (("rf_pm_slope",         "avg_rng_rf", "rng_ip_dist_rf"),)),
+    ("c_frm_const",     (("c_frm_slope",         "avg_frm_c",  "frm_ip_dist_c"),)),
+    ("c_rto_const",     (("c_rto_slope",         "avg_arm_c",  "arm_ip_dist_c"),)),
+)
+
+
+def _with_centred_fielding_consts(
+    fielding_reg: FieldingRegressionCoeffs, fielding: FieldingParams
+) -> FieldingRegressionCoeffs:
+    """OOTP-27 only: centre every piecewise fielding channel on its league population (C3).
+
+    The 27 curves anchor delta = 0 at the position's average RATING, which centres the average
+    player but not the population whenever the curve bends there (Jensen gap: ~+5 runs at 2B's
+    convex ramp, ~−5 at the clamped corner-OF curves — items 1.0/2.8, FIELDING_PIPELINE_27).
+    Setting ``const = −E_w[Σ piecewise_delta]`` over the SAME IP-weighted population that
+    defines the avg makes the population-mean channel value exactly zero by construction, for
+    any curve shape, any league, any future engine.
+
+    Dispatch: a channel is touched only when at least one of its slope terms is
+    ``PiecewiseCoeffs`` — every 26 path (scalar/linear slopes) passes through byte-identical.
+    A piecewise channel whose distribution is missing keeps its const and WARNS LOUDLY: the
+    population mean will not be zero and the metadata should be rebuilt (cache version ≥ 7).
+    """
+    from src.utils import piecewise_delta
+
+    updates: dict = {}
+    report: list[str] = []
+    for const_attr, terms in _FIELDING_CENTRE_CHANNELS:
+        piecewise_terms = [
+            t for t in terms
+            if isinstance(getattr(fielding_reg, t[0], None), PiecewiseCoeffs)
+        ]
+        if not piecewise_terms:
+            continue
+        e_total = 0.0
+        missing = False
+        for slope_attr, avg_attr, dist_attr in piecewise_terms:
+            dist = getattr(fielding, dist_attr, None) if dist_attr else None
+            if not dist:
+                print(f"⚠️  OOTP-27 centring SKIPPED for {const_attr} ({slope_attr}): no "
+                      f"{dist_attr or 'distribution'} in league metadata — population-mean "
+                      f"runsP will NOT be centred at this position. Rebuild metadata "
+                      f"(cache v7+) to fix.")
+                missing = True
+                break
+            total = float(sum(w for _, w in dist))
+            if total <= 0:
+                missing = True
+                break
+            coeffs = getattr(fielding_reg, slope_attr)
+            avg = float(getattr(fielding, avg_attr))
+            e_total += sum(
+                w * float(piecewise_delta(float(v), avg, coeffs)) for v, w in dist
+            ) / total
+        if missing:
+            continue
+        updates[const_attr] = -e_total
+        report.append(f"{const_attr}={-e_total:+.6f}")
+    if updates:
+        print("OOTP-27 fielding centring (C3): " + " · ".join(report))
+        return dataclasses.replace(fielding_reg, **updates)
+    return fielding_reg
+
+
+def check_fielding_conversion_27(fielding: FieldingParams) -> None:
+    """Build gate for a 27 league's fielding conversion inputs (change C2).
+
+    Prints the fit-vs-deploy chance-count table (visibility: the fit substrate is by design
+    allocation-unrepresentative, rule C5) and raises MetadataVersionError when a deployed
+    per-position chance count drifts more than FIELDING_DEPLOY_PA_REL_TOL from its real-27
+    anchor — the signature of wrong-era or corrupted metadata, which season-to-season noise
+    (~1%) cannot produce.
+    """
+    from src.data_points import (
+        FIELDING_DEPLOY_PA_ANCHORS_27,
+        FIELDING_DEPLOY_PA_REL_TOL,
+        FIELDING_FIT_ENV_27,
+        FIELDING_RESPONSE_FACTORS_27,
+    )
+    pa_attr = {"1b": "first_pa", "2b": "second_pa", "3b": "third_pa", "ss": "ss_pa",
+               "lf": "lf_pa", "cf": "cf_pa", "rf": "rf_pa"}
+    print("OOTP-27 fielding conversion (C2 gate): pos  deploy_pa  anchor  fit_env  response")
+    failures: list[str] = []
+    for pos, attr in pa_attr.items():
+        deploy = float(getattr(fielding, attr))
+        anchor = FIELDING_DEPLOY_PA_ANCHORS_27[pos]
+        fit = FIELDING_FIT_ENV_27[pos].chances_per_1200
+        factor = FIELDING_RESPONSE_FACTORS_27[pos]
+        rel = deploy / anchor - 1.0 if anchor else 0.0
+        flag = "  ⚠️ DRIFT" if abs(rel) > FIELDING_DEPLOY_PA_REL_TOL else ""
+        print(f"  {pos.upper():3s} {deploy:9.1f} {anchor:7.1f} {fit:8.1f} {factor:9.2f}"
+              f"  ({rel:+.1%} vs anchor){flag}")
+        if abs(rel) > FIELDING_DEPLOY_PA_REL_TOL:
+            failures.append(f"{pos.upper()} deploy {deploy:.1f} vs anchor {anchor:.1f} ({rel:+.1%})")
+    if failures:
+        raise MetadataVersionError(
+            "OOTP-27 deployment chance counts drifted beyond ±"
+            f"{FIELDING_DEPLOY_PA_REL_TOL:.0%} of the real-27 anchors: {'; '.join(failures)}. "
+            "This is the wrong-era/corrupt-metadata signature (season noise is ~1%). Check the "
+            "league's metadata year-dirs and engineFirstSeason; if the league has genuinely "
+            "shifted, re-derive the anchors (data_points.FIELDING_DEPLOY_PA_ANCHORS_27) with "
+            "referee sign-off."
+        )
+
+
 def compose_data_points(
     hitting: HitterLeagueParams,
     pitching: PitcherLeagueParams,
@@ -809,6 +1005,8 @@ def compose_data_points(
 
     # OOTP-27 F1 fix: league-adaptive hitter sba c0 (no-op for 26 LinearCoeffs/CubicCoeffs).
     hitting_reg = _with_league_adaptive_sba_c0(hitting_reg, hitting)
+    # OOTP-27 C3: population-centre the piecewise fielding channels (no-op for 26 scalars).
+    fielding_reg = _with_centred_fielding_consts(fielding_reg, fielding)
 
     hitter_dp = HitterDataPoints(
         hitting=hitting_reg,

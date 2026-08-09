@@ -33,6 +33,13 @@ class PipelineSettings:
     # represent the 27 multi-knot curves). Threaded from LeagueConfig.ootp_version via
     # to_pipeline_settings(); legacy single-league mode stays "26" and is unchanged.
     ootp_version: str = "26"
+    # First in-game season played on each engine version, e.g. {"27": 2043}. Metadata year
+    # subfolders from before a version's first season are excluded from pooling for a league on
+    # that version (engine chance environments differ; pooling across the boundary silently
+    # feeds stale-engine constants — the 2B/MI overvaluation root cause, FIELDING_PIPELINE_27).
+    # Required for any league whose ootp_version is not "26"; the metadata resolver raises a
+    # loud error when missing rather than guessing.
+    engine_first_season: dict[str, int] = field(default_factory=dict)
     team: str = "Nashville Stars"
     park_factor_mode: str = "team"       # "neutral" | "team"
     home_fraction: float = 0.5
@@ -56,6 +63,8 @@ class LeagueConfig:
     slug: str
     league_name: str
     ootp_version: str
+    # See PipelineSettings.engine_first_season. league.json key: "engineFirstSeason".
+    engine_first_season: dict[str, int] = field(default_factory=dict)
     team: str = "Nashville Stars"
     statsplus_url: str = ""
     park_factor_mode: str = "team"
@@ -71,6 +80,7 @@ class LeagueConfig:
         """Project to legacy PipelineSettings for code that still expects it."""
         return PipelineSettings(
             ootp_version=self.ootp_version,
+            engine_first_season=dict(self.engine_first_season),
             team=self.team,
             park_factor_mode=self.park_factor_mode,
             home_fraction=self.home_fraction,
@@ -310,6 +320,7 @@ def get_or_prompt_settings(
 _LEAGUE_CAMEL_TO_SNAKE = {
     "leagueName": "league_name",
     "ootpVersion": "ootp_version",
+    "engineFirstSeason": "engine_first_season",
     "parkFactorMode": "park_factor_mode",
     "homeFraction": "home_fraction",
     "relativeBlend": "relative_blend",
@@ -391,6 +402,7 @@ def save_league_config(config: LeagueConfig, root: Path | None = None) -> Path:
         "slug": data["slug"],
         "leagueName": data["league_name"],
         "ootpVersion": data["ootp_version"],
+        "engineFirstSeason": data["engine_first_season"],
         "team": data["team"],
         "statsplusUrl": data["statsplus_url"],
         "parkFactorMode": data["park_factor_mode"],

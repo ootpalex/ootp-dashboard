@@ -1482,7 +1482,11 @@ def _detect_metadata(
         season_weights = settings.season_weights
 
     hitting, pitching, fielding = generate_data_points(
-        metadata_dir, season_weights=season_weights, **blend_kw)
+        metadata_dir, season_weights=season_weights,
+        ootp_version=getattr(settings, "ootp_version", None) if settings is not None else None,
+        engine_first_season=(
+            getattr(settings, "engine_first_season", None) if settings is not None else None),
+        **blend_kw)
 
     # Regression coefficients by OOTP version:
     #   "27" → the hardcoded DEFAULT_*_REG_COEFFS_27 piecewise constants (decision PD3b). The 27
@@ -1502,6 +1506,9 @@ def _detect_metadata(
         pitching_reg = DEFAULT_PITCHING_REG_COEFFS_27
         fielding_reg = DEFAULT_FIELDING_REG_COEFFS_27
         print("Using hardcoded OOTP-27 regression constants (PD3b; auto-fit bypassed)")
+        # C2 gate: fit-vs-deploy visibility + hard stop on wrong-era chance-count drift.
+        from src.metadata import check_fielding_conversion_27
+        check_fielding_conversion_27(fielding)
     elif regressions_dir is not None and Path(regressions_dir).is_dir():
         try:
             from src.regressions import generate_regression_coefficients

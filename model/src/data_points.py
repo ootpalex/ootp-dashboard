@@ -778,8 +778,73 @@ DEFAULT_FIELDING_REG_COEFFS_27 = FieldingRegressionCoeffs(
         relative=False,
     ),
     # NOT set (keep 26 defaults): every *_const; first_pm_ht_slope (D-1BHT); second_dp_* /
-    # ss_dp_* (D-DP).
+    # ss_dp_* (D-DP). (*_pm_const values are OVERWRITTEN at compose time by the build-time
+    # population centring — change C3, metadata._with_centred_fielding_consts.)
 )
+
+
+# ---------------------------------------------------------------------------
+# OOTP-27 fielding conversion governance
+# (ootp27-conversion/proposals/FIELDING_PIPELINE_27.md — changes C2 and C4)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FieldingFitEnv27:
+    """Fit-environment provenance for one position's OOTP-27 fielding curves (change C2).
+
+    The 27 PM curves were fit on the H-pool calibration sims (60 baseline-h jobs, ~500
+    seasons). That substrate is DELIBERATELY unrepresentative of ball allocation (100%
+    right-handed batters/pitchers, neutral GB tendency, neutral parks — pinned so the
+    rating→outcome fits carry no platoon/park contamination), so its chance counts must never
+    be used as deployment counts (rule C5); they are recorded here so the build can SEE the
+    fit-vs-deploy ratio instead of silently multiplying environments (the 2B/MI overvaluation
+    root cause). All values computed 2026-08-07/09 from the raw H-pool exports; the 2B count
+    (393.7) was reproduced independently by two extraction pipelines.
+    """
+
+    chances_per_1200: float    # TOTAL balls-in-zone per 1200 IP (opps_0..5 incl. impossible)
+    makeable_per_1200: float   # opps_0..4 only
+    avg_display_rating: float  # chance-weighted primary-rating average in the fit substrate
+
+
+FIELDING_FIT_ENV_27: dict[str, FieldingFitEnv27] = {
+    "1b": FieldingFitEnv27(208.5, 198.2, 48.42),
+    "2b": FieldingFitEnv27(393.7, 337.9, 62.36),
+    "3b": FieldingFitEnv27(504.1, 473.5, 57.39),
+    "ss": FieldingFitEnv27(578.2, 518.5, 63.39),
+    "lf": FieldingFitEnv27(492.9, 393.2, 59.87),
+    "cf": FieldingFitEnv27(487.0, 428.0, 63.99),
+    "rf": FieldingFitEnv27(447.2, 342.2, 59.69),
+}
+
+# Deployment chance-count anchors (change C2 gate): real SSB 2043 — the only completed OOTP-27
+# season anywhere when Phase 1 shipped — corroborated by BLM's partial 2058 to ≤3.5% per
+# position (cross-league count transfer beat every sim-based predictor at 1.76% MAPE). The
+# build fails when a 27 league's metadata-derived {pos}_pa drifts more than the tolerance from
+# these anchors: that is the signature of the stale/wrong-era-metadata failure class, not of
+# ordinary season-to-season variation (season noise on a count is ~1%, era shifts are 13-23%).
+# Revisit the anchors when SSB 2044 completes.
+FIELDING_DEPLOY_PA_ANCHORS_27: dict[str, float] = {
+    "1b": 286.0, "2b": 492.3, "3b": 433.4, "ss": 526.0,
+    "lf": 464.7, "cf": 512.1, "rf": 465.3,
+}
+FIELDING_DEPLOY_PA_REL_TOL = 0.20
+
+# Per-position response factors (change C4): real-league per-chance response to rating divided
+# by the sim-fit response. Governance: factors move ONLY on replicated evidence (two seasons or
+# two leagues), shrunk toward 1.0; each carries its provenance here. 2B = 0.80: real SSB 2043
+# elite-band response ≈0.80 of the H-pool slope, replicated in BLM 2058 (model +26.3 vs
+# observed +15.2/+15.7 on ~2,400 elite-2B innings); with the real-27 chance count (492.3) this
+# reproduces the validated FIX G conversion (492.3 × 0.80 ≈ 393.7 = slope × fit-count, which
+# matched observed elite-band runs in three independent tests: engine +15.6, SSB +15.0, BLM
+# +15.2). All other positions: calibration slopes within ~1.2σ of 1.0 as wired (referee,
+# SSB 2043) — no factor is justified. CF is knowingly miscalibrated (0.496) but its defect is
+# curve FORM (item 2.8/2.9), gated on a second season before any change (plan Phase 3, D5).
+FIELDING_RESPONSE_FACTORS_27: dict[str, float] = {
+    "1b": 1.0, "2b": 0.80, "3b": 1.0, "ss": 1.0,
+    "lf": 1.0, "cf": 1.0, "rf": 1.0,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -1069,6 +1134,24 @@ class FieldingParams:
 
     # SS DP
     ss_dp_pa:  float = 77.27280209379268   # T30 — SS DP/1200
+
+    # ── Rating distributions for build-time centring (change C3) ─────────────
+    # IP-weighted [[display_value, ip_weight], ...] per position, built from the SAME fielding
+    # helper rows (and the same weighting) as the avg_* scalars above, so the piecewise-channel
+    # centring expectation E_w[delta] is taken over exactly the population that defines the
+    # anchor. None = not available (legacy caches / hand-built params): the centring step then
+    # warns loudly and leaves the channel's const untouched. Blended across metadata seasons by
+    # the same season-weighted mixture as ste_pa_dist.
+    rng_ip_dist_1b: list | None = None
+    rng_ip_dist_2b: list | None = None
+    rng_ip_dist_3b: list | None = None
+    rng_ip_dist_ss: list | None = None
+    rng_ip_dist_lf: list | None = None
+    rng_ip_dist_cf: list | None = None
+    rng_ip_dist_rf: list | None = None
+    arm_ip_dist_3b: list | None = None
+    frm_ip_dist_c:  list | None = None
+    arm_ip_dist_c:  list | None = None
 
 
 @dataclass(frozen=True)

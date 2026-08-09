@@ -653,18 +653,36 @@ class TestVersionRouting:
         cfg26 = LeagueConfig(slug="y", league_name="Y", ootp_version="26")
         assert cfg26.to_pipeline_settings().ootp_version == "26"
 
-    def test_detect_metadata_routes_27_to_constants(self):
+    def test_detect_metadata_routes_27_to_constants(self, tmp_path):
+        import shutil
         from pathlib import Path
 
         from src.export import _detect_metadata
+        from src.metadata import MetadataVersionError
         from src.settings import PipelineSettings
 
         meta_dir = Path(__file__).resolve().parents[2] / "leagues" / "default" / "metadata"
         if not (meta_dir.is_dir() and any(meta_dir.glob("*.csv"))):
             pytest.skip(f"no metadata fixture at {meta_dir}")
 
+        # C1: a 27 league may not consume unclassifiable (flat) or undeclared metadata — the
+        # legacy call shape is now the canonical failure case.
+        with pytest.raises(MetadataVersionError):
+            _detect_metadata(
+                meta_dir, PipelineSettings(ootp_version="27"), regressions_dir=None
+            )
+
+        # Version-valid fixture: the same CSVs classified into a post-boundary season dir.
+        season_root = tmp_path / "metadata"
+        season_dir = season_root / "2043"
+        season_dir.mkdir(parents=True)
+        for csv in meta_dir.glob("*.csv"):
+            shutil.copy(csv, season_dir / csv.name)
+        settings27 = PipelineSettings(
+            ootp_version="27", engine_first_season={"27": 2043})
+
         hitter_dp, pitcher_dp = _detect_metadata(
-            meta_dir, PipelineSettings(ootp_version="27"), regressions_dir=None
+            season_root, settings27, regressions_dir=None
         )
         # Hitting routes to the hardcoded 27 constants, MODULO the league-adaptive sba c0
         # (compose_data_points replaces sba.c0 with −E_w[pw(STE)] when the league has an STE
@@ -676,7 +694,20 @@ class TestVersionRouting:
             hitter_dp.hitting.sba, c0=DEFAULT_HITTING_REG_COEFFS_27.sba.c0
         ) == DEFAULT_HITTING_REG_COEFFS_27.sba
         assert pitcher_dp.pitching is DEFAULT_PITCHING_REG_COEFFS_27
-        assert hitter_dp.fielding_coeffs is DEFAULT_FIELDING_REG_COEFFS_27
+        # Fielding routes to the 27 constants MODULO the C3 build-time centring, which
+        # replaces the piecewise channels' *_const with −E_w[Σdelta] (FIELDING_PIPELINE_27).
+        centred_consts = [
+            "first_pm_const", "second_pm_const", "third_pm_const", "ss_pm_const",
+            "lf_pm_const", "cf_pm_const", "rf_pm_const", "c_frm_const", "c_rto_const",
+        ]
+        fc = hitter_dp.fielding_coeffs
+        assert dataclasses.replace(
+            fc, **{k: getattr(DEFAULT_FIELDING_REG_COEFFS_27, k) for k in centred_consts}
+        ) == DEFAULT_FIELDING_REG_COEFFS_27
+        # The centring genuinely fired: the convex 2B ramp and the clamped corner-OF curves
+        # must produce nonzero population-mean offsets from any realistic population.
+        assert fc.second_pm_const != DEFAULT_FIELDING_REG_COEFFS_27.second_pm_const
+        assert fc.lf_pm_const != DEFAULT_FIELDING_REG_COEFFS_27.lf_pm_const
 
         hitter_dp26, pitcher_dp26 = _detect_metadata(
             meta_dir, PipelineSettings(ootp_version="26"), regressions_dir=None
@@ -808,3 +839,121 @@ class TestLeagueAdaptiveSbaC0:
         d = dataclasses.asdict(HitterLeagueParams(ste_pa_dist=[[40.0, 0.5], [60.0, 0.5]]))
         loaded = HitterLeagueParams(**_json.loads(_json.dumps(d)))
         assert loaded.ste_pa_dist == [[40.0, 0.5], [60.0, 0.5]]
+
+
+# ---------------------------------------------------------------------------
+# Phase-1 fielding pipeline (FIELDING_PIPELINE_27: C1 boundary, C2 gate,
+# C3 centring, C4 response factors)
+# ---------------------------------------------------------------------------
+
+
+class TestFieldingPipeline27:
+    def test_engine_boundary_filters_and_raises(self, tmp_path):
+        from src.metadata import MetadataVersionError, _resolve_season_dirs
+
+        for y in ("2041", "2042", "2043"):
+            d = tmp_path / y
+            d.mkdir()
+            (d / "x.csv").write_text("a\n1\n")
+
+        # 26 / legacy: unfiltered.
+        r = _resolve_season_dirs(tmp_path, (3, 2, 1))
+        assert [p.name for p, _ in r] == ["2043", "2042", "2041"]
+
+        # 27 + boundary: pre-boundary seasons excluded.
+        r = _resolve_season_dirs(
+            tmp_path, (3, 2, 1), ootp_version="27", engine_first_season={"27": 2043})
+        assert [(p.name, w) for p, w in r] == [("2043", 3.0)]
+
+        # 27 without a declared boundary: loud error.
+        with pytest.raises(MetadataVersionError, match="engineFirstSeason"):
+            _resolve_season_dirs(tmp_path, (3, 2, 1), ootp_version="27")
+
+        # 27 with only pre-boundary seasons: loud error, never a stale fallback.
+        with pytest.raises(MetadataVersionError, match="pre-boundary"):
+            _resolve_season_dirs(
+                tmp_path, (3, 2, 1), ootp_version="27",
+                engine_first_season={"27": 2099})
+
+        # 27 with a flat (year-less) dir: loud error.
+        flat = tmp_path / "flatcase"
+        flat.mkdir()
+        (flat / "x.csv").write_text("a\n1\n")
+        with pytest.raises(MetadataVersionError, match="flat"):
+            _resolve_season_dirs(
+                flat, (3, 2, 1), ootp_version="27", engine_first_season={"27": 2043})
+
+    def test_centring_zeroes_population_mean(self):
+        """C3: const = −E_w[Σδ] makes the population-mean channel value exactly 0."""
+        from src.data_points import FieldingParams
+        from src.metadata import _with_centred_fielding_consts
+        from src.utils import piecewise_delta
+
+        # Synthetic IP-weighted population whose average lands at the 2B ramp BOTTOM (knot 60)
+        # — the real-SSB geometry (avg ≈ 60.9). The offset's sign depends on where the average
+        # sits relative to the ramp: at the bottom the curve is locally convex above the anchor
+        # (above-average players ride the steep segment) → E_w[δ] > 0 → const < 0. A population
+        # centred mid-ramp flips it. Only the zero-mean identity is population-invariant.
+        dist = [[52.0, 150.0], [56.0, 200.0], [60.0, 300.0], [64.0, 200.0], [68.0, 150.0]]
+        total = sum(w for _, w in dist)
+        avg = sum(v * w for v, w in dist) / total
+        fp = FieldingParams(avg_rng_2b=avg, rng_ip_dist_2b=dist)
+        fc = _with_centred_fielding_consts(DEFAULT_FIELDING_REG_COEFFS_27, fp)
+
+        coeffs = DEFAULT_FIELDING_REG_COEFFS_27.second_pm_rng_slope
+        e_after = sum(
+            w * (fc.second_pm_const + float(piecewise_delta(v, avg, coeffs)))
+            for v, w in dist
+        ) / total
+        assert e_after == pytest.approx(0.0, abs=1e-12)
+        # The convex ramp overpays above-average players → the offset must be negative.
+        assert fc.second_pm_const < 0
+
+        # Clamped corner-OF curve: population mean of delta is negative → offset positive.
+        lf_dist = [[50.0, 100.0], [56.0, 300.0], [60.0, 300.0], [66.0, 200.0]]
+        lf_avg = sum(v * w for v, w in lf_dist) / sum(w for _, w in lf_dist)
+        fp_lf = FieldingParams(avg_rng_lf=lf_avg, rng_ip_dist_lf=lf_dist)
+        fc_lf = _with_centred_fielding_consts(DEFAULT_FIELDING_REG_COEFFS_27, fp_lf)
+        assert fc_lf.lf_pm_const > 0
+
+        # Missing distribution: channel untouched (and warns) — never a silent wrong value.
+        fp_none = FieldingParams()
+        fc_none = _with_centred_fielding_consts(DEFAULT_FIELDING_REG_COEFFS_27, fp_none)
+        assert fc_none.second_pm_const == DEFAULT_FIELDING_REG_COEFFS_27.second_pm_const
+
+        # 26 dispatch: scalar slopes pass through byte-identical.
+        from src.data_points import FieldingRegressionCoeffs
+        fc26 = FieldingRegressionCoeffs()
+        assert _with_centred_fielding_consts(fc26, fp) is fc26
+
+    def test_response_factor_dispatch(self):
+        """C4: 2B ×0.80 on the 27 path; all other positions 1.0; 26 path exactly 1.0."""
+        from src.data_points import FIELDING_RESPONSE_FACTORS_27, FieldingRegressionCoeffs
+        from src.hitters import _pm_response_factor
+
+        fc27 = DEFAULT_FIELDING_REG_COEFFS_27
+        assert _pm_response_factor(fc27, "2b") == pytest.approx(0.80)
+        for pos in ("1b", "3b", "ss", "lf", "cf", "rf"):
+            assert _pm_response_factor(fc27, pos) == 1.0
+        fc26 = FieldingRegressionCoeffs()
+        for pos in ("1b", "2b", "3b", "ss", "lf", "cf", "rf"):
+            assert _pm_response_factor(fc26, pos) == 1.0
+        # Governance invariant: factors live in data_points with provenance, all in (0, 1.5].
+        for pos, f in FIELDING_RESPONSE_FACTORS_27.items():
+            assert 0.0 < f <= 1.5
+
+    def test_conversion_gate(self):
+        """C2: anchors pass; wrong-era-scale drift raises; 26-era counts pass (C1's job)."""
+        from src.data_points import FIELDING_DEPLOY_PA_ANCHORS_27, FieldingParams
+        from src.metadata import MetadataVersionError, check_fielding_conversion_27
+
+        anchors = FIELDING_DEPLOY_PA_ANCHORS_27
+        ok = FieldingParams(
+            first_pa=anchors["1b"], second_pa=anchors["2b"], third_pa=anchors["3b"],
+            ss_pa=anchors["ss"], lf_pa=anchors["lf"], cf_pa=anchors["cf"],
+            rf_pa=anchors["rf"])
+        check_fielding_conversion_27(ok)  # must not raise
+
+        bad = dataclasses.replace(ok, second_pa=anchors["2b"] * 1.35)
+        with pytest.raises(MetadataVersionError, match="drifted"):
+            check_fielding_conversion_27(bad)

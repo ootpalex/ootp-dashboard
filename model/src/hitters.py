@@ -94,6 +94,28 @@ def _fld_delta(rating: pd.Series, avg: float, coeff) -> pd.Series:
     return coeff * (rating - avg)
 
 
+def _pm_response_factor(fc, pos: str) -> float:
+    """OOTP-27 per-position response factor for the plays-made channel (change C4).
+
+    Real-league per-chance response to rating divided by the sim-fit response; governed
+    constants with provenance in ``data_points.FIELDING_RESPONSE_FACTORS_27`` (move only on
+    two-sample evidence, shrunk toward 1.0). Dispatch: applies only when the position's
+    primary PM slope is ``PiecewiseCoeffs`` (the 27 wiring) — every 26 path returns exactly
+    1.0 and is byte-identical. Applied to the whole centred PM channel
+    ``(const + Σdeltas) × pa × factor``, so the C3 zero-mean property is preserved
+    (factor × 0 = 0).
+    """
+    primary = {
+        "1b": "first_pm_rng_slope", "2b": "second_pm_rng_slope",
+        "3b": "third_pm_rng_slope", "ss": "ss_pm_rng_slope",
+        "lf": "lf_pm_slope", "cf": "cf_pm_slope", "rf": "rf_pm_slope",
+    }[pos]
+    if isinstance(getattr(fc, primary, None), PiecewiseCoeffs):
+        from src.data_points import FIELDING_RESPONSE_FACTORS_27
+        return float(FIELDING_RESPONSE_FACTORS_27.get(pos, 1.0))
+    return 1.0
+
+
 # ---------------------------------------------------------------------------
 # Core split computation
 # ---------------------------------------------------------------------------
@@ -605,7 +627,7 @@ def compute_fielding(
         fc.first_pm_const
         + _fld_delta(if_rng, fp.avg_rng_1b, fc.first_pm_rng_slope)
         + fc.first_pm_ht_slope * (ht_cm - fp.avg_ht_1b)
-    ) * fp.first_pa
+    ) * fp.first_pa * _pm_response_factor(fc, "1b")
     result["1B PMAA"] = b1_pmaa.where(b1_elig)
 
     # EAA = (const + slope*(IF_ERR - avg_err)) * ip
@@ -623,7 +645,7 @@ def compute_fielding(
         fc.second_pm_const
         + _fld_delta(if_rng, fp.avg_rng_2b, fc.second_pm_rng_slope)
         + _fld_delta(if_arm, fp.avg_arm_2b, fc.second_pm_arm_slope)
-    ) * fp.second_pa
+    ) * fp.second_pa * _pm_response_factor(fc, "2b")
     result["2B PMAA"] = b2_pmaa.where(b2_elig)
 
     # EAA = (const + slope*(ERR-avg)) * (PMAA + scale * lg_pm%)
@@ -646,7 +668,7 @@ def compute_fielding(
         fc.third_pm_const
         + _fld_delta(if_rng, fp.avg_rng_3b, fc.third_pm_rng_slope)
         + _fld_delta(if_arm, fp.avg_arm_3b, fc.third_pm_arm_slope)
-    ) * fp.third_pa
+    ) * fp.third_pa * _pm_response_factor(fc, "3b")
     result["3B PMAA"] = b3_pmaa.where(b3_elig)
 
     b3_eaa = (fc.third_err_const + fc.third_err_slope * (if_err - fp.avg_err_3b)) * (
@@ -663,7 +685,7 @@ def compute_fielding(
         fc.ss_pm_const
         + _fld_delta(if_rng, fp.avg_rng_ss, fc.ss_pm_rng_slope)
         + _fld_delta(if_arm, fp.avg_arm_ss, fc.ss_pm_arm_slope)
-    ) * fp.ss_pa
+    ) * fp.ss_pa * _pm_response_factor(fc, "ss")
     result["SS PMAA"] = ss_pmaa.where(ss_elig)
 
     ss_eaa = (fc.ss_err_const + fc.ss_err_slope * (if_err - fp.avg_err_ss)) * (
@@ -680,7 +702,8 @@ def compute_fielding(
     # ── LF ───────────────────────────────────────────────────────────────
     lf_elig = eligibility["LF Elig"]
 
-    lf_pmaa = (fc.lf_pm_const + _fld_delta(of_rng, fp.avg_rng_lf, fc.lf_pm_slope)) * fp.lf_pa
+    lf_pmaa = ((fc.lf_pm_const + _fld_delta(of_rng, fp.avg_rng_lf, fc.lf_pm_slope))
+               * fp.lf_pa * _pm_response_factor(fc, "lf"))
     result["LF PMAA"] = lf_pmaa.where(lf_elig)
 
     lf_eaa = (fc.lf_err_const + fc.lf_err_slope * (of_err - fp.avg_err_lf)) * (
@@ -696,7 +719,8 @@ def compute_fielding(
     # ── CF ───────────────────────────────────────────────────────────────
     cf_elig = eligibility["CF Elig"]
 
-    cf_pmaa = (fc.cf_pm_const + _fld_delta(of_rng, fp.avg_rng_cf, fc.cf_pm_slope)) * fp.cf_pa
+    cf_pmaa = ((fc.cf_pm_const + _fld_delta(of_rng, fp.avg_rng_cf, fc.cf_pm_slope))
+               * fp.cf_pa * _pm_response_factor(fc, "cf"))
     result["CF PMAA"] = cf_pmaa.where(cf_elig)
 
     cf_eaa = (fc.cf_err_const + fc.cf_err_slope * (of_err - fp.avg_err_cf)) * (
@@ -712,7 +736,8 @@ def compute_fielding(
     # ── RF ───────────────────────────────────────────────────────────────
     rf_elig = eligibility["RF Elig"]
 
-    rf_pmaa = (fc.rf_pm_const + _fld_delta(of_rng, fp.avg_rng_rf, fc.rf_pm_slope)) * fp.rf_pa
+    rf_pmaa = ((fc.rf_pm_const + _fld_delta(of_rng, fp.avg_rng_rf, fc.rf_pm_slope))
+               * fp.rf_pa * _pm_response_factor(fc, "rf"))
     result["RF PMAA"] = rf_pmaa.where(rf_elig)
 
     rf_eaa = (fc.rf_err_const + fc.rf_err_slope * (of_err - fp.avg_err_rf)) * (
