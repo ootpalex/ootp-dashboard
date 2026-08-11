@@ -2,10 +2,11 @@
    prototype.css — portable design system for OOTP dashboard HTML prototypes
    ----------------------------------------------------------------------------
    Extracted from app/src/theme.js so a plain .html file matches the real
-   SSB/BLM dashboard with ZERO build step. Link it and open the file directly:
+   dashboard with ZERO build step. Link it and open the file directly — use a
+   path relative to your prototype, or an absolute file:// URL to your own
+   checkout:
 
-     <link rel="stylesheet"
-       href="file:///Users/alex/Projects/ootp/dashboard/Project/app/docs/prototype.css">
+     <link rel="stylesheet" href="../app/docs/prototype.css">
 
    Used by the `lavish-prototype` skill to visualize UI before writing React.
    ========================================================================== */
