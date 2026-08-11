@@ -9,9 +9,8 @@ producing the ~60 rating→stat coefficients.
 > build time** from the calibration sims and injected into the data points —
 > `export.py:_detect_metadata` → `generate_regression_coefficients(regressions_dir)` →
 > `compose_data_points(...)`, cached in `.regressions_cache.json`. The hardcoded coefficients in
-> `data_points.py` are the **no-sims fallback**. Two deltas from the original Excel replication: the
-> fielding **range target is OAA** (difficulty-adjusted outs above average), not raw PM% — so the
-> fielding *range* slopes below differ from the PM% answer key; and the baserunning intercepts
+> `data_points.py` are the **no-sims fallback**. One delta from the original Excel replication: the
+> baserunning intercepts
 > (sb_pct/sba/ubr, sp/rp_sb_pct) are pinned to the calibration values via `_with_canonical_intercept`
 > because the centered fit returns c0≈0 and can't recover the real pooled-vs-average-rated offset.
 

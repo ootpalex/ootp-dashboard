@@ -6,7 +6,7 @@ Central constants library for the entire evaluation pipeline. Contains all regre
 
 There are two ways to get constants: hardcoded singletons (`DEFAULT_HITTER_DP` / `DEFAULT_PITCHER_DP`) for quick use, or dynamically computed for league-specific calibration. In the dynamic path the **league averages / wOBA weights / out-values come from `metadata.py`** (per league) and the **rating→stat regression coefficients are computed from the calibration sims via `regressions.py`** (`generate_regression_coefficients`, cached) and injected through `compose_data_points`. The hardcoded values in `data_points.py` are the **fallback** used when no metadata / no sims are available.
 
-> **Note (2026-05-24 OAA rollout):** the fielding `*_pm_*` slots now hold **OAA** (difficulty-adjusted outs above average) range coefficients, not raw PM%, and the fielding out-values (`inf_out`/`of_out`) are derived **per league** from each league's own linear weights rather than the old fixed 0.75/0.90.
+> **Note (updated 2026-08-11):** the fielding `*_pm_*` slots hold **raw PM% = made/TOTAL** range coefficients (plays made over total balls in zone, impossible included). They briefly held **OAA** (difficulty-adjusted outs above average) after the 2026-05-24 rollout, but OAA was **reverted 2026-06-28** — it is endogenously biased at the OF-corner tail, because range itself reclassifies impossible balls as makeable, so any difficulty-normalized denominator is range-inflated. Ground truth is `regressions.py:_range_target`; rationale in `analysis/oaa-fielding-model/docs/FIELDING_DENOMINATOR_DECISION.md` (research workspace, outside this repo). The fielding out-values (`inf_out`/`of_out`) are derived **per league** from each league's own linear weights rather than the old fixed 0.75/0.90 — that part of the 05-24 rollout stands.
 
 ## Inputs Required
 
@@ -64,7 +64,7 @@ bpk_constants = DEFAULT_HITTER_DP.league.to_ballpark_constants()
 |-----------|--------|---------|
 | `HittingRegressionCoeffs` | `eye`, `power`, `k`, `babip`, `gap`, `speed` (LinearCoeffs) + `sba`, `sb_pct`, `ubr` (CubicCoeffs) | Rating-to-stat delta mappings for hitters |
 | `PitchingRegressionCoeffs` | `sp_con/hrr/stu/babip` + `rp_con/hrr/stu/babip` (LinearCoeffs) + `sba`, `sp_sb_pct`, `rp_sb_pct` (CubicCoeffs) | Rating-to-stat delta mappings for pitchers |
-| `FieldingRegressionCoeffs` | Per-position const/slope pairs for range (OAA; PM% is the fallback), ERR, DP, ARM, FRM, SBA, RTO | Fielding rating-to-stat mappings |
+| `FieldingRegressionCoeffs` | Per-position const/slope pairs for range (PM% = made/TOTAL), ERR, DP, ARM, FRM, SBA, RTO | Fielding rating-to-stat mappings |
 | `HitterLeagueParams` | Rating averages, wOBA weights, matchup splits, stat rates | League calibration for hitters |
 | `PitcherLeagueParams` | SP/RP rating averages, SP/RP wOBA weights, workload, RA/9 baselines | League calibration for pitchers |
 | `FieldingParams` | Position adjustments, rating averages (full precision), scaling constants | Fielding calibration per position |

@@ -26,7 +26,7 @@ export const ALL_DISPLAY_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "
 
 // FALLBACK ONLY — WAR positional-adjustment spectrum for the BLM universe (frozen blended at
 // H_def=5/cut_def=20 + H_off=2.5/cut_off=8, field-8 mean = 0). Mirrors
-// Project/model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"].
+// model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"].
 // The pipeline now ships each league's own table at dashboard meta.posAdj
 // ({C,1B,2B,3B,SS,LF,CF,RF,DH} runs/162); views/PlayerProfile/_shared.js:bestFieldingValue
 // uses that when present and only falls back to this table for older data files

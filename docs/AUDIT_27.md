@@ -142,7 +142,7 @@ calibrations nearly coincide mid-band and 27 steepens at the elite end, as the k
 
 The 27 fielding range/framing targets are **made/TOTAL (PM%)** — Σmade_b/Σopps_b over the 6
 difficulty buckets — matching the production PM% frame (the 26 `*_pm_*` cache is v4/PM%,
-reverted from OAA 2026-06-28 per `FIELDING_DENOMINDATOR_DECISION`-lineage; see
+reverted from OAA 2026-06-28 per `FIELDING_DENOMINATOR_DECISION`-lineage; see
 `fielding-range-target-made-total`). D-STATDEF closed the remaining absolute-relationship
 definitions: production 3B% ≡ calibration `t/(d+t)` (`lg.triple_rate·xbh` chain) and SBA% ≡
 attempts per time-on-first (`sba_rate·on_first`, `on_first = 1B+uBB+HBP`, both hit and pit
