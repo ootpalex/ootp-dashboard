@@ -50,6 +50,11 @@ model/pipeline_settings.json
 # treehouse worktree manager (local machine config)
 treehouse.toml
 
+# Manual pre-publish snapshots of app/public/data/ (tens of MB of built
+# per-league dashboards = real player data). Local safety net only, taken by
+# hand before a risky publish. Never commit.
+.publish-backup-*/
+
 # OS
 .DS_Store
 

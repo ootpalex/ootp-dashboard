@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Node](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
 
-A multi-league analytics dashboard for [Out of the Park Baseball](https://www.ootpdevelopments.com/) online leagues. Replaces an 85 MB Excel workbook with a Python pipeline that turns raw OOTP CSV exports into WAR/WAA-based player evaluations, plus a React SPA that renders draft boards, prospect rankings, free-agent finders, roster planners, and trade-scouting tools across 11 pages.
+A multi-league analytics dashboard for [Out of the Park Baseball](https://www.ootpdevelopments.com/) online leagues. Replaces an 85 MB Excel workbook with a Python pipeline that turns raw OOTP CSV exports into WAR/WAA-based player evaluations, plus a React SPA that renders draft boards, prospect rankings, free-agent finders, roster planners, and trade-scouting tools across 12 pages.
 
 ![Dashboard hero](docs/images/hero.png)
 
@@ -24,7 +24,7 @@ For the full step-by-step including OOTP export instructions and screenshots, se
 
 ## Tour
 
-A few of the eleven dashboard pages:
+A few of the twelve dashboard pages:
 
 ### Roster Planner
 *Drag-and-drop roster builder with multi-year contract projections, Rule 5 risk panel, and arbitration / option-decision queues.*

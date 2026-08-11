@@ -995,13 +995,13 @@ class HitterLeagueParams:
 #                sits below as the no-defense deficit (Zimmerman 2014 / FanGraphs
 #                convention; see Leftovers/positional-adjustments/POSITIONAL_ADJUSTMENTS.md:96-98).
 # Lookup key = league's statsplus_url (Project/leagues/<slug>/league.json). The 6
-# league dashboards fold into 2 underlying universes: the 4 BLM-* slugs all share
+# league dashboards fold into 2 underlying universes: every BLM-* slug shares
 # statsplus.net/blm/, and SSB + default share atl-01.statsplus.net/ssb/.
 # Re-derive periodically from the grid; do NOT hand-edit.
 # Validated end-to-end in Leftovers/posadj-bestpos-impact/IMPACT.md.
 # Units: runs/162.
 _FROZEN_POS_ADJ_BY_URL: dict[str, dict[str, float]] = {
-    "https://statsplus.net/blm/": {  # BLM (BLM-ATL, BLM-COL, BLM-MIA, BLM-NYM)
+    "https://statsplus.net/blm/": {  # BLM (BLM-ATL, BLM-NYM)
         "C":  16.1, "1B": -13.1, "2B":  -2.3, "3B":  -0.7, "SS":  9.6,
         "LF":  -8.4, "CF":  5.1, "RF":  -6.2, "DH": -13.1,
     },

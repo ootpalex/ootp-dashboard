@@ -429,12 +429,12 @@ const SSB_DEF_SPECTRUM = {
   "CF":   9.4,
   "RF":  -5.4,
 };
-// 6 dashboard slugs → 2 underlying universes (matches the WAR spectrum lookup
-// in Project/model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL).
+// Dashboard slugs → 2 underlying universes (matches the WAR spectrum lookup
+// in model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL). The retired BLM-COL /
+// BLM-MIA slugs were dropped; any unknown slug falls through to
+// DEF_SPECTRUM_DEFAULT, which is the same BLM spectrum they mapped to.
 export const DEF_SPECTRUM_BY_SLUG = {
   "BLM-ATL": BLM_DEF_SPECTRUM,
-  "BLM-COL": BLM_DEF_SPECTRUM,
-  "BLM-MIA": BLM_DEF_SPECTRUM,
   "BLM-NYM": BLM_DEF_SPECTRUM,
   "SSB":     SSB_DEF_SPECTRUM,
   "default": SSB_DEF_SPECTRUM,
@@ -447,8 +447,6 @@ export const DEF_SPECTRUM_DEFAULT = BLM_DEF_SPECTRUM;
 // Measured per universe in Leftovers/posadj-bestpos-impact/impact.py.
 export const ARM_THR_BY_SLUG = {
   "BLM-ATL": 55.2,
-  "BLM-COL": 55.2,
-  "BLM-MIA": 55.2,
   "BLM-NYM": 55.2,
   "SSB":     54.6,
   "default": 54.6,
