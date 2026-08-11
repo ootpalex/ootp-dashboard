@@ -4,7 +4,12 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **Draft board report CLI** (`model/tools/draft_board_report.py`) — `python3 model/tools/draft_board_report.py --league BLM-ATL --league BLM-NYM --top 20`. The terminal equivalent of the Draft Board's 🔄 Refresh: pulls the live draft order from `<api>/draftv2/?all=1`, drops everyone already taken from the draft class, and prints the best available. Handles several leagues in one run, `--format csv` for piping, and `--fv` for the Future Value column.
+  - Exists because the board's available-pool state lives in browser localStorage, so the standings of a draft in progress can't be read, scripted, or shared as text from anywhere but the browser that ran the pipeline.
+  - Ranks on `_baseVal` (potential WAR) descending — the board's default sort. Hitters value on `prospect.war.max`, pitchers on the better of SP/RP potential WAR with SP gated behind SP-eligibility, mirroring `pickPitcherRole(roleHint='best')`. The optional Smart Rank toggles are deliberately not applied: they're per-user board settings, not properties of the draft class.
+  - Verified against the real frontend board code (`buildBoardPool` → `buildDisplayPool` → `calcBestPos` run under Node over the same dashboard): 180 rows across three draft classes — including a class with 648 of 781 players already drafted — matched exactly on order, ID, bestPos, and potential WAR. Logic pinned by `model/tests/test_draft_board_report.py` (14 tests, no network).
 
 ## [0.3.0] — 2026-08-11
 

@@ -14,6 +14,22 @@ mandate, multi-league storage, CSV-presence page visibility, styling) stay in
 - Supplemental round display (Round column + Supplemental=1 shows as "R1s", "R2s" etc.)
 - All smart rank toggles
 
+### Reading the board outside the browser
+The board's "who's still available" state lives in localStorage, so it can only
+be read on the machine that ran the pipeline. `model/tools/draft_board_report.py`
+reproduces the default board from a terminal — same two inputs (the built
+`dashboard.json` + a live `/draftv2/?all=1` pull), same ordering:
+
+```bash
+python3 model/tools/draft_board_report.py --league BLM-ATL --league BLM-NYM --top 20
+```
+
+It mirrors `_baseVal` (potential WAR) descending — the board's sort with no
+Smart Rank toggles on — and none of the per-user toggles, which are board
+settings rather than properties of the draft class. Parity with
+`buildBoardPool` / `buildDisplayPool` / `calcBestPos` is pinned by
+`model/tests/test_draft_board_report.py`.
+
 ## Current Pages
 1. **My Organization** — Sub-tabbed view with:
    - **Overview**: Positional strength table (full `PositionalStrengthTable` with both Now/Farm columns, click row to expand depth contributors) + paginated team roster. Roster columns include INTG (intangibles 20–80 grade) and 40M (✓ when `meta.on40` is truthy — accepts boolean or `"Yes"`).
