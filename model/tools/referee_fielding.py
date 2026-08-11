@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -51,9 +52,24 @@ MIN_CHANCES = 20
 ELITE_RATING, ELITE_IP = 68.0, 300.0
 N_BOOT, SEED = 4000, 20260809
 
+# Where to look for a scout ratings dump when --ratings is not given. Templates are
+# formatted with {slug} and tried in order; missing dirs are skipped silently, and
+# find_ratings() exits with a clear message if none of them yields a file.
+#
+# The first entry is the in-repo convention (`leagues/<slug>/ratings/`, the same layout
+# draftpool.py reads) and is the only one that works from a plain clone. The two that
+# follow are the private research workspace, resolved RELATIVE to this repo rather than
+# hardcoded to one machine's home directory — they only resolve if this repo sits at
+# <workspace>/dashboard/ootp-dashboard, and are simply skipped otherwise.
+#
+# Override with OOTP_RATINGS_DIRS (os.pathsep-separated templates, tried first).
+_WORKSPACE_ROOT = REPO_ROOT.parent.parent
+
 RATINGS_SEARCH_DIRS = [
-    "/Users/alex/Projects/ootp/analysis/statsplus-automation/output/{slug}",
-    "/Users/alex/Projects/ootp/ootp27-conversion/real27-anchors/output/{slug}",
+    *(t for t in os.environ.get("OOTP_RATINGS_DIRS", "").split(os.pathsep) if t),
+    str(REPO_ROOT / "leagues" / "{slug}" / "ratings"),
+    str(_WORKSPACE_ROOT / "analysis" / "statsplus-automation" / "output" / "{slug}"),
+    str(_WORKSPACE_ROOT / "ootp27-conversion" / "real27-anchors" / "output" / "{slug}"),
 ]
 
 

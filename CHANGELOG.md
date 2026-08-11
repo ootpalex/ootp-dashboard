@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.3.0] — 2026-08-11
+
+The OOTP 27 release. A league can now be evaluated with OOTP 27's own regression coefficients, the fielding pipeline gained engine-boundary correctness (C1–C4) plus a standing referee, and two new ingestion paths landed: a one-command 26→27 league converter and StatsPlus `/draftpool` support for draft classes with no CSV export. Also adds the Waiver Wire page. OOTP 26 output is byte-identical throughout.
+
 ### Added
 
 - **OOTP 27 support — a league can now be evaluated with OOTP 27's own regression coefficients.** Set `"ootpVersion": "27"` in `leagues/<slug>/league.json` and the pipeline routes that league through a separate, independently calibrated coefficient set. This is the largest change since 0.2.0.
