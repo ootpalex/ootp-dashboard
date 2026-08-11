@@ -11,6 +11,7 @@ import { useLocalStorage, useScopedLocalStorage } from "../hooks/useLocalStorage
 import OrgView from "../views/Org/OrgView.jsx";
 import PlayersView from "./PlayersView.jsx";
 import FreeAgentFinder from "./FreeAgentFinder.jsx";
+import WaiverWireView from "./WaiverWireView.jsx";
 import DraftBoard from "./DraftBoard.jsx";
 import IAFABoard from "./IAFABoard.jsx";
 import ScoutView from "./ScoutView.jsx";
@@ -292,6 +293,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
           {activePage === "org" && myTeam && <OrgView data={enrichedData} team={myTeam} strength={strength} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "players" && <PlayersView data={enrichedData} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "fa" && myTeam && <FreeAgentFinder data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
+          {activePage === "waivers" && myTeam && <WaiverWireView data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} dashMeta={dashMeta} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "draft" && myTeam && <DraftBoard data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onUpdateLeagueSettings={handleUpdateLeagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "iafa" && <IAFABoard data={enrichedData} myTeam={myTeam} strength={strength} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "dev" && <DevAnalysisView data={enrichedData} curveSettings={curveSettings} updateCurveSettings={updateCurveSettings} />}

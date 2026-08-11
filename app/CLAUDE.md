@@ -77,6 +77,7 @@ All data access should use these helpers — **never access flat column names di
 - **meta.ety**: Extension total years
 - **meta.secy/meta.secd**: Secondary service years/days
 - **meta.dfa**: DFA status
+- **meta.waiv**: On waivers per the `WAIV` column of `org.csv` — i.e. as of the user's last export. See **Waiver signals** below before using it.
 - **meta.rook**: Boolean — rookie status
 - **meta.mlb_service_days_this_year**: MLB service days accrued in the current season (from StatsPlus `/players`). Used by the Super-Two filter to enforce the ≥86-day rule.
 - **meta.is_on_dl** / **meta.is_on_dl60**: 15-day / 60-day IL flags from StatsPlus `/players`
@@ -187,6 +188,18 @@ When adding new persisted state, default to **per-league** (use `useScopedLocalS
 - All views receive `datedData` (the recomputed data object) — ages update everywhere automatically
 - `fmtAge()` helper formats ages: integers shown as whole numbers, fractional as 1 decimal, null as "—"
 
+### Waiver signals (`utils/waivers.js`)
+Two independent waiver flags reach the frontend and they **routinely disagree**, because each is a snapshot of a different moment:
+
+| Field | Source | Freshness |
+|---|---|---|
+| `meta.is_on_waivers` (+ `days_on_waivers`, `days_on_waivers_left`, `designated_for_assignment`) | StatsPlus `/players`, fetched at pipeline run | Live as of the pipeline run |
+| `meta.waiv` | `WAIV` column of `org.csv` | As of the user's last CSV export |
+
+**`days_on_waivers_left === 0` means the player CLEARED waivers** — StatsPlus keeps `is_on_waivers` true, but he can no longer be claimed. `isClaimable(p)` enforces this (a null clock counts as claimable — the flag says he's on waivers and nothing contradicts it), and the Waiver Wire view splits cleared players onto their own table. Verified against the league: BLM-ATL reports 65 flagged → 58 claimable + 7 cleared, and 58 is the number OOTP itself shows.
+
+Waivers clear in ~3 in-game days, which makes this the most perishable data the pipeline ships — in a mid-2043 SSB build the two sources shared **zero** players (13 live vs 6 export). **StatsPlus is authoritative**; CSV-only rows are surfaced separately and labelled as a possibly-stale export snapshot. `hasLiveWaiverSource(data)` detects whether the StatsPlus merge ran at all (`statsplus.py` only writes keys with non-empty values, so key *presence* — even `false` — is the signal); when it didn't, the Waiver Wire view relabels itself "CSV EXPORT ONLY" and falls back entirely to `meta.waiv`. Note StatsPlus `designated_for_assignment` is true for a large tail of org-less/retired rows, so `waiverSource()` requires a real `meta.org` before believing any flag.
+
 ### CSV Presence & Page Visibility
 - The Python pipeline detects which player-source CSVs exist in the league's `csv/players/` dir via `model/src/export.py:_detect_csv_presence(player_dir)` and writes the result to `meta.csvPresence` in `dashboard.json`. Flags: `hasOrganization`, `hasFreeAgents`, `hasIAFA`, `hasDraft` (any `draft<YYYY>.csv`).
 - The frontend `PAGES` array in `app/src/utils/constants.js` has an optional `requires` field naming a `csvPresence` flag.
@@ -195,7 +208,7 @@ When adding new persisted state, default to **per-league** (use `useScopedLocalS
   - `fa` (Free Agent Finder) → `hasFreeAgents`
   - `draft` (Draft Board) → `hasDraft`
   - `iafa` (IAFA Board) → `hasIAFA`
-- Effect: missing CSVs hide their views from the sidebar without errors. Org / All Players / Dev / Scout / Compare / R5 / Prospects / Roster always appear. `hasOrganization` is informational only — the pipeline already requires that file via validation.
+- Effect: missing CSVs hide their views from the sidebar without errors. Org / All Players / Waiver Wire / Dev / Scout / Compare / R5 / Prospects / Roster always appear (the waiver signals ride in `org.csv` + the StatsPlus merge, both always present when a dashboard builds at all). `hasOrganization` is informational only — the pipeline already requires that file via validation.
 
 ### Best Pos Column
 - Shown across all major tables: All Players, Active Roster, 40-Man Depth Chart, Optimized Lineup, Org Roster, Free Agent Finder, Draft Board, IAFA Board
@@ -311,7 +324,7 @@ app/
     ├── main.jsx                # React entry
     ├── App.jsx                 # Entry shell + ErrorBoundary + data load (~3 KB)
     ├── theme.js                # OOTP 20-80 color scale, posColor, waaStyle, gradeStyle
-    ├── components/             # Leaf UI primitives + remaining views (DraftBoard, IAFABoard, FreeAgentFinder, PlayersView, PlayerCompareView, ProspectsView, Rule5Board, ScoutView, Dashboard, LeagueSettingsModal, shared, boardUtils). `shared.jsx` exports MultiSelectDropdown, PositionFilter, LevelFilter, NumericRangeFilter (min/max range filter matching the dropdown style), Toggle, Section, SortHeader, Pagination, PillBtn, TabGroup, etc.
+    ├── components/             # Leaf UI primitives + remaining views (DraftBoard, IAFABoard, FreeAgentFinder, WaiverWireView, PlayersView, PlayerCompareView, ProspectsView, Rule5Board, ScoutView, Dashboard, LeagueSettingsModal, shared, boardUtils). `shared.jsx` exports MultiSelectDropdown, PositionFilter, LevelFilter, NumericRangeFilter (min/max range filter matching the dropdown style), Toggle, Section, SortHeader, Pagination, PillBtn, TabGroup, etc.
     ├── views/                  # Domain-split views (added Phase D)
     │   ├── Org/                # OrgView coordinator + 4 sub-tabs (Overview, ActiveRoster, FortyMan, OptimizedLineup) + PositionalStrengthTable (shared component used by Overview, FA Finder, Rule 5 Board, Scout View)
     │   ├── PlayerProfile/      # PlayerProfileModal coordinator (tabbed) + _shared, BattingTab, PitchingTab, FieldingTab, BaserunningTab, ContractTab, EligiblePositionsTable, FVProjectionChart, PercentileHeader, PercentileBar. Hitter tabs: Batting/Fielding/Baserunning/Contract. Pitcher tabs: Pitching/Contract.

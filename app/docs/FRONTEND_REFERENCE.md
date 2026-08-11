@@ -22,9 +22,10 @@ mandate, multi-league storage, CSV-presence page visibility, styling) stay in
    - **Optimized Lineup**: Side-by-side platoon lineups (vs RHP and vs LHP). `assignPlayersToPositions(hitters, [], LINEUP_DEPTH, "current", hand)` takes a `"vR"`/`"vL"` split arg and resolves split WAR through `getWar(p, pos, split)`. Batting order: leadoff = highest OBP, slots 2-9 = sorted by wOBA descending (per Tom Tango's *The Book*).
 2. **All Players** — Searchable/filterable/sortable table with pagination. Mixed view now shows WAR + WAR P columns alongside hitter-only views (hitter enrichment sets `_war` / `_warP`, mirroring the pitcher pattern). Age filter uses the shared `NumericRangeFilter`.
 3. **Free Agent Finder** — Side-by-side **Team Positional Needs** (dense `PositionalStrengthTable`, Now mode, sorted weakest-first) + **Smart Rank Adjustments** (4-toggle subset: Future Value / Org Positional Need / Injury Proneness / Intangibles). When any toggle is on, the FA Board grows a "Smart" column at the front showing `applySmartRank(...)` value. "Gap fills only" filter narrows to weak positions. Age + Pro Yrs filters use the shared `NumericRangeFilter`.
-4. **Draft Board** — Draft class selector, live API, smart rank, position caps
-5. **IAFA Board** — Same smart rank system, filtered to Manual = "IAFA"
-6. **Dev Analysis** — Six-section page (hitter/pitcher toggle, no "all"):
+4. **Waiver Wire** — Claim board for players on waivers league-wide. Two independent signals feed it and they routinely disagree: `meta.is_on_waivers` (StatsPlus, live at pipeline run, carries the `days_on_waivers_left` claim clock) and `meta.waiv` (the `WAIV` column of `org.csv`, i.e. as of the last export). **StatsPlus is authoritative**; CSV-only rows render in a separate "may be stale" section below the board. Source resolution lives in `utils/waivers.js` (`hasLiveWaiverSource` / `waiverSource` / `waiverDaysLeft` / `isClaimable` / `fortyManSpots`). The board is **claimable players only** — `days_on_waivers_left === 0` means the player cleared and can no longer be claimed, so those rows move to a "Cleared Waivers — no longer claimable" section (the Left column reads `cleared`). This is what reconciles the flag count with OOTP's own: BLM-ATL shows 65 flagged → 58 claimable + 7 cleared. Layout mirrors the FA Finder — dense `PositionalStrengthTable` (Now mode, weakest-first) + the same 4-toggle Smart Rank block, pool via `buildBoardPool` → `buildDisplayPool`. A freshness strip above the board shows the source, fetch date, league date, count of rows at a below-average position, and 40-man occupancy (a claim costs a spot). Columns: Smart/WAR P, Name, Age, POS, Best, From, Lvl, Left, FV, WAR, WAR P, Dev%, Salary, Yrs, Opt, Prone. Own-team rows carry a YOURS badge. When no StatsPlus URL is configured the view relabels itself "CSV EXPORT ONLY" and falls back entirely to `meta.waiv`.
+5. **Draft Board** — Draft class selector, live API, smart rank, position caps
+6. **IAFA Board** — Same smart rank system, filtered to Manual = "IAFA"
+7. **Dev Analysis** — Six-section page (hitter/pitcher toggle, no "all"):
    - **Age vs WAA Scatter Plot**: Recharts scatter with Current (blue) and Potential (green) dots. Extracted as `DevScatterChart` (`React.memo`) so it doesn't re-render when curve sliders change.
    - **Gap Distribution by Age**: Kernel-smoothed percentile bands (10th-90th, 25th-75th, median) of the gap (Potential - Current). Bandwidth slider with Save button. Trimmed where median hits zero.
    - **DevPercentile Distribution**: Kernel-smoothed current WAA percentile bands by age. ComposedChart with Area bands + Lines. Makes dev percentile concrete: "At age 20, the 75th percentile has current WAA of X."
@@ -33,27 +34,27 @@ mandate, multi-league storage, CSV-presence page visibility, styling) stay in
    - **Development Curve Tuning** (v21 power-law creditAge): Single chart with the parametric `creditAge(age) = gapMax × (1 − t^gapExp)` plotted against the empirical `1 − progressCurve.hit.p50` dashed reference. The parametric is intentionally more generous than empirical at moderate ages — high-pot prospects don't follow the median trajectory. **Two sliders**: Gap Max (overall ceiling, default 0.80), Gap Exp (time-decay shape, default 3). Maturity Age toggle (26 or 27). Save/Revert/Defaults buttons.
    - **Current vs Potential Gap by Age**: Line chart showing avg current and avg potential WAA at each integer age bin.
 
-7. **Scout View** — Browse any team's organization with trade analysis:
+8. **Scout View** — Browse any team's organization with trade analysis:
    - Team selector dropdown (excludes your team)
    - **Smart Rank Adjustments** (same 4-toggle subset as IAFA/R5/FAF) drive a per-player `_rank` via `applySmartRank` against the scouted team's enriched pool (`buildBoardPool` → `buildDisplayPool`, `null` draftContext).
    - **Positional Strength Comparison**: two side-by-side `PositionalStrengthTable`s (scouted team + your team), both sorted by *your* team's weakest position so rows align row-for-row.
    - Trade opportunity callout: positions where they're strong and you're weak (z-gap ≥ 1.0).
    - Trade targets table: their players at your weak positions with positive Smart Rank, sorted by `_rank` desc. Column header reads "Smart" when any toggle is on, "Fit" otherwise — mirrors Draft's "Smart" / "WAR P" pattern.
    - Full roster browser with level/type filters, sortable; weak-pos rows highlighted green.
-8. **Player Compare** — Side-by-side comparison of 2-5 players:
+9. **Player Compare** — Side-by-side comparison of 2-5 players:
    - Type-ahead search bar to find and add players (hitters or pitchers)
    - Selected players shown as removable chips
    - Vertical comparison table (stats as rows, players as columns)
    - Stat groups: Profile, Value (hitter/pitcher-specific), Splits, Intangibles, Contract
    - Best value highlighted green, worst red for numeric stats
    - Mixed type support (hitter + pitcher) — inapplicable stats show "—"
-9. **Rule 5 Board** — Two sub-tabs:
+10. **Rule 5 Board** — Two sub-tabs:
    - **R5 Board**: Side-by-side **My Positional Needs** (dense `PositionalStrengthTable`, Now mode — Rule 5 picks must stay on the active roster all season, so immediate MLB need is the right metric, weakest-first) + **Smart Rank Adjustments** (4-toggle subset matching IAFA/Draft: Future Value / Org Positional Need / Injury Proneness / Intangibles). Pool excludes my team. Columns: Smart/WAR P, Name, Age, Dev%, POS, Best, Team, Lvl, FV, WAR, WAR P, Prone, Raw (when smart rank), B/T. Pool built via `buildBoardPool`: `_baseVal` from potential WAR, `_currentVal` from current WAR.
    - **40-Man Planner**: lazy-loads the full standalone `RosterPlanner` component. State syncs with the main Roster Planner page via the shared per-league `localStorage` keys (`ssb_roster_plan`, `ssb_roster_plan_order`, `ssb_roster_r5_threshold`).
-10. **Prospects** — Sub-tabbed Fangraphs-style prospect ranking page:
+11. **Prospects** — Sub-tabbed Fangraphs-style prospect ranking page:
    - **The Board**: Organization-affiliated prospects (MLD < 45, excludes FAs/IAFAs/draft-only players via `isInOrg()`) ranked by FV with scouting-grade tier badges (80→35+, players below 35+ excluded). Config table shows thresholds, dollar values, tier counts (H/P split), FV ranges, and MLB WAA comparison labels. "Suggest Thresholds" auto-populates from Fangraphs avg tier counts scaled by league size. Filters: search, type, position, org, level, tier.
    - **Farm Rankings**: Rankings table with clickable team names (navigate to Board filtered by team) and clickable tier counts (navigate to Board filtered by team+tier). Tier count columns, scouting ratings (Ceiling/Floor/Batting/Pitching on 20-80 scale via z-score), and multi-part scouting reports. Horizontal bar chart below table sorted highest→lowest. Settings persisted to localStorage (`prospect_board_settings`).
-11. **Roster Planner** — Drag-and-drop 26-man / 40-man / IL planner with contract projection:
+12. **Roster Planner** — Drag-and-drop 26-man / 40-man / IL planner with contract projection:
    - DnD orchestrated by `@dnd-kit` (PointerSensor / KeyboardSensor / TouchSensor); `RosterPlanner.jsx` is the coordinator that owns state and routes droppable IDs in `handleDragEnd`.
    - **Active depth panel** + **Inactive depth panel**: position-bucketed slots with hover highlighting (`hoveredActivePos` / `hoveredInactivePos`).
    - **Rule 5 Risk panel**: surfaces R5-eligible non-protected prospects above a configurable FV threshold (`r5Threshold`, scoped to the league) with a "show others" toggle.

@@ -4,7 +4,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **Waiver Wire page** — new sidebar view listing every player on waivers league-wide, with the claim-side context a decision needs: positional-need flags against your org, the same 4-toggle smart rank as the FA Finder, inherited salary / contract years / options remaining, the StatsPlus days-left clock, and your 40-man occupancy (a claim costs a spot). Frontend-only — the waiver flags were already in the data (`org.csv`'s `WAIV` column and the StatsPlus `/players` merge), so no pipeline change and no extra OOTP export is needed. The board lists **claimable players only**: `days_on_waivers_left === 0` means the player cleared waivers and can no longer be claimed, so those rows split onto their own "Cleared Waivers" table (this is what makes the count agree with OOTP's — BLM-ATL flags 65, of which 58 are claimable). New `utils/waivers.js` resolves the two disagreeing waiver signals: **StatsPlus is authoritative** (it is live as of the pipeline run and the only source carrying the claim clock), with `WAIV`-only rows shown in a separate "may be stale" section, since waivers clear in ~3 in-game days. Leagues with no StatsPlus URL configured fall back to the CSV column and the view relabels itself accordingly. The page carries no `csvPresence` gate — both signals ride in files that always exist when a dashboard builds.
 
 ## [0.2.0] — 2026-06-01
 

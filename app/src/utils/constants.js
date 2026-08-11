@@ -317,6 +317,9 @@ export const PAGES = [
   { id: "org", label: "My Organization", icon: "🏠" },
   { id: "players", label: "All Players", icon: "📊" },
   { id: "fa", label: "Free Agent Finder", icon: "🔍", requires: "hasFreeAgents" },
+  // No `requires` — the waiver signals ride in org.csv / the StatsPlus merge,
+  // both of which are always present when a dashboard builds at all.
+  { id: "waivers", label: "Waiver Wire", icon: "📡" },
   { id: "draft", label: "Draft Board", icon: "📋", requires: "hasDraft" },
   { id: "iafa", label: "IAFA Board", icon: "🌎", requires: "hasIAFA" },
   { id: "dev", label: "Dev Analysis", icon: "📈" },
