@@ -39,7 +39,8 @@ outside this repo: `analysis/oaa-fielding-model/docs/OAA_PIPELINE_AUDIT.md` and
 - **Editing `model/` code needs `main.py --force`** — the build short-circuit and the metadata /
   regressions caches key on *inputs*, not code, so a code change alone won't rebuild. A code change that
   alters computed constants also needs its cache `_CACHE_VERSION` bumped (metadata.py / regressions.py)
-  to invalidate stale caches. All 6 leagues rebuild separately.
+  to invalidate stale caches. Every league rebuilds separately (4 today: BLM-ATL, BLM-NYM,
+  SSB, default — BLM-MIA and BLM-COL were retired).
 - **Fielding is position-specific throughout** (separate regressions, league rates, out-values,
   and offense-derived position adjustments per position).
 - **Multi-year positional adjustments.** Per-league posAdj is computed via a multi-year
