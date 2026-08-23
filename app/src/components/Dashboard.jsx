@@ -165,7 +165,12 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
       const cohortCurve = ageMatured ? null : hitCurve;
       const fv = (matured || cur == null) ? cur :
         calcFutureValue(cur, pot, p._age, curveSettings);
-      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct, _devCurve: cohortCurve, _fv: fv, _war: cur, _warP: pot };
+      // _warSort/_warPSort mirror the pitcher enrichment so a mixed hitter+pitcher
+      // array sorts on one scale. genericSort's SORT_KEY_OVERRIDE maps _war/_warP to
+      // these keys; before this, hitters lacked them and a pitcher-vs-hitter compare
+      // treated the hitter as null — the All Players WAR / WAR P sort came out as
+      // "all pitchers, then all hitters", each block sorted on its own.
+      return { ...p, _matured: matured, _ageMatured: ageMatured, _devPct: devPct, _devCurve: cohortCurve, _fv: fv, _war: cur, _warP: pot, _warSort: cur, _warPSort: pot };
     };
 
     const enrichPitcher = (p) => {

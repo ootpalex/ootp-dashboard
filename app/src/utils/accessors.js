@@ -334,7 +334,11 @@ export const genericSort = (arr, col, dir, specialCols = {}) => {
     let va, vb;
     if (specialCols[col]) { va = specialCols[col](a); vb = specialCols[col](b); }
     else if (sortOverride && (a[sortOverride] != null || b[sortOverride] != null)) {
-      va = a[sortOverride]; vb = b[sortOverride];
+      // Per-row fallback: a row without the override key (e.g. a hitter next to a
+      // pitcher in a mixed array) still sorts on its resolved column value instead
+      // of being pushed to the bottom as null.
+      va = a[sortOverride] != null ? a[sortOverride] : num(resolveKey(a, col));
+      vb = b[sortOverride] != null ? b[sortOverride] : num(resolveKey(b, col));
     }
     else {
       const ra = resolveKey(a, col), rb = resolveKey(b, col);

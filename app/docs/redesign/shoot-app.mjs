@@ -28,6 +28,7 @@ for (const p of PAGES) {
   await sleep(1200); for (let i = 0; i < 25; i++) { if (!(await ev("/Loading/.test(document.body.innerText.slice(0,3000))"))) break; await sleep(200); }
   if (a.per && a.per !== true) { await ev(a.per); await sleep(800); }
   const m = await ev("({sw:document.documentElement.scrollWidth, boundary:document.body.innerText.includes('Something went wrong'), h:document.documentElement.scrollHeight})");
+  if (a.eval && a.eval !== true) m.eval = await ev(a.eval);   // --eval "js": printed per page (e.g. read a column back)
   const slug = p.toLowerCase().replace(/[^a-z0-9]+/g, "-"); await shot(slug); results.push({ page: p, found: ok, ...m, file: `${OUT}/${slug}.png` });
 }
 console.log(JSON.stringify(results, null, 1)); ws.close(); chrome.kill(); await sleep(400); try { fs.rmSync(udir, { recursive: true, force: true }); } catch {}
