@@ -27,7 +27,7 @@ const PlayerCompareView = lazy(() => import("./PlayerCompareView.jsx"));
 const RosterPlanner = lazy(() => import("../views/RosterPlanner/RosterPlanner.jsx"));
 
 const PAGE_FALLBACK = (
-  <div style={{ padding: 24, color: "#64748b", fontSize: 12 }}>Loading…</div>
+  <div style={{ padding: 24, color: TOKENS.text3, fontSize: 12 }}>Loading…</div>
 );
 
 export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dashMeta, leagues = [], currentLeague = null, onSelectLeague }) {
@@ -224,21 +224,28 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: TOKENS.bg, fontFamily: TOKENS.fonts.ui, color: TOKENS.text }}>
-      {/* Sidebar */}
-      <nav role="navigation" aria-label="Main navigation" style={{ width: sidebarOpen ? 220 : 52, background: "rgba(15,23,42,0.8)", borderRight: "1px solid #1e293b", display: "flex", flexDirection: "column", transition: "width 0.2s", flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
-        <div style={{ padding: sidebarOpen ? "16px 16px 8px" : "16px 8px 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          {sidebarOpen && <span style={{ fontSize: 20, fontWeight: 800, color: "#e2e8f0", letterSpacing: -1 }}>{leagueSettings.leagueName || "SSB"}</span>}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 16, padding: 4 }}>{sidebarOpen ? "◀" : "▶"}</button>
+      {/* Sidebar — Night Scorecard paper panel (batch 1). Collapsed rail (52px)
+          shows the page icons only; expanded (200px) shows text rows with the
+          red-pencil ✓ on the active page. */}
+      <nav role="navigation" aria-label="Main navigation" style={{ width: sidebarOpen ? 200 : 52, background: TOKENS.panel, borderRight: `1px solid ${TOKENS.line2}`, display: "flex", flexDirection: "column", transition: "width 0.2s", flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto", overflowX: "hidden", padding: "14px 0 0" }}>
+        <div style={{ padding: sidebarOpen ? "2px 10px 10px 16px" : "2px 0 10px", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "space-between" : "center", gap: 6, minWidth: 0 }}>
+          {sidebarOpen && (
+            <span style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0, overflow: "hidden" }}>
+              <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.04em", color: TOKENS.text, lineHeight: 1.1, whiteSpace: "nowrap" }}>{leagueSettings.leagueName || "SSB"}</span>
+              <span style={{ fontFamily: TOKENS.fonts.narrow, fontWeight: 500, fontSize: 12, color: TOKENS.text3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>GM Dashboard</span>
+            </span>
+          )}
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"} style={{ background: "none", border: "none", color: TOKENS.text3, cursor: "pointer", fontSize: 11, padding: "3px 5px", lineHeight: 1, borderRadius: TOKENS.radius, flexShrink: 0 }}>{sidebarOpen ? "◀" : "▶"}</button>
         </div>
         {sidebarOpen && (
-          <div style={{ padding: "8px 12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ margin: "0 12px 10px", border: `1px solid ${TOKENS.line}`, borderRadius: TOKENS.radius, background: TOKENS.panel2, padding: "8px 10px 9px", display: "flex", flexDirection: "column", gap: 7 }}>
             {leagues.length > 1 && (
               <div>
-                <label style={{ fontSize: 10, color: "#475569", letterSpacing: 1, textTransform: "uppercase" }}>League</label>
+                <label style={{ display: "block", fontFamily: TOKENS.fonts.narrow, fontSize: 11, fontWeight: 600, color: TOKENS.text3 }}>League</label>
                 <select
                   value={currentLeague || ""}
                   onChange={(e) => onSelectLeague && onSelectLeague(e.target.value)}
-                  style={{ ...S.filterSelect, width: "100%", marginTop: 4 }}
+                  style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${TOKENS.line2}`, borderRadius: 0, color: TOKENS.text, fontFamily: TOKENS.fonts.ui, fontSize: 12.5, fontWeight: 600, padding: "3px 0 4px", cursor: "pointer" }}
                 >
                   {leagues.map((l) => (
                     <option key={l.slug} value={l.slug}>
@@ -249,38 +256,50 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
               </div>
             )}
             <div>
-              <label style={{ fontSize: 10, color: "#475569", letterSpacing: 1, textTransform: "uppercase" }}>My Team</label>
-              <select value={myTeam} onChange={(e) => setMyTeam(e.target.value)} style={{ ...S.filterSelect, width: "100%", marginTop: 4 }}>
+              <label style={{ display: "block", fontFamily: TOKENS.fonts.narrow, fontSize: 11, fontWeight: 600, color: TOKENS.text3 }}>My Team</label>
+              <select value={myTeam} onChange={(e) => setMyTeam(e.target.value)} style={{ width: "100%", background: "transparent", border: "none", borderBottom: `1px solid ${TOKENS.line2}`, borderRadius: 0, color: TOKENS.text, fontFamily: TOKENS.fonts.ui, fontSize: 12.5, fontWeight: 600, padding: "3px 0 4px", cursor: "pointer" }}>
                 {data.teams.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 10, color: "#475569", letterSpacing: 1, textTransform: "uppercase" }}>Game Date</label>
+              <label style={{ display: "block", fontFamily: TOKENS.fonts.narrow, fontSize: 11, fontWeight: 600, color: TOKENS.text3 }}>Game Date</label>
               <input type="date" value={gameDate} onChange={(e) => setGameDate(e.target.value)}
-                style={{ ...S.filterSelect, width: "100%", marginTop: 4 }} />
+                style={{ width: "100%", boxSizing: "border-box", background: "transparent", border: "none", borderBottom: `1px solid ${TOKENS.line2}`, borderRadius: 0, color: TOKENS.text, fontFamily: TOKENS.fonts.ui, fontSize: 12.5, fontWeight: 500, fontVariantNumeric: "tabular-nums", padding: "3px 0 4px", cursor: "pointer" }} />
             </div>
           </div>
         )}
-        <div role="tablist" aria-label="Page navigation" style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 8px", flex: 1 }}>
-          {visiblePages.map((pg) => (
-            <button key={pg.id} role="tab" aria-selected={activePage === pg.id} aria-label={pg.label} onClick={() => setActivePage(pg.id)} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: sidebarOpen ? "8px 10px" : "8px",
-              borderRadius: 6, background: activePage === pg.id ? "rgba(96,165,250,0.15)" : "transparent",
-              border: activePage === pg.id ? "1px solid rgba(96,165,250,0.3)" : "1px solid transparent",
-              color: activePage === pg.id ? "#93c5fd" : "#64748b", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", textAlign: "left", transition: "all 0.15s", width: "100%",
-            }}>
-              <span style={{ fontSize: 16 }}>{pg.icon}</span>
-              {sidebarOpen && <span>{pg.label}</span>}
-            </button>
-          ))}
+        <div role="tablist" aria-label="Page navigation" style={{ display: "flex", flexDirection: "column", padding: "4px 0 0", flex: 1, fontFamily: TOKENS.fonts.narrow }}>
+          {visiblePages.map((pg) => {
+            const active = activePage === pg.id;
+            return (
+              <button key={pg.id} role="tab" aria-selected={active} aria-label={pg.label} onClick={() => setActivePage(pg.id)}
+                onMouseEnter={(e) => { e.currentTarget.style.background = TOKENS.panel2; e.currentTarget.style.color = TOKENS.text; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = active ? TOKENS.text : TOKENS.text2; }}
+                style={{
+                  position: "relative", display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "flex-start" : "center",
+                  padding: sidebarOpen ? "6px 16px 6px 30px" : "7px 0",
+                  background: "transparent", border: "none", borderRadius: 0,
+                  borderLeft: `2px solid ${!sidebarOpen && active ? TOKENS.accent : "transparent"}`,
+                  color: active ? TOKENS.text : TOKENS.text2, cursor: "pointer", fontSize: 14, fontWeight: active ? 700 : 500, fontFamily: TOKENS.fonts.narrow, textAlign: "left", transition: "background 0.12s, color 0.12s", width: "100%", whiteSpace: "nowrap",
+                }}>
+                {sidebarOpen && active && <span aria-hidden="true" style={{ position: "absolute", left: 13, top: 9, width: 5, height: 10, borderRight: `2.5px solid ${TOKENS.accent}`, borderBottom: `2.5px solid ${TOKENS.accent}`, transform: "rotate(40deg)" }} />}
+                {!sidebarOpen && <span style={{ fontSize: 16, lineHeight: "18px" }}>{pg.icon}</span>}
+                {sidebarOpen && <span>{pg.label}</span>}
+              </button>
+            );
+          })}
         </div>
-        <div style={{ padding: "8px", borderTop: "1px solid #1e293b" }}>
-          <button onClick={() => setShowSettings(true)} aria-label="League settings" style={{
-            display: "flex", alignItems: "center", gap: 10, padding: sidebarOpen ? "8px 10px" : "8px",
-            borderRadius: 6, background: "transparent", border: "1px solid transparent",
-            color: "#64748b", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: "inherit", textAlign: "left", transition: "all 0.15s", width: "100%",
-          }}>
-            <span style={{ fontSize: 16 }}>&#9881;</span>
+        <div style={{ borderTop: `1px solid ${TOKENS.line}`, padding: "4px 0 10px" }}>
+          <button onClick={() => setShowSettings(true)} aria-label="League settings"
+            onMouseEnter={(e) => { e.currentTarget.style.background = TOKENS.panel2; e.currentTarget.style.color = TOKENS.text; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = TOKENS.text3; }}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: sidebarOpen ? "flex-start" : "center",
+              padding: sidebarOpen ? "6px 16px 6px 30px" : "7px 0",
+              background: "transparent", border: "none", borderRadius: 0, borderLeft: "2px solid transparent",
+              color: TOKENS.text3, cursor: "pointer", fontSize: 13, fontWeight: 500, fontFamily: TOKENS.fonts.narrow, textAlign: "left", transition: "background 0.12s, color 0.12s", width: "100%", whiteSpace: "nowrap",
+            }}>
+            {!sidebarOpen && <span style={{ fontSize: 16, lineHeight: "18px" }}>&#9881;</span>}
             {sidebarOpen && <span>Settings</span>}
           </button>
         </div>
@@ -288,7 +307,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
       {showSettings && <LeagueSettingsModal settings={leagueSettings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} autoExcluded={autoExcluded} allTeams={allRawTeams} />}
 
       {/* Main Content */}
-      <div style={{ flex: 1, padding: 24, maxWidth: 1400, overflowX: "hidden" }}>
+      <div style={{ flex: 1, padding: "18px 24px 48px", maxWidth: 1400, overflowX: "hidden" }}>
         <Suspense fallback={PAGE_FALLBACK}>
           {activePage === "org" && myTeam && <OrgView data={enrichedData} team={myTeam} strength={strength} curveSettings={curveSettings} onSelectPlayer={setSelectedPlayer} />}
           {activePage === "players" && <PlayersView data={enrichedData} curveSettings={curveSettings} leagueSettings={leagueSettings} onSelectPlayer={setSelectedPlayer} />}

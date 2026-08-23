@@ -92,3 +92,59 @@ render on BLM-ATL with no console errors and `document.documentElement.scrollWid
 `contrast.mjs` output unchanged from `CHECKS.md`; Archivo webfont confirmed loaded (`document.fonts.check`). Archivo
 Narrow is linked but not yet requested by any rendered element (first consumer is batch 1's `S.th`/`SortHeader`).
 Note: `theme.next.js` was retired into `app/src/theme.js`; the generator and `contrast.mjs` now import `../../src/theme.js`.
+
+## Batch 1 — landed 2026-08-23 (uncommitted on `claude/ootp-dashboard-redesign-4cb921`)
+Files: `app/src/components/shared.jsx`, `app/src/components/Dashboard.jsx` (sidebar `<nav>` + main padding + the
+`PAGE_FALLBACK` colour), `app/src/components/LeagueSettingsModal.jsx`. No caller, accessor, prop, export, aria role/label,
+localStorage key or callback changed; every colour now comes from `TOKENS` / `S`.
+- **shared.jsx.** `Section` → scorecard box (`S.box` + `S.boxHead` strip, title Archivo Narrow 700 13.5, optional
+  `count` `text3`, right-side `state` `text3` 12px + `actions`, optional `toolbar` strip `S.toolbar`, body padding 12,
+  optional `footer` `S.boxFoot`) — `count`/`state`/`toolbar`/`footer` are new and unused until batch 2. `SortHeader` =
+  `S.th` + `S.thSorted` (inset red underline) when sorted, hover → `text`; sticky kept as-is (D.10 deferred: no
+  maxHeight/overflowY on `S.tableWrap`). `PillBtn` active = `accentBg`/`accent`/`accent` border, inactive
+  `panel`/`line2`/`text2`, r3, Archivo Narrow 600 13. `TabGroup` = `panel2` strip (`line2` rule, r3, padding 3); callers'
+  `style` still wins. `MultiSelectDropdown` / `NumericRangeFilter` triggers = raised `S.filterSelect` controls (open or
+  keyboard focus → `focus` border; ring only on keyboard focus via a `:focus-visible` check; has-value text `accent`,
+  count chip `accentBg`/`accent`); popovers opaque `panel` + `line2` + r3, no shadow, headings 12px Archivo Narrow
+  sentence case, "Clear all"/"Clear" links `accent`, option rows hover `panel3`, checked `accentBg` + `text`, checkbox
+  `accentColor: accent`; range inputs are sunken wells (`S.searchInput` basis, focus `focus` border + ring). New exports
+  `SearchInput` / `searchWellStyle` (well + inline magnifier SVG drawn in `text3`, paddingLeft 26) for batch 2 — the
+  FA search box still uses `S.searchInput` until its caller moves. `Toggle` gains `variant` (`"inline"` default,
+  `"row"` = 8/12 padding, `line` top rule, hover `panel2`); switch 30×17 (`bg` well + `line2` ring + `text3` knob; on =
+  `accent` + `accentText` knob); the switch is now `role="switch"` `aria-checked`, tabbable, Space/Enter toggles, focus
+  ring `focus` (additive a11y — it was mouse-only before). `Pagination` = foot strip (`panel2`, `borderTop line2`,
+  8/12, Archivo Narrow 12.5 `text2`, ‹ Prev / Next › `S.pageBtn`, disabled `textDisabled`/`line`); in this batch it
+  still sits inside the padded Section body, under the bordered `S.tableWrap`. `TwoWayBadge` = outlined `warn` chip r3
+  Archivo Narrow 700 10px. `FileDropZone` ready `good`/`goodBg`, dragover `accent`/`accentBg2`, idle `S.dropZone`
+  (`bg` well, dashed `line2`); `DataLoader` wordmark `text` 800 −0.04em + "GM Dashboard" Archivo Narrow `text3` (no
+  uppercase / tracking).
+- **Dashboard.jsx.** Sidebar = 200px `panel` column, `line2` right rule, sticky 100vh; brand row (league name Archivo
+  800 22px −0.04em + "GM Dashboard" `text3` Archivo Narrow 12) with the collapse glyph `text3`; League / My Team /
+  Game Date in one bordered `panel2` block (`line` rule, r3) with 11px Archivo Narrow 600 `text3` labels and borderless
+  underlined (`line2`) value rows; page rows Archivo Narrow 14 `text2` 500, active `text` 700 + the red ✓ tick
+  (absolutely positioned 5×10 rotated-border `<span>`, `accent`), hover `panel2`; Settings row `text3` 13px under a
+  `line` rule, pinned (the tablist keeps `flex: 1`). Collapsed rail kept at 52px: emoji icons only, active = 2px
+  `accent` left border; expanded hides the icons (D.17 decision applied). Main column padding `18px 24px 48px`
+  (maxWidth 1400 / overflowX hidden unchanged). `PAGE_FALLBACK` "Loading…" `#64748b` → `TOKENS.text3` (outside the
+  nav block, but required by the 0-hex gate).
+- **LeagueSettingsModal.jsx.** Scrim `TOKENS.scrim` kept, `backdropFilter` removed; box 520 = `S.box` (`panel`/`line2`/r3)
+  with an `S.boxHead` header strip (title + ✕ `text3`), scrolling body, footer strip (`panel2`, `line2` top rule) with
+  Cancel `S.btn` / Save `S.btn + S.btnPrimary`; labels 12px Archivo Narrow 600 `text2` sentence case; inputs = wells
+  (`S.searchInput`, focus `focus` border + ring via onFocus/onBlur); help text 11px `text3`; team chips r3 outlined
+  (`goodBg`/`good` forced-include, `badBg`/`bad` + `badSoft` text excluded, "(auto)" `text3`); draft-demands checkbox
+  `accentColor: accent`.
+Gates (verified 2026-08-23): `vite build` OK; six-digit hexes in the three files = 0 / 0 / 0; `rgba(` = 0 / 0 / 0;
+`boxShadow|linear-gradient|backdropFilter` → only the inset sort underline (`S.thSorted`, theme.js) and the focus ring
+(`shared.jsx` focusStyle / trigger / switch, `LeagueSettingsModal.jsx` onWellFocus); `borderRadius: 8|10|12|20` = 0;
+`textTransform` = 0. Browser at 1440 × 1000 (BLM-ATL): `document.documentElement.scrollWidth` = 1440 on Free Agent
+Finder, All Players and Waiver Wire; sidebar expanded (200px) and collapsed (52px) both render; position MultiSelect
+and Age range popovers open/close (Escape, outside click), selections and Clear work; League Settings opens/closes; Tab
+order runs collapse → League → My Team → Game Date → 12 page tabs → Settings → 4 switches → position filter, the
+switch toggles on Space/Enter; no console errors from the current modules (one React shorthand/longhand `border`
+warning appeared during development and was fixed by writing `border` instead of `borderColor` in the focus style).
+Archivo Narrow confirmed loaded (`document.fonts.check`).
+Deferred / notes: D.10 sticky headers unchanged (no-op inside the overflowX wrapper); the board filter bars, the
+Pagination foot strip flush with the box, the `Section` `count`/`state`/`toolbar`/`footer` slots, `Toggle
+variant="row"` and `SearchInput` wait for their callers in batch 2; the FA "Free Agent Board (2649)" count still lives in
+the title string until batch 2 passes `count`; `S.pillBtnActive` (theme.js, `text` ink) is not used — `PillBtn` follows
+the brief (`accent` text) instead.

@@ -1,10 +1,50 @@
 // ============================================================================
 // SHARED UI COMPONENTS — Reusable primitives and hooks
+// Styling: Night Scorecard (graphite) — every colour comes from TOKENS / S in
+// ../theme.js (batch 1 of app/docs/redesign/MIGRATION_PLAN.md).
 // ============================================================================
 import { useState, useRef, useEffect, useMemo, memo } from "react";
 import * as Papa from "papaparse";
-import { S } from "../theme.js";
+import { TOKENS as T, S } from "../theme.js";
 import { categorizeLevel, LEVEL_CATEGORY_ORDER } from "../utils/accessors.js";
+
+const R = T.radius;
+// The one allowed non-inset shadow: the keyboard focus ring.
+const FOCUS_RING = `0 0 0 2px ${T.focusRing}`;
+const focusStyle = { border: `1px solid ${T.focus}`, boxShadow: FOCUS_RING };
+
+// Focus-visible tracking for inline-styled controls (inline styles have no
+// :focus-visible). Mouse focus does not light the ring; keyboard focus does.
+function useFocusRing() {
+  const [focused, setFocused] = useState(false);
+  return {
+    focused,
+    onFocus: (e) => { try { setFocused(e.currentTarget.matches(":focus-visible")); } catch { setFocused(true); } },
+    onBlur: () => setFocused(false),
+  };
+}
+
+// Sunken text/number input ("well"): bg fill, line2 rule, focus → focus border + ring.
+function WellInput({ style, ...props }) {
+  const ring = useFocusRing();
+  return (
+    <input
+      {...props}
+      onFocus={(e) => { ring.onFocus(e); props.onFocus?.(e); }}
+      onBlur={(e) => { ring.onBlur(e); props.onBlur?.(e); }}
+      style={{ ...S.searchInput, ...style, ...(ring.focused ? focusStyle : {}) }}
+    />
+  );
+}
+
+// Inline magnifier for search wells (mockup `.toolbar .search`), drawn in text3.
+const SEARCH_ICON = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='${encodeURIComponent(T.text3)}' stroke-width='2.2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.5-3.5'/></svg>")`;
+export const searchWellStyle = { ...S.searchInput, paddingLeft: 26, backgroundImage: SEARCH_ICON, backgroundRepeat: "no-repeat", backgroundSize: 13, backgroundPosition: "8px center" };
+
+// Search well with the inline magnifier (first consumers: the board toolbars in batch 2).
+export function SearchInput({ style, ...props }) {
+  return <WellInput {...props} style={{ ...searchWellStyle, ...style }} />;
+}
 
 export function NumInput({ value, onChange, min, max, step, style }) {
   const [draft, setDraft] = useState(null);
@@ -38,14 +78,27 @@ export function NumInput({ value, onChange, min, max, step, style }) {
   );
 }
 
-export function Section({ title, children, actions }) {
+// Scorecard box: panel + line2 rule + header strip. `count` / `state` /
+// `toolbar` / `footer` are additive (batch 1); `title`, `children`, `actions`
+// keep their meaning.
+export function Section({ title, children, actions, count, state, toolbar, footer }) {
   return (
-    <div style={S.section}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h2 style={S.sectionTitle}>{title}</h2>
-        {actions && <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{actions}</div>}
+    <div style={S.box}>
+      <div style={S.boxHead}>
+        <h2 style={{ ...S.sectionTitle, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <span>{title}</span>
+          {count != null && count !== "" && <span style={{ fontWeight: 500, color: T.text3 }}>{count}</span>}
+        </h2>
+        {(state != null || actions) && (
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            {state != null && <span style={S.boxHeadRight}>{state}</span>}
+            {actions}
+          </div>
+        )}
       </div>
-      {children}
+      {toolbar && <div style={S.toolbar}>{toolbar}</div>}
+      <div style={{ padding: 12 }}>{children}</div>
+      {footer && <div style={S.boxFoot}>{footer}</div>}
     </div>
   );
 }
@@ -54,7 +107,10 @@ export function SortHeader({ label, width, sortCol, sortDir, colKey, onClick }) 
   const active = sortCol === colKey;
   const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
   return (
-    <th onClick={onClick} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }} tabIndex={0} role="columnheader" aria-sort={ariaSort} aria-label={`Sort by ${label}${active ? (sortDir === "asc" ? ", ascending" : ", descending") : ""}`} style={{ ...S.th, width, minWidth: width, cursor: "pointer", userSelect: "none" }}>
+    <th onClick={onClick} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }} tabIndex={0} role="columnheader" aria-sort={ariaSort} aria-label={`Sort by ${label}${active ? (sortDir === "asc" ? ", ascending" : ", descending") : ""}`}
+      onMouseEnter={(e) => { e.currentTarget.style.color = T.text; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = active ? T.text : T.text2; }}
+      style={{ ...S.th, ...(active ? S.thSorted : {}), width, minWidth: width, cursor: "pointer", userSelect: "none" }}>
       <span>{label}</span>{active && <span style={{ marginLeft: 3, fontSize: 10 }} aria-hidden="true">{sortDir === "asc" ? "▲" : "▼"}</span>}
     </th>
   );
@@ -62,11 +118,33 @@ export function SortHeader({ label, width, sortCol, sortDir, colKey, onClick }) 
 
 export function PillBtn({ active, onClick, children, style: extraStyle, role: roleProp, ariaLabel }) {
   return (
-    <button onClick={onClick} role={roleProp || "tab"} aria-selected={active} aria-label={ariaLabel} style={{ ...S.pillBtn, background: active ? "rgba(96,165,250,0.2)" : "transparent", color: active ? "#93c5fd" : "#64748b", borderColor: active ? "#3b82f6" : "#1e293b", ...extraStyle }}>
+    <button onClick={onClick} role={roleProp || "tab"} aria-selected={active} aria-label={ariaLabel}
+      style={{ ...S.pillBtn, fontSize: 13, ...(active ? { background: T.accentBg, color: T.accent, borderColor: T.accent } : { background: T.panel, color: T.text2, borderColor: T.line2 }), ...extraStyle }}>
       {children}
     </button>
   );
 }
+
+// Raised select-style trigger shared by MultiSelectDropdown / NumericRangeFilter.
+const triggerStyle = ({ open, active, focused, minWidth }) => ({
+  ...S.filterSelect,
+  padding: "5px 8px 5px 10px",
+  border: `1px solid ${open || focused ? T.focus : T.line2}`,
+  color: active ? T.accent : T.text,
+  minWidth,
+  textAlign: "left",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  boxShadow: focused ? FOCUS_RING : "none",
+  transition: "border-color 0.12s",
+});
+const caretStyle = (open) => ({ fontSize: 9, color: T.text3, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.12s" });
+// Opaque popover: panel + line2 + r3, no shadow.
+const popoverStyle = { position: "absolute", top: "calc(100% + 4px)", left: 0, background: T.panel, border: `1px solid ${T.line2}`, borderRadius: R, zIndex: 1000 };
+const popoverHeadStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 600, color: T.text2 };
+const clearLinkStyle = { background: "none", border: "none", color: T.accent, fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 };
 
 // ─────────────────────────────────────────────────────────────
 // MultiSelectDropdown — generic checkbox dropdown used by every
@@ -79,6 +157,7 @@ export function PillBtn({ active, onClick, children, style: extraStyle, role: ro
 export function MultiSelectDropdown({ options, value, onChange, placeholder = "All", ariaLabel = "Filter", minWidth = 200, popoverMinWidth = 220, summaryFormat }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const ring = useFocusRing();
   useEffect(() => {
     if (!open) return;
     const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
@@ -109,70 +188,38 @@ export function MultiSelectDropdown({ options, value, onChange, placeholder = "A
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        onFocus={ring.onFocus}
+        onBlur={ring.onBlur}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        style={{
-          padding: "6px 10px 6px 12px",
-          background: "linear-gradient(#0f172a, #0a0f1c)",
-          border: "1px solid",
-          borderColor: open ? "#3b82f6" : sel.length ? "#475569" : "#334155",
-          borderRadius: 8,
-          color: sel.length ? "#93c5fd" : "#94a3b8",
-          fontSize: 12,
-          fontWeight: 600,
-          fontFamily: "inherit",
-          cursor: "pointer",
-          minWidth,
-          textAlign: "left",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          boxShadow: open ? "0 0 0 3px rgba(59,130,246,0.18)" : "0 1px 2px rgba(0,0,0,0.2)",
-          transition: "all 0.15s",
-        }}
+        style={triggerStyle({ open, active: sel.length > 0, focused: ring.focused, minWidth })}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {label}
           {sel.length > 1 && (
-            <span style={{ padding: "1px 6px", borderRadius: 8, background: "rgba(59,130,246,0.25)", fontSize: 10, color: "#bfdbfe", fontWeight: 700 }}>{sel.length}</span>
+            <span style={{ padding: "0 5px", borderRadius: R, background: T.accentBg, border: `1px solid ${T.accent}`, fontSize: 10.5, lineHeight: "14px", color: T.accent, fontWeight: 700 }}>{sel.length}</span>
           )}
         </span>
-        <span style={{ fontSize: 9, color: "#64748b", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+        <span style={caretStyle(open)} aria-hidden="true">▾</span>
       </button>
       {open && (
-        <div role="listbox" aria-multiselectable="true" style={{
-          position: "absolute",
-          top: "calc(100% + 6px)",
-          left: 0,
-          minWidth: popoverMinWidth,
-          maxHeight: 380,
-          overflowY: "auto",
-          background: "#0f172a",
-          border: "1px solid #334155",
-          borderRadius: 8,
-          boxShadow: "0 12px 28px rgba(0,0,0,0.5)",
-          zIndex: 1000,
-          padding: 6,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px 6px", fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>
+        <div role="listbox" aria-multiselectable="true" style={{ ...popoverStyle, minWidth: popoverMinWidth, maxHeight: 380, overflowY: "auto", padding: 4 }}>
+          <div style={{ ...popoverHeadStyle, padding: "5px 8px 6px", borderBottom: `1px solid ${T.line}`, marginBottom: 3 }}>
             <span>{ariaLabel}</span>
             {sel.length > 0 && (
-              <button type="button" onClick={clear} style={{ background: "none", border: "none", color: "#60a5fa", fontSize: 10, cursor: "pointer", padding: 0, fontFamily: "inherit", fontWeight: 700, letterSpacing: 0.5 }}>
-                CLEAR ALL
-              </button>
+              <button type="button" onClick={clear} style={clearLinkStyle}>Clear all</button>
             )}
           </div>
           {options.flatMap((opt) => {
             const checked = sel.includes(opt.value);
             const items = [];
             if (opt.dividerBefore) {
-              items.push(<div key={opt.value + "-div"} style={{ height: 1, background: "#1e293b", margin: "4px 6px" }} />);
+              items.push(<div key={opt.value + "-div"} style={{ height: 1, background: T.line, margin: "3px 6px" }} />);
             }
             if (opt.header) {
               items.push(
-                <div key={opt.value} style={{ padding: "6px 8px 2px", fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>{opt.label}</div>
+                <div key={opt.value} style={{ padding: "5px 8px 2px", fontFamily: T.fonts.narrow, fontSize: 12, color: T.text3, fontWeight: 600 }}>{opt.label}</div>
               );
               return items;
             }
@@ -180,21 +227,21 @@ export function MultiSelectDropdown({ options, value, onChange, placeholder = "A
               <label key={opt.value} style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "6px 8px",
+                gap: 9,
+                padding: "5px 8px",
                 paddingLeft: opt.indent ? 22 : 8,
-                borderRadius: 4,
+                borderRadius: R,
                 cursor: "pointer",
-                background: checked ? "rgba(59,130,246,0.15)" : "transparent",
-                color: checked ? "#bfdbfe" : "#cbd5e1",
-                fontSize: 12,
+                background: checked ? T.accentBg : "transparent",
+                color: checked ? T.text : T.text2,
+                fontSize: 12.5,
                 fontWeight: checked ? 600 : 500,
                 userSelect: "none",
                 transition: "background 0.1s",
               }}
-              onMouseEnter={(e) => { if (!checked) e.currentTarget.style.background = "rgba(96,165,250,0.07)"; }}
+              onMouseEnter={(e) => { if (!checked) e.currentTarget.style.background = T.panel3; }}
               onMouseLeave={(e) => { if (!checked) e.currentTarget.style.background = "transparent"; }}>
-                <input type="checkbox" checked={checked} onChange={() => toggle(opt.value)} style={{ accentColor: "#3b82f6", margin: 0, cursor: "pointer" }} />
+                <input type="checkbox" checked={checked} onChange={() => toggle(opt.value)} style={{ accentColor: T.accent, margin: 0, cursor: "pointer" }} />
                 <span>{opt.label}</span>
               </label>
             );
@@ -297,6 +344,7 @@ export function LevelFilter({ players, value, onChange, expandRookieTeams = true
 export function NumericRangeFilter({ label = "Range", value, onChange, step = 1, minWidth = 130 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  const ring = useFocusRing();
   useEffect(() => {
     if (!open) return;
     const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
@@ -325,77 +373,37 @@ export function NumericRangeFilter({ label = "Range", value, onChange, step = 1,
   const setMax = (v) => onChange({ min, max: v });
   const clear = () => onChange({ min: "", max: "" });
 
-  const inputStyle = {
-    background: "#0a0f1c",
-    border: "1px solid #334155",
-    borderRadius: 6,
-    color: "#cbd5e1",
-    padding: "6px 8px",
-    fontSize: 12,
-    fontFamily: "inherit",
-    width: "100%",
-    boxSizing: "border-box",
-  };
+  const inputStyle = { width: "100%", boxSizing: "border-box", textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
   return (
     <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        onFocus={ring.onFocus}
+        onBlur={ring.onBlur}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Filter by ${label}`}
-        style={{
-          padding: "6px 10px 6px 12px",
-          background: "linear-gradient(#0f172a, #0a0f1c)",
-          border: "1px solid",
-          borderColor: open ? "#3b82f6" : active ? "#475569" : "#334155",
-          borderRadius: 8,
-          color: active ? "#93c5fd" : "#94a3b8",
-          fontSize: 12,
-          fontWeight: 600,
-          fontFamily: "inherit",
-          cursor: "pointer",
-          minWidth,
-          textAlign: "left",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          boxShadow: open ? "0 0 0 3px rgba(59,130,246,0.18)" : "0 1px 2px rgba(0,0,0,0.2)",
-          transition: "all 0.15s",
-        }}
+        style={triggerStyle({ open, active, focused: ring.focused, minWidth })}
       >
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary}</span>
-        <span style={{ fontSize: 9, color: "#64748b", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+        <span style={caretStyle(open)} aria-hidden="true">▾</span>
       </button>
       {open && (
-        <div role="dialog" aria-label={`${label} range`} style={{
-          position: "absolute",
-          top: "calc(100% + 6px)",
-          left: 0,
-          minWidth: 220,
-          background: "#0f172a",
-          border: "1px solid #334155",
-          borderRadius: 8,
-          boxShadow: "0 12px 28px rgba(0,0,0,0.5)",
-          zIndex: 1000,
-          padding: 10,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, fontWeight: 700 }}>
+        <div role="dialog" aria-label={`${label} range`} style={{ ...popoverStyle, minWidth: 220, padding: 10 }}>
+          <div style={{ ...popoverHeadStyle, marginBottom: 8 }}>
             <span>{label} range</span>
             {active && (
-              <button type="button" onClick={clear} style={{ background: "none", border: "none", color: "#60a5fa", fontSize: 10, cursor: "pointer", padding: 0, fontFamily: "inherit", fontWeight: 700, letterSpacing: 0.5 }}>
-                CLEAR
-              </button>
+              <button type="button" onClick={clear} style={clearLinkStyle}>Clear</button>
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center" }}>
-            <input type="number" placeholder="Min" step={step} value={min} onChange={(e) => setMin(e.target.value)} style={inputStyle} aria-label={`Minimum ${label}`} />
-            <span style={{ color: "#64748b", fontSize: 11 }}>—</span>
-            <input type="number" placeholder="Max" step={step} value={max} onChange={(e) => setMax(e.target.value)} style={inputStyle} aria-label={`Maximum ${label}`} />
+            <WellInput type="number" placeholder="Min" step={step} value={min} onChange={(e) => setMin(e.target.value)} style={inputStyle} aria-label={`Minimum ${label}`} />
+            <span style={{ color: T.text3, fontSize: 11 }}>–</span>
+            <WellInput type="number" placeholder="Max" step={step} value={max} onChange={(e) => setMax(e.target.value)} style={inputStyle} aria-label={`Maximum ${label}`} />
           </div>
-          <div style={{ marginTop: 6, fontSize: 10, color: "#475569", lineHeight: 1.4 }}>
+          <div style={{ marginTop: 6, fontSize: 11, color: T.text3, lineHeight: 1.4 }}>
             Leave a side blank for an open-ended filter.
           </div>
         </div>
@@ -404,36 +412,52 @@ export function NumericRangeFilter({ label = "Range", value, onChange, step = 1,
   );
 }
 
+// Pills laid out in a panel2 strip; callers' `style` still wins.
 export function TabGroup({ children, label, style: extraStyle }) {
   return (
-    <div role="tablist" aria-label={label} style={extraStyle}>
+    <div role="tablist" aria-label={label} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 3, background: T.panel2, border: `1px solid ${T.line2}`, borderRadius: R, ...extraStyle }}>
       {children}
     </div>
   );
 }
 
+// Outlined warn chip (D.6).
 export const TwoWayBadge = memo(({ player }) => player._twoWay ? (
-  <span style={{ fontSize: 9, padding: "1px 4px", borderRadius: 3,
-    background: "rgba(251,191,36,0.2)", color: "#fbbf24", marginLeft: 4, fontWeight: 600 }}>
+  <span style={{ display: "inline-block", fontFamily: T.fonts.narrow, fontWeight: 700, fontSize: 10, lineHeight: "14px", padding: "0 4px", borderRadius: R,
+    background: "transparent", border: `1px solid ${T.warn}`, color: T.warn, marginLeft: 4, verticalAlign: 1 }}>
     2-WAY {player._type === "hitter" ? "(H)" : "(P)"}
   </span>
 ) : null);
 
-export function Toggle({ label, checked, onChange, description, disabled = false }) {
+// Toggle — `variant="inline"` (default: toolbars, stacked lists as today) or
+// `variant="row"` (ruled row: 8/12 padding, line rule above, hover panel2).
+// The switch is a 30×17 well (off) or the red pencil (on); it is keyboard
+// focusable (role=switch, Space/Enter) and shows the focus ring.
+export function Toggle({ label, checked, onChange, description, disabled = false, variant = "inline" }) {
+  const row = variant === "row";
+  const ring = useFocusRing();
   const handleClick = (e) => {
     e.preventDefault();
     if (disabled) return;
     onChange(!checked);
   };
-  const labelColor = disabled ? "#475569" : (checked ? "#e2e8f0" : "#94a3b8");
+  const labelColor = disabled ? T.textDisabled : (checked ? T.text : T.text2);
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: disabled ? "not-allowed" : "pointer", padding: "4px 0", opacity: disabled ? 0.55 : 1 }} title={disabled ? description : undefined}>
-      <div onClick={handleClick} style={{ width: 36, height: 20, borderRadius: 10, background: checked ? "#3b82f6" : "#334155", position: "relative", cursor: disabled ? "not-allowed" : "pointer", transition: "background 0.2s", flexShrink: 0 }}>
-        <div style={{ width: 16, height: 16, borderRadius: 8, background: "#e2e8f0", position: "absolute", top: 2, left: checked ? 18 : 2, transition: "left 0.2s" }} />
+    <label
+      style={{ display: "flex", alignItems: row ? "flex-start" : "center", gap: 10, cursor: disabled ? "not-allowed" : "pointer", padding: row ? "8px 12px" : "4px 0", opacity: disabled ? 0.55 : 1, ...(row ? { borderTop: `1px solid ${T.line}` } : {}) }}
+      title={disabled ? description : undefined}
+      onMouseEnter={row && !disabled ? (e) => { e.currentTarget.style.background = T.panel2; } : undefined}
+      onMouseLeave={row && !disabled ? (e) => { e.currentTarget.style.background = "transparent"; } : undefined}>
+      <div onClick={handleClick}
+        role="switch" aria-checked={checked} aria-disabled={disabled || undefined} tabIndex={disabled ? -1 : 0}
+        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") handleClick(e); }}
+        onFocus={ring.onFocus} onBlur={ring.onBlur}
+        style={{ width: 30, height: 17, boxSizing: "border-box", borderRadius: 9, background: checked ? T.accent : T.bg, border: `1px solid ${checked ? T.accent : T.line2}`, position: "relative", cursor: disabled ? "not-allowed" : "pointer", transition: "background 0.12s, border-color 0.12s", flexShrink: 0, marginTop: row ? 2 : 0, outline: "none", boxShadow: ring.focused ? FOCUS_RING : "none" }}>
+        <div style={{ width: 11, height: 11, borderRadius: "50%", background: checked ? T.accentText : T.text3, position: "absolute", top: 2, left: checked ? 15 : 2, transition: "left 0.12s ease" }} />
       </div>
       <div>
-        <div style={{ fontSize: 12, color: labelColor, fontWeight: 600 }}>{label}</div>
-        {description && <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{description}</div>}
+        <div style={{ fontSize: row ? 13 : 12.5, color: labelColor, fontWeight: 600 }}>{label}</div>
+        {description && <div style={{ fontSize: row ? 12 : 11, color: T.text3, marginTop: row ? 1 : 0 }}>{description}</div>}
       </div>
     </label>
   );
@@ -444,22 +468,26 @@ export function FileDropZone({ label, fileName, onFile, ready }) {
   const [dragOver, setDragOver] = useState(false);
   return (
     <div onClick={() => inputRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]); }}
-      style={{ ...S.dropZone, borderColor: ready ? "#22c55e" : dragOver ? "#60a5fa" : "#334155", background: ready ? "rgba(34,197,94,0.06)" : dragOver ? "rgba(96,165,250,0.06)" : "rgba(15,23,42,0.5)" }}>
+      style={{ ...S.dropZone, borderColor: ready ? T.good : dragOver ? T.accent : T.line2, background: ready ? T.goodBg : dragOver ? T.accentBg2 : T.bg }}>
       <input ref={inputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(e) => e.target.files[0] && onFile(e.target.files[0])} />
-      <span style={{ color: ready ? "#86efac" : "#94a3b8", fontSize: 13, fontWeight: 600 }}>{label}</span>
-      <span style={{ color: ready ? "#4ade80" : "#475569", fontSize: 12, marginTop: 4 }}>{ready ? `✓ ${fileName}` : "Click or drag CSV"}</span>
+      <span style={{ color: ready ? T.good : T.text2, fontSize: 13, fontWeight: 600 }}>{label}</span>
+      <span style={{ color: ready ? T.goodSoft : T.text3, fontSize: 12, marginTop: 4 }}>{ready ? `✓ ${fileName}` : "Click or drag CSV"}</span>
     </div>
   );
 }
 
+// Foot strip: panel2 + line2 top rule, Archivo Narrow 12.5 text2; count left, pager right.
 export function Pagination({ page, totalPages, total, onPrev, onNext }) {
+  const prevOff = page === 0;
+  const nextOff = page >= totalPages - 1;
+  const btn = (off) => ({ ...S.pageBtn, ...(off ? { color: T.textDisabled, borderColor: T.line, cursor: "default" } : {}) });
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-      <span style={{ fontSize: 12, color: "#64748b" }}>{total.toLocaleString()} items</span>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <button onClick={onPrev} disabled={page === 0} style={S.pageBtn}>← Prev</button>
-        <span style={{ fontSize: 12, color: "#94a3b8" }}>Page {page + 1} of {Math.max(1, totalPages)}</span>
-        <button onClick={onNext} disabled={page >= totalPages - 1} style={S.pageBtn}>Next →</button>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 12px", background: T.panel2, borderTop: `1px solid ${T.line2}`, fontFamily: T.fonts.narrow, fontSize: 12.5, color: T.text2 }}>
+      <span>{total.toLocaleString()} items</span>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <button onClick={onPrev} disabled={prevOff} style={btn(prevOff)}>‹ Prev</button>
+        <span>Page {page + 1} of {Math.max(1, totalPages)}</span>
+        <button onClick={onNext} disabled={nextOff} style={btn(nextOff)}>Next ›</button>
       </div>
     </div>
   );
@@ -483,8 +511,8 @@ export function DataLoader({ onDataLoaded, initSettings, autoLoadError }) {
     <div style={S.loaderContainer}>
       <div style={S.loaderCard}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <span style={{ fontSize: 42, fontWeight: 800, letterSpacing: -2, color: "#e2e8f0" }}>{leagueName}</span>
-          <span style={{ fontSize: 14, color: "#64748b", marginTop: 4, letterSpacing: 3, textTransform: "uppercase" }}>GM Dashboard</span>
+          <span style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-0.04em", color: T.text, lineHeight: 1 }}>{leagueName}</span>
+          <span style={{ fontSize: 13, color: T.text3, marginTop: 6, fontFamily: T.fonts.narrow, fontWeight: 500 }}>GM Dashboard</span>
         </div>
         {autoLoadError && <div style={S.errorBox}>Auto-load failed: {autoLoadError}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
@@ -500,4 +528,3 @@ export function DataLoader({ onDataLoaded, initSettings, autoLoadError }) {
     </div>
   );
 }
-
