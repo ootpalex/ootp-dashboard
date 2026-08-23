@@ -1,6 +1,6 @@
 # Redesign — "Night Scorecard" (graphite)
 
-Review package for the visual redesign. **Batch 0 (foundation) is wired in; batches 1–7 are not yet.** Data access and
+Review package for the visual redesign. **All eight batches are landed (see the End state section of MIGRATION_PLAN.md).** Data access and
 component logic are out of scope (see `app/CLAUDE.md` accessor rules).
 
 | File | What it is |
