@@ -69,7 +69,7 @@ export const SuperTwoDetailModal = memo(function SuperTwoDetailModal({ open, inf
         style={{
           background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10,
           maxWidth: 880, width: "100%", maxHeight: "90vh", overflow: "auto",
-          color: "#e2e8f0", fontFamily: "monospace",
+          color: "#e2e8f0", fontFamily: "inherit",
         }}>
         {/* Header */}
         <div style={{

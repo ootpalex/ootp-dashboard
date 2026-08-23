@@ -1,5 +1,5 @@
 import { useState, Fragment, useMemo } from "react";
-import { posColor, levelColor, warStyle, zToColor } from "../../theme.js";
+import { posColor, levelColor, warStyle, zToColor, zHeat } from "../../theme.js";
 import { fmt, fmtAge, rankSuffix } from "../../utils/helpers.js";
 import { POT_DISPLAY_POS } from "../../utils/constants.js";
 
@@ -81,6 +81,7 @@ export default function PositionalStrengthTable({
 
   const bar = (z, score, rank) => {
     const c = zToColor(z);
+    const ground = zHeat(z).bar; // text sits on the row ground here, not on the heat fill
     const mag = z == null ? 0 : Math.min(Math.abs(z) / 2.5, 1);
     const pct = (mag * 50).toFixed(1) + "%";
     const positive = (z ?? 0) >= 0;
@@ -93,8 +94,8 @@ export default function PositionalStrengthTable({
               ...(positive ? { left: "50%", width: pct } : { right: "50%", width: pct }) }} />
           )}
         </div>
-        <b style={{ fontSize: sz.scoreFont, color: c.value, textAlign: "right" }}>{fmt(score, 1)}</b>
-        <span style={{ fontSize: sz.rankFont, color: c.label, textAlign: "right" }}>{z == null ? "" : rankSuffix(rank)}</span>
+        <b style={{ fontSize: sz.scoreFont, color: z == null ? c.value : ground, textAlign: "right" }}>{fmt(score, 1)}</b>
+        <span style={{ fontSize: sz.rankFont, color: z == null ? c.label : ground, textAlign: "right" }}>{z == null ? "" : rankSuffix(rank)}</span>
       </div>
     );
   };

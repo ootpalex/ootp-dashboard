@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
-import { S } from "../theme.js";
+import { TOKENS, S } from "../theme.js";
 import { DEV_CURVE_DEFAULTS, DEV_CURVE_RANGES, PAGES } from "../utils/constants.js";
 import { loadLeagueSettings, saveLeagueSettings, detectExcludedTeams } from "../utils/settings.js";
 import { processData, isMatured, isAgeMatured, calcBestPos, recomputeAges } from "../utils/dataProcessing.js";
@@ -223,7 +223,7 @@ export default function Dashboard({ rawHitters, rawPitchers, platoonSplits, dash
   const strength = useMemo(() => calcPositionalStrength(enrichedData.hitters, enrichedData.pitchers, enrichedData.teams, curveSettings), [enrichedData, curveSettings]);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "linear-gradient(145deg, #0c1222 0%, #0f172a 50%, #0c1222 100%)", fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace", color: "#cbd5e1" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: TOKENS.bg, fontFamily: TOKENS.fonts.ui, color: TOKENS.text }}>
       {/* Sidebar */}
       <nav role="navigation" aria-label="Main navigation" style={{ width: sidebarOpen ? 220 : 52, background: "rgba(15,23,42,0.8)", borderRight: "1px solid #1e293b", display: "flex", flexDirection: "column", transition: "width 0.2s", flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
         <div style={{ padding: sidebarOpen ? "16px 16px 8px" : "16px 8px 8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

@@ -145,7 +145,7 @@ export function CurveTuningPanel({
       </div>
 
       {/* Formula hint */}
-      <div style={{ marginTop: 14, textAlign: "center", fontSize: 11, color: "#64748b", fontFamily: "monospace", lineHeight: 1.6 }}>
+      <div style={{ marginTop: 14, textAlign: "center", fontSize: 11, color: "#64748b", fontFamily: "inherit", lineHeight: 1.6 }}>
         FV = cur + gap × creditAge<br />
         creditAge = gapMax × (1 − t<sup>gapExp</sup>) &nbsp;|&nbsp; t = (age − 14) / (maxAge − 14)
       </div>

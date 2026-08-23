@@ -8,9 +8,13 @@
          requests the same URL with default (cors) mode + no credentials,
          matching this preload so the browser can reuse it. -->
     <link rel="preload" href="/data/leagues.json" as="fetch" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #0c1222; color-scheme: dark; }
+      /* Ground + scheme only; the full token set lives in src/tokens.css (generated from src/theme.js). */
+      body { background: #141516; color-scheme: dark; }
     </style>
   </head>
   <body>

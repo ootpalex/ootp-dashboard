@@ -52,7 +52,7 @@ export default function LeagueSettingsModal({ settings, onSave, onClose, autoExc
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} />
-      <div style={{ position: "relative", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 28, width: 520, maxHeight: "85vh", overflowY: "auto", fontFamily: "'JetBrains Mono', monospace", color: "#cbd5e1" }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ position: "relative", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 28, width: 520, maxHeight: "85vh", overflowY: "auto", fontFamily: "inherit", color: "#cbd5e1" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: "#e2e8f0" }}>League Settings</span>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, padding: 4 }}>✕</button>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, Component } from "react";
-import { S, setWarCalibration } from "./theme.js";
+import { S, TOKENS, setWarCalibration } from "./theme.js";
 import { loadLeagueSettings } from "./utils/settings.js";
 import { useLocalStorage, LeagueSlugContext } from "./hooks/useLocalStorage.js";
 import { DataLoader } from "./components/shared.jsx";
@@ -11,10 +11,10 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 40, textAlign: "center", color: "#e2e8f0", fontFamily: "monospace", background: "#0c1222", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#f87171" }}>Something went wrong</div>
-          <div style={{ fontSize: 13, color: "#94a3b8", maxWidth: 600 }}>{this.state.error?.message || "An unexpected error occurred"}</div>
-          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 12, padding: "8px 20px", background: "#1e293b", border: "1px solid #334155", borderRadius: 6, color: "#e2e8f0", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Try Again</button>
+        <div style={{ padding: 40, textAlign: "center", color: TOKENS.text, fontFamily: TOKENS.fonts.ui, background: TOKENS.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: TOKENS.bad }}>Something went wrong</div>
+          <div style={{ fontSize: 13, color: TOKENS.text2, maxWidth: 600 }}>{this.state.error?.message || "An unexpected error occurred"}</div>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 12, padding: "8px 20px", background: TOKENS.panel2, border: `1px solid ${TOKENS.line2}`, borderRadius: TOKENS.radius, color: TOKENS.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Try Again</button>
         </div>
       );
     }
@@ -193,8 +193,8 @@ export default function App() {
     return (
       <div style={S.loaderContainer}>
         <div style={S.loaderCard}>
-          <span style={{ fontSize: 42, fontWeight: 800, letterSpacing: -2, color: "#e2e8f0" }}>{name}</span>
-          <span style={{ fontSize: 14, color: "#64748b", letterSpacing: 3, textTransform: "uppercase" }}>Loading data...</span>
+          <span style={{ fontSize: 42, fontWeight: 800, letterSpacing: "-0.04em", color: TOKENS.text }}>{name}</span>
+          <span style={{ fontSize: 13, color: TOKENS.text3, fontFamily: TOKENS.fonts.narrow, fontWeight: 600 }}>Loading data…</span>
         </div>
       </div>
     );

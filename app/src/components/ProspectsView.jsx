@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { S, FV_TIER_COLORS } from "../theme.js";
+import { S, TOKENS, FV_TIER_COLORS } from "../theme.js";
 import { posColor, levelColor, warStyle, devPctColor, scoutingRatingColor } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows, searchFilter, orgLabel, rankSuffix } from "../utils/helpers.js";
 import { genericSort, getMaxWar, getSpWar, getRpWar, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
@@ -236,7 +236,7 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                       <tr key={tier.id} style={{ background: ti % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
                         <td style={S.td}>
                           <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
-                            background: `${FV_TIER_COLORS[tier.id]}22`, color: FV_TIER_COLORS[tier.id], border: `1px solid ${FV_TIER_COLORS[tier.id]}44` }}>
+                            background: FV_TIER_COLORS[tier.id].bg, color: FV_TIER_COLORS[tier.id].text, border: `1px solid ${FV_TIER_COLORS[tier.id].bg}` }}>
                             {tier.label}
                           </span>
                         </td>
@@ -331,7 +331,7 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
                     <td style={{ ...S.td, color: "#64748b" }}>{p._orgRank}</td>
                     <td style={S.td}>
                       <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
-                        background: `${FV_TIER_COLORS[p._tierId]}22`, color: FV_TIER_COLORS[p._tierId], border: `1px solid ${FV_TIER_COLORS[p._tierId]}44` }}>
+                        background: FV_TIER_COLORS[p._tierId].bg, color: FV_TIER_COLORS[p._tierId].text, border: `1px solid ${FV_TIER_COLORS[p._tierId].bg}` }}>
                         {p._tierId}
                       </span>
                     </td>
@@ -373,7 +373,7 @@ function FarmStackedTooltip({ active, payload, label, playersByTeamTier, hovered
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
         <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 8, fontSize: 10, fontWeight: 700,
-          background: `${FV_TIER_COLORS[tierId]}22`, color: FV_TIER_COLORS[tierId], border: `1px solid ${FV_TIER_COLORS[tierId]}44` }}>
+          background: FV_TIER_COLORS[tierId].bg, color: FV_TIER_COLORS[tierId].text, border: `1px solid ${FV_TIER_COLORS[tierId].bg}` }}>
           FV {tierId}
         </span>
         <span style={{ color: "#fbbf24", fontWeight: 600 }}>${fmt(tierValue, 1)}M</span>
@@ -491,7 +491,7 @@ function FarmRankings({ data, prospectPool, thresholds, dollarValues, onNavigate
                   {FV_TIERS.map((t) => {
                     const cnt = r.tierCounts[t.id] || 0;
                     return (
-                      <td key={t.id} style={{ ...S.td, color: cnt > 0 ? FV_TIER_COLORS[t.id] : "#334155", fontWeight: cnt > 0 ? 600 : 400 }}>
+                      <td key={t.id} style={{ ...S.td, color: cnt > 0 ? FV_TIER_COLORS[t.id].bg : TOKENS.textDisabled, fontWeight: cnt > 0 ? 600 : 400 }}>
                         {cnt > 0 ? (
                           <span style={clickStyle} onClick={() => onNavigate(r.team, t.id)}>{cnt}</span>
                         ) : 0}
@@ -521,7 +521,7 @@ function FarmRankings({ data, prospectPool, thresholds, dollarValues, onNavigate
                 <YAxis tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "System Value ($M)", angle: -90, position: "insideLeft", fill: "#475569", fontSize: 11 }} />
                 <Tooltip content={<FarmStackedTooltip playersByTeamTier={playersByTeamTier} hoveredTier={hoveredTier} />} />
                 {[...FV_TIERS].reverse().map((t) => (
-                  <Bar key={t.id} dataKey={`tier_${t.id}`} stackId="value" fill={FV_TIER_COLORS[t.id]} name={`FV ${t.label}`}
+                  <Bar key={t.id} dataKey={`tier_${t.id}`} stackId="value" fill={FV_TIER_COLORS[t.id].bg} name={`FV ${t.label}`}
                     onMouseEnter={() => setHoveredTier(t.id)} onMouseLeave={() => setHoveredTier(null)} />
                 ))}
               </BarChart>
@@ -531,7 +531,7 @@ function FarmRankings({ data, prospectPool, thresholds, dollarValues, onNavigate
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
           {FV_TIERS.map((t) => (
             <span key={t.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-              <span style={{ width: 10, height: 10, borderRadius: 2, background: FV_TIER_COLORS[t.id], display: "inline-block" }} />
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: FV_TIER_COLORS[t.id].bg, display: "inline-block" }} />
               <span style={{ color: "#94a3b8" }}>{t.label}</span>
             </span>
           ))}
