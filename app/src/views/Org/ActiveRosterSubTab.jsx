@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { posColor, proneColor, warStyle } from "../../theme.js";
-import { fmt, fmtAge, parseCSVBoolean } from "../../utils/helpers.js";
-import { getMaxWar } from "../../utils/accessors.js";
+import { fmt, fmtAge } from "../../utils/helpers.js";
+import { getMaxWar, isInjured } from "../../utils/accessors.js";
 import { ACTIVE_ROSTER_DEPTH } from "../../utils/constants.js";
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
 import { Section, TwoWayBadge } from "../../components/shared.jsx";
@@ -23,9 +23,7 @@ const POS_COORDS = {
 };
 const FIELD_POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];
 
-function isInjuredCheck(p) {
-  return (p?.meta?.inj != null ? p.meta.inj === "Yes" : parseCSVBoolean(p?.INJ));
-}
+const isInjuredCheck = isInjured;
 
 // 140px-wide card used everywhere on this page (field starters, rotation,
 // bullpen, bench). Shows POS · full name (wraps to 2 lines if needed) · WAR ·

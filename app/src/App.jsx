@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Component } from "react";
+import { useState, useMemo, useEffect, useRef, Component } from "react";
 import { S, setWarCalibration } from "./theme.js";
 import { loadLeagueSettings } from "./utils/settings.js";
 import { useLocalStorage, LeagueSlugContext } from "./hooks/useLocalStorage.js";
@@ -90,15 +90,29 @@ export default function App() {
   const [leagues, setLeagues] = useState([]);
   const [currentLeague, setCurrentLeague] = useLocalStorage("ssb_current_league", null);
   const initSettings = useMemo(() => loadLeagueSettings(), []);
-  // Captured once at module load — see the IIFE above.
-  const urlLeague = URL_LEAGUE_PARAM;
+  // `?league=` is a ONE-SHOT startup intent, not durable state. It is captured once at
+  // module load (see the IIFE above) and held in a ref so it can be CONSUMED — nulled
+  // the first time it wins a resolution. Before this, it was a plain module const that
+  // outranked `currentLeague` on every run of the effect below, so selecting a different
+  // league re-resolved back to the URL slug and wrote it to storage: the sidebar selector
+  // was dead for the whole session, and each attempt fetched a full dashboard payload
+  // that was then discarded. run.py always launches with `?league=`, so this was the
+  // normal path, not an edge case.
+  const urlLeagueRef = useRef(URL_LEAGUE_PARAM);
 
   useEffect(() => {
     let cancelled = false;
     async function autoLoad() {
       setAutoLoading(true);
       setRawData(null);
+      // Reset per-league splits too. These live outside `rawData`, so without this a
+      // previous league's splits survived a switch.
+      setPlatoonSplits(null);
       setAutoLoadError(null);
+      // True when this pass only RESOLVED the slug and handed off to the re-fired
+      // effect. The `finally` must not clear the loading flag in that case, or the
+      // app flashes the manual-upload DataLoader for a render while rawData is null.
+      let resolvedOnly = false;
       try {
         // Multi-league path: prefer leagues.json index when available.
         let activeSlug = null;
@@ -116,18 +130,27 @@ export default function App() {
 
         if (leaguesList.length > 0) {
           const slugs = leaguesList.map((l) => l.slug);
-          // Priority: ?league= URL param (set by run.py) > persisted choice >
-          // first league in the index.
+          // Priority on FIRST resolution only: ?league= URL param (set by run.py) >
+          // persisted choice > first league in the index. The param is consumed here —
+          // cleared as soon as it has been applied — so from the second resolution on,
+          // `currentLeague` is the sole source of truth and the sidebar selector works.
+          // Consume only AFTER the registry fetch succeeded: if leagues.json failed on a
+          // first attempt we must not lose the intent.
+          const urlLeague = urlLeagueRef.current;
           if (urlLeague && slugs.includes(urlLeague)) {
             activeSlug = urlLeague;
-          } else if (slugs.includes(currentLeague)) {
-            activeSlug = currentLeague;
+            urlLeagueRef.current = null;
           } else {
-            activeSlug = slugs[0];
+            urlLeagueRef.current = null;
+            activeSlug = slugs.includes(currentLeague) ? currentLeague : slugs[0];
           }
           if (activeSlug !== currentLeague && !cancelled) {
-            // Persist the resolved slug so reloads stay in sync.
+            // Persist the resolved slug so reloads stay in sync. This re-fires the
+            // effect (deps: [currentLeague]); returning here means only the small
+            // leagues.json is re-fetched, not a ~10 MB dashboard we would discard.
             setCurrentLeague(activeSlug);
+            resolvedOnly = true;
+            return;
           }
         }
 
@@ -158,7 +181,7 @@ export default function App() {
         // auto-load failed — fall through to manual load UI, surfacing the reason
         if (!cancelled) setAutoLoadError(e?.message || String(e));
       } finally {
-        if (!cancelled) setAutoLoading(false);
+        if (!cancelled && !resolvedOnly) setAutoLoading(false);
       }
     }
     autoLoad();

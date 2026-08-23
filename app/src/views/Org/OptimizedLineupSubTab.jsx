@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { S, posColor, warStyle } from "../../theme.js";
-import { fmt, num, parseCSVBoolean } from "../../utils/helpers.js";
+import { fmt, num } from "../../utils/helpers.js";
+import { isInjured } from "../../utils/accessors.js";
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
 import { Section, TwoWayBadge } from "../../components/shared.jsx";
 
@@ -15,7 +16,9 @@ function buildPlatoonLineup(hitters, hand) {
     if (assigned[pos] && assigned[pos].length > 0) rawStarters.push(assigned[pos][0]);
   });
 
-  const optimized = optimizeDefensivePositions(rawStarters, positions);
+  // Pass the platoon split so the re-derived _assignedVal matches the vR/vL cascade
+  // this lineup was built from, rather than silently falling back to wtd.
+  const optimized = optimizeDefensivePositions(rawStarters, positions, hand);
 
   const starters = optimized.map((p) => ({
     ...p,
@@ -39,7 +42,7 @@ function buildPlatoonLineup(hitters, hand) {
 export default function OptimizedLineupSubTab({ data, team, onSelectPlayer }) {
   const teamHitters = useMemo(() => data.hitters.filter((h) => (h.meta?.org ?? h.ORG) === team), [data.hitters, team]);
   const mlbHitters = useMemo(() => teamHitters.filter((h) =>
-    ((h.meta?.lev ?? h.Lev) === "MLB" && (h.meta?.on40 ?? (h.ON40 === "Yes"))) || ((h.meta?.lev ?? h.Lev) === "MLB" && ((h.meta?.inj != null ? h.meta.inj === "Yes" : parseCSVBoolean(h.INJ))))
+    (h.meta?.lev ?? h.Lev) === "MLB" && ((h.meta?.on40 ?? (h.ON40 === "Yes")) || isInjured(h))
   ), [teamHitters]);
 
   const vsRHP = useMemo(() => buildPlatoonLineup(mlbHitters, "vR"), [mlbHitters]);

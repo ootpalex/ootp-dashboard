@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { S, posColor, levelColor, warStyle, zToColor } from "../../theme.js";
 import { fmt, fmtAge, parseCSVBoolean, rankSuffix } from "../../utils/helpers.js";
-import { getWar, getSpWar, getRpWar } from "../../utils/accessors.js";
+import { getWar, getSpWar, getRpWar, isInjured } from "../../utils/accessors.js";
 import { ALL_DISPLAY_POS, DEF_SPECTRUM, ACTIVE_ROSTER_DEPTH } from "../../utils/constants.js";
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
 import { Section, TwoWayBadge } from "../../components/shared.jsx";
@@ -13,10 +13,10 @@ export default function FortyManSubTab({ data, team, strength, onSelectPlayer })
   const fortyManPitchers = useMemo(() => allTeamPitchers.filter((p) => (p.meta?.on40 ?? (p.ON40 === "Yes"))), [allTeamPitchers]);
 
   const mlbHitters = useMemo(() => allTeamHitters.filter((h) =>
-    ((h.meta?.lev ?? h.Lev) === "MLB" && (h.meta?.on40 ?? (h.ON40 === "Yes"))) || ((h.meta?.lev ?? h.Lev) === "MLB" && ((h.meta?.inj != null ? h.meta.inj === "Yes" : parseCSVBoolean(h.INJ))))
+    (h.meta?.lev ?? h.Lev) === "MLB" && ((h.meta?.on40 ?? (h.ON40 === "Yes")) || isInjured(h))
   ), [allTeamHitters]);
   const mlbPitchers = useMemo(() => allTeamPitchers.filter((p) =>
-    ((p.meta?.lev ?? p.Lev) === "MLB" && (p.meta?.on40 ?? (p.ON40 === "Yes"))) || ((p.meta?.lev ?? p.Lev) === "MLB" && ((p.meta?.inj != null ? p.meta.inj === "Yes" : parseCSVBoolean(p.INJ))))
+    (p.meta?.lev ?? p.Lev) === "MLB" && ((p.meta?.on40 ?? (p.ON40 === "Yes")) || isInjured(p))
   ), [allTeamPitchers]);
 
   const depthChart = useMemo(() => {

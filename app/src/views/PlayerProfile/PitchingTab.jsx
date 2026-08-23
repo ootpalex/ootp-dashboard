@@ -169,7 +169,7 @@ function PitchingTab({ player, role }) {
         : player.meta.velo)
     : "—";
 
-  const stmRaw = num(player.ratings?.stm ?? player.meta?.stm ?? player.STM);
+  const stmRaw = num(player.ratings?.stm);
   const stmDisplay = stmRaw != null ? Math.round(stmRaw) : "—";
 
   return (

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { posColor, levelColor, proneColor, gradeToColor, devPctColor, warStyle } from "../../theme.js";
 import { fmtAge, fmt, num, parseCSVBoolean, orgLabel } from "../../utils/helpers.js";
-import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, isEligible } from "../../utils/accessors.js";
+import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, isEligible, isInjured } from "../../utils/accessors.js";
 import { HITTER_POS } from "../../utils/constants.js";
 import { TwoWayBadge, PillBtn, TabGroup } from "../../components/shared.jsx";
 
@@ -241,11 +241,11 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
   const eligiblePositions = isHitter ? HITTER_POS.filter(pos => isEligible(player, pos)) : [];
   const bestRunsPPos = (player._bestPos || "").replace("*", "");
 
-  const isInjured = (player.meta?.inj != null ? player.meta.inj === "Yes" : parseCSVBoolean(player.INJ));
+  const injured = isInjured(player);
   const badges = [];
   if (player.meta?.on40 ?? parseCSVBoolean(player.ON40)) badges.push({ label: "40-Man", color: "#60a5fa" });
   if (player.meta?.r5 ?? parseCSVBoolean(player.R5)) badges.push({ label: "R5", color: "#f87171" });
-  if (isInjured) badges.push({ label: `INJ${player.Left ? " " + player.Left : ""}`, color: "#fbbf24" });
+  if (injured) badges.push({ label: `INJ${player.Left ? " " + player.Left : ""}`, color: "#fbbf24" });
   const _modalOrg = player.meta?.org ?? player.ORG;
   const _modalManual = player.meta?.source ?? player.meta?.manual ?? player.Manual;
   if (_modalOrg === "-" && _modalManual) badges.push({ label: _modalManual.toLowerCase().includes("draft") ? "Draft" : _modalManual, color: "#a78bfa" });

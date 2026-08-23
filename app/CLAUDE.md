@@ -21,7 +21,11 @@ Data is served as one gzipped JSON file per league at `public/data/<slug>/dashbo
 Each player object has nested groups instead of flat columns:
 ```
 {
-  meta: { name, pos, org, lev, bats, throws, prone, price, proy, mld, oy, opt, int, we, ad, dem, stm, velo, ovr, pot, on40, r5, manual, ... },
+  meta: { name, pos, org, lev, bats, throws, prone, price, proy, mld, oy, opt, int, we, ad, dem, velo, vt, ovr, pot, on40, r5, manual, ... },
+  ratings: { vR: { con, pow, gap, eye, k, ba, stu, mov, hrr, pbabip, ... }, vL: { ... }, potential: { ... },
+             stm, hld,                    // pitcher, unsplit
+             spe, ste, run, bun, bfh, sr  // hitter, unsplit
+           },
   batting: { vR: { obp, woba, batR, ... }, vL: { ... }, wtd: { ... } },
   baserunning: { vR: { bsr, ... }, vL: { ... }, wtd: { ... } },
   positions: { c: { eligible, waa: { vR, vL, wtd }, stats: { runsP, ... } }, "1b": { ... }, ... },
@@ -60,7 +64,8 @@ All data access should use these helpers — **never access flat column names di
 - **meta.r5**: Boolean — Rule 5 draft eligible
 - **meta.prone**: Injury proneness (Iron Man, Durable, Normal, Fragile, Wrecked)
 - **meta.int/we/ad**: Intangibles (H/N/L)
-- **meta.stm/velo**: Pitcher stamina and velocity
+- **meta.velo / meta.vt**: Pitcher velocity (mph value and display text). Velocity is a measurement, not a 20-80 rating, so it lives in `meta` — unlike the ratings below.
+- **Ratings live in `ratings`, never in `meta`.** Platoon-split ratings are `ratings.vR/vL/potential.<x>`; unsplit ones are bare `ratings.<x>` (`stm`, `hld` for pitchers; `spe`, `ste`, `run`, `bun`, `bfh`, `sr` for hitters). `meta.stm` was documented here but has never been emitted — reading it left the STM column blank for every pitcher.
 - **meta.salary**: Parsed numeric salary from OOTP SLR column
 - **meta.price**: Computed price (max of salary, league min; demand for unsigned FAs)
 - **meta.mld**: MLB service days (years × 172 + days)

@@ -262,6 +262,15 @@ export const getFloorWar = (p, split = "wtd") => p.floorWar?.[split] ?? null;
 export const getSpFloorWar = (p) => p.floor?.sp?.war ?? null;
 export const getRpFloorWar = (p) => p.floor?.rp?.war ?? null;
 
+// Injury status. The pipeline never emits `meta.inj` — the StatsPlus merge writes
+// `injury_is_injured` (a "0"/"1" STRING, so truthiness is useless — "0" is truthy)
+// and `is_on_dl` (a real boolean). Neither set contains the other: on the SSB build
+// 283 players carry injury_is_injured="1", 126 carry is_on_dl=true, union 339.
+// Callers previously read `meta.inj`, which is absent on every player, so every
+// injury check silently evaluated false.
+export const isInjured = (p) =>
+  p?.meta?.injury_is_injured === "1" || p?.meta?.is_on_dl === true;
+
 export const resolveKey = (p, key) => {
   switch (key) {
     case "Max WAA wtd": return getMaxWaa(p, "wtd");
@@ -298,7 +307,12 @@ export const resolveKey = (p, key) => {
     case "LEA": return p.meta?.lea ?? p.LEA;
     case "AD": return p.meta?.ad ?? p.AD;
     case "_intangibles": return p._intangibles ?? null;
-    case "STM": return p.meta?.stm ?? p.STM;
+    // Stamina is an unsplit rating, so it lives at `ratings.stm` — the same place
+    // every other rating lives (`ratings.vR/vL/potential.<x>` when platoon-split,
+    // bare `ratings.<x>` when not: stm, hld, spe, ste, run, bun, bfh, sr).
+    // This previously read `meta.stm`, which the pipeline has never emitted, so the
+    // column was blank for every pitcher.
+    case "STM": return p.ratings?.stm ?? null;
     case "VELO": return p.meta?.velo ?? p.VELO;
     case "Starter": return p.starter ?? p.Starter;
     case "Starter P": return p.starterP ?? p["Starter P"];

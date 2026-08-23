@@ -5,7 +5,20 @@ import { isEligible, getRunsP, getWar, getWarP, getSpWar, getRpWar } from "./acc
 import { parseCSVBoolean } from "./helpers.js";
 import { DEF_SPECTRUM, DEF_SPECTRUM_POT } from "./constants.js";
 
-export function optimizeDefensivePositions(starters, positions) {
+// `split` must match the split `assignPlayersToPositions` was called with, so the
+// re-derived `_assignedVal` below is on the same footing as the cascade's.
+export function optimizeDefensivePositions(starters, positions, split = "wtd") {
+  // A player moved here keeps `_assignedVal` from the spread of his ORIGINAL cascade
+  // position, so the value had to be re-derived at the position he actually ends up
+  // at. Without this, the sub-tabs render `_assignedPos` and `_assignedVal` side by
+  // side as "POS" and "WAR" while the two describe different positions.
+  const placed = (player, pos, runsP) => ({
+    ...player,
+    _assignedPos: pos,
+    _assignedVal: getWar(player, pos, split),
+    _defRunsP: runsP,
+  });
+
   const players = starters.map((p) => ({
     ...p,
     _eligible: {},
@@ -29,7 +42,7 @@ export function optimizeDefensivePositions(starters, positions) {
       .map((p) => ({ player: p, runsP: p._runsP[pos] ?? -999 }))
       .sort((a, b) => b.runsP - a.runsP);
     if (cands.length > 0) {
-      result[pos] = { ...cands[0].player, _assignedPos: pos, _defRunsP: cands[0].runsP };
+      result[pos] = placed(cands[0].player, pos, cands[0].runsP);
       usedIds.add(cands[0].player.ID);
     }
   });
@@ -43,7 +56,7 @@ export function optimizeDefensivePositions(starters, positions) {
       .map((p) => ({ player: p, runsP: p._runsP[pos] ?? -999 }))
       .sort((a, b) => b.runsP - a.runsP);
     if (cands.length > 0) {
-      result[pos] = { ...cands[0].player, _assignedPos: pos, _defRunsP: cands[0].runsP };
+      result[pos] = placed(cands[0].player, pos, cands[0].runsP);
       usedIds.add(cands[0].player.ID);
     }
   });
@@ -51,7 +64,7 @@ export function optimizeDefensivePositions(starters, positions) {
   if (positions.includes("DH")) {
     const dhPlayers = players.filter((p) => !usedIds.has(p.ID));
     if (dhPlayers.length > 0) {
-      result["DH"] = { ...dhPlayers[0], _assignedPos: "DH", _defRunsP: null };
+      result["DH"] = placed(dhPlayers[0], "DH", null);
     }
   }
 

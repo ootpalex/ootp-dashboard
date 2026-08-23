@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { parseCSVBoolean } from "../../utils/helpers.js";
+import { isInjured } from "../../utils/accessors.js";
 import { PillBtn, TabGroup } from "../../components/shared.jsx";
 import OverviewSubTab from "./OverviewSubTab.jsx";
 import ActiveRosterSubTab from "./ActiveRosterSubTab.jsx";
@@ -13,7 +13,7 @@ export default function OrgView({ data, team, strength, curveSettings, onSelectP
   const teamPitchers = useMemo(() => data.pitchers.filter((p) => (p.meta?.org ?? p.ORG) === team), [data.pitchers, team]);
 
   const activeRosterCount = useMemo(() => {
-    const isMLBRoster = (p) => ((p.meta?.lev ?? p.Lev) === "MLB" && (p.meta?.on40 ?? (p.ON40 === "Yes"))) || ((p.meta?.lev ?? p.Lev) === "MLB" && ((p.meta?.inj != null ? p.meta.inj === "Yes" : parseCSVBoolean(p.INJ))));
+    const isMLBRoster = (p) => (p.meta?.lev ?? p.Lev) === "MLB" && ((p.meta?.on40 ?? (p.ON40 === "Yes")) || isInjured(p));
     return teamHitters.filter(isMLBRoster).length + teamPitchers.filter(isMLBRoster).length;
   }, [teamHitters, teamPitchers]);
 
