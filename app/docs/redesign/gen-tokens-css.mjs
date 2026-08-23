@@ -52,5 +52,6 @@ body {
   -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
 }
+code, kbd, pre { font: inherit; }   /* D.11 — no UA monospace leaks */
 button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }`);

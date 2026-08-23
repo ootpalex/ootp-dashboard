@@ -7,7 +7,7 @@ React SPA dashboard for managing an OOTP (Out of the Park Baseball) online leagu
 - **React 18** with Vite
 - **No backend** — everything runs in browser
 - **Data**: Per-league JSON dashboards under `public/data/<slug>/dashboard.json.gz` with a `public/data/leagues.json` registry, auto-loaded on startup. Falls back to legacy single-league `public/data/dashboard.json.gz` (no index) and finally to manual file upload.
-- **Styling**: Inline styles (dark theme, monospace font)
+- **Styling**: Inline styles driven by `src/theme.js` (`TOKENS` + encoding helpers + the shared `S` style object — the single source of truth) plus the generated `src/tokens.css` for body/global rules. Design system: "Night Scorecard" (dark-native graphite ground, Archivo + Archivo Narrow, one red-pencil accent, scorecard boxes with header strips, column-group rules). See `docs/redesign/MIGRATION_PLAN.md`.
 - **State**: React hooks + localStorage for team and game date persistence
 - **Charts**: Recharts (scatter plots, line charts, composed charts)
 - **External API**: StatsPlus API URL configurable via League Settings (default: `https://atl-01.statsplus.net/ssb/api`), proxied via Vite dev server to avoid CORS
@@ -323,7 +323,8 @@ app/
 └── src/
     ├── main.jsx                # React entry
     ├── App.jsx                 # Entry shell + ErrorBoundary + data load (~3 KB)
-    ├── theme.js                # OOTP 20-80 color scale, posColor, waaStyle, gradeStyle
+    ├── theme.js                # TOKENS (Night Scorecard graphite), 20-80 grade ramp, posColor/posChip, levelChip, tierChip, zHeat, warStyle/gradeStyle, S
+    ├── tokens.css              # GENERATED from theme.js (docs/redesign/gen-tokens-css.mjs) — body/global rules + CSS custom properties
     ├── components/             # Leaf UI primitives + remaining views (DraftBoard, IAFABoard, FreeAgentFinder, WaiverWireView, PlayersView, PlayerCompareView, ProspectsView, Rule5Board, ScoutView, Dashboard, LeagueSettingsModal, shared, boardUtils). `shared.jsx` exports MultiSelectDropdown, PositionFilter, LevelFilter, NumericRangeFilter (min/max range filter matching the dropdown style), Toggle, Section, SortHeader, Pagination, PillBtn, TabGroup, etc.
     ├── views/                  # Domain-split views (added Phase D)
     │   ├── Org/                # OrgView coordinator + 4 sub-tabs (Overview, ActiveRoster, FortyMan, OptimizedLineup) + PositionalStrengthTable (shared component used by Overview, FA Finder, Rule 5 Board, Scout View)
@@ -350,7 +351,7 @@ The Python pipeline at `model/` generates `dashboard.json.gz` + uncompressed `da
 ## Important Notes
 - App.jsx tries `/data/leagues.json` → resolves the active slug → fetches `/data/<slug>/dashboard.json`. If the registry is absent, falls back to legacy `/data/dashboard.json`. If both fail, the app falls back to manual file upload. See **Multi-League Architecture** for full flow.
 - localStorage persistence is split: **global** keys (`ssb_current_league`, `ssb_dev_curve_settings`) are shared across all leagues; **per-league** keys (team selection, game date, roster plan + order, R5 threshold, league settings, prospect settings, IAFA signed IDs) are namespaced via `keyFor(slug, baseKey)` → `"baseKey::slug"`. Use `useScopedLocalStorage` (hook) or `readScoped`/`writeScoped` (non-hook) — see **Multi-League Architecture** for the full key mapping.
-- All styling is inline (no CSS files) — dark theme with monospace fonts.
+- All component styling is inline and must come from `theme.js` (`TOKENS`, `S`, the encoding helpers) — never hard-code a hex colour, radius or font in a component. The only CSS file is the generated `src/tokens.css` (regenerate after editing `theme.js`: `node docs/redesign/gen-tokens-css.mjs > src/tokens.css`). Fonts are Archivo / Archivo Narrow (no monospace); radius is 3px (10px only on FV tier pills); no shadows, gradients or blur. Table headers stay `position: sticky` in `S.th` (a no-op inside the overflow-x wrapper today — decision D.10 in `docs/redesign/MIGRATION_INVENTORY.md`).
 - `datedData` in Dashboard is the age-recomputed version of `data` — all views should receive `datedData`, not raw `data`.
 - **Always use accessor helpers** (`getWar`, `isEligible`, `resolveKey`, etc.) — never access flat column names like `p["Max WAR wtd"]` directly. WAR accessors are the post-v0.2.0 default; WAA accessors are preserved but unused.
 - Heavy pages (`RosterPlanner`, `DevAnalysisView`, `PlayerCompareView`) are `React.lazy`-loaded with a single `<Suspense>` in Dashboard — confirm bundle is split when changing imports.
