@@ -1,6 +1,7 @@
 // 26-Man + 40-Man Inactive depth chart droppable panels.
 // Memo'd so they only re-render when projection/depth data actually change.
 import { memo } from "react";
+import { TOKENS as T } from "../../theme.js";
 import { DroppablePanel, CoverageStrip, SlotGroup } from "./Panels.jsx";
 import { BUCKET_CONFIG } from "./_shared.js";
 
@@ -78,7 +79,7 @@ function IlPanel({ bucketId, title, subtitle, accent, players, onSelect }) {
   return (
     <DroppablePanel bucketId={bucketId} title={title} subtitle={subtitle} accent={accent}>
       {players.length === 0 ? (
-        <div style={{ padding: "8px 12px", color: "#475569", fontSize: 11, fontStyle: "italic" }}>
+        <div style={{ padding: "8px 12px", color: T.text3, fontSize: 12, fontStyle: "italic" }}>
           Empty — drag players here.
         </div>
       ) : (

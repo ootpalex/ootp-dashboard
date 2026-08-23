@@ -4,7 +4,7 @@
 // ============================================================================
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, KeyboardSensor, TouchSensor } from "@dnd-kit/core";
-import { S } from "../../theme.js";
+import { TOKENS as T, S } from "../../theme.js";
 import { Section, PillBtn, TabGroup } from "../../components/shared.jsx";
 import { calcFutureValue } from "../../utils/futureValue.js";
 import { isMatured } from "../../utils/dataProcessing.js";
@@ -468,19 +468,19 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
             })}
           </TabGroup>
           <button onClick={undoLast} disabled={moveHistory.length === 0}
-            style={{ ...S.pillBtn, borderColor: moveHistory.length > 0 ? "#64748b" : "#334155", color: moveHistory.length > 0 ? "#94a3b8" : "#334155" }}>
+            style={{ ...S.pillBtn, ...(moveHistory.length > 0 ? { color: T.text2 } : { borderColor: T.line, color: T.textDisabled, cursor: "default" }) }}>
             Undo
           </button>
           <button onClick={resetPlan} disabled={Object.keys(moves).length === 0}
-            style={{ ...S.pillBtn, borderColor: Object.keys(moves).length > 0 ? "#dc2626" : "#334155", color: Object.keys(moves).length > 0 ? "#fca5a5" : "#334155" }}>
+            style={{ ...S.pillBtn, ...(Object.keys(moves).length > 0 ? { borderColor: T.bad, color: T.bad } : { borderColor: T.line, color: T.textDisabled, cursor: "default" }) }}>
             Reset
           </button>
         </div>
       }>
-        <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#64748b", marginBottom: 12 }}>
-          <span><span style={{ borderBottom: "1px dashed #22c55e", paddingBottom: 1 }}>Dashed</span> = Club Option</span>
-          <span><span style={{ borderBottom: "1px dotted #22c55e", paddingBottom: 1 }}>Dotted</span> = Vesting Option</span>
-          <span><em style={{ color: "#4ade80" }}>Italic</em> = Player Option</span>
+        <div style={{ display: "flex", gap: 16, fontSize: 12, color: T.text3, flexWrap: "wrap" }}>
+          <span><span style={{ borderBottom: `1px dashed ${T.good}`, paddingBottom: 1 }}>Dashed</span> = Club Option</span>
+          <span><span style={{ borderBottom: `1px dotted ${T.good}`, paddingBottom: 1 }}>Dotted</span> = Vesting Option</span>
+          <span><em style={{ color: T.goodSoft }}>Italic</em> = Player Option</span>
           <span>Drag players between sections to model roster moves</span>
         </div>
       </Section>
@@ -488,29 +488,29 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
       {/* Summary Cards */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <SummaryCard label="40-Man" value={`${projection.fortyManCount}/40`}
-          color={projection.fortyManCount > 40 ? "#fca5a5" : "#4ade80"}
+          color={projection.fortyManCount > 40 ? T.badSoft : T.good}
           alert={projection.fortyManCount > 40} />
         <SummaryCard label="Active" value={`${projection.activeCount}/26`}
-          color={projection.activeCount > 26 ? "#fca5a5" : "#93c5fd"} />
+          color={projection.activeCount > 26 ? T.badSoft : T.accent} />
         {planYearOffset > 0 && (
           <SummaryCard label="R5 Protect" value={r5.shortlist.length}
             subtitle={`FV ≥ ${r5Threshold.toFixed(1)}`}
-            color={r5.shortlist.length > 0 ? "#fb923c" : "#4ade80"} />
+            color={r5.shortlist.length > 0 ? T.warn : T.good} />
         )}
         <SummaryCard label="Out of Options" value={projection.outOfOptions}
-          color={projection.outOfOptions > 0 ? "#fde047" : "#94a3b8"} />
+          color={projection.outOfOptions > 0 ? T.warn : T.text2} />
         <SummaryCard label="Open Slots" value={openSlots}
-          color={openSlots <= 0 ? "#fca5a5" : openSlots <= 2 ? "#fde047" : "#4ade80"}
+          color={openSlots <= 0 ? T.badSoft : openSlots <= 2 ? T.warn : T.good}
           alert={openSlots < 0} />
         {shouldShowSuperTwo(projection.superTwoInfo) && (
           <SummaryCard label="Super-Two Cutoff"
             value={projection.superTwoInfo.cutoffLabel}
             subtitle={superTwoSubtitle(projection.superTwoInfo, gameYear)}
-            color="#a78bfa"
+            color={T.CHART.series5}
             onClick={() => setS2ModalOpen(true)} />
         )}
         {seasonMoveCount > 0 && (
-          <SummaryCard label="Planned Moves" value={seasonMoveCount} color="#a78bfa" />
+          <SummaryCard label="Planned Moves" value={seasonMoveCount} color={T.CHART.series5} />
         )}
       </div>
 
@@ -521,9 +521,9 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
             const ss = SEVERITY_STYLES[w.severity];
             return (
               <div key={i} style={{
-                padding: "8px 14px", borderRadius: 6,
+                padding: "7px 12px", borderRadius: T.radius,
                 background: ss.bg, border: `1px solid ${ss.border}`, color: ss.color,
-                fontSize: 12, fontWeight: 600,
+                fontSize: 12.5, fontWeight: 600,
               }}>
                 {w.message}
               </div>
@@ -567,7 +567,7 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
           subtitle="Drag any player into this zone to mark them as removed from the roster plan"
           accent={BUCKET_CONFIG.departing.color}
         >
-          <div style={{ padding: "10px 12px", color: "#64748b", fontSize: 11, fontStyle: "italic" }}>
+          <div style={{ padding: "10px 12px", color: T.text3, fontSize: 12, fontStyle: "italic" }}>
             {projection.buckets.departing.length > 0
               ? `${projection.buckets.departing.length} player${projection.buckets.departing.length === 1 ? "" : "s"} flagged as departing.`
               : "Empty — drag players here to remove them from the roster plan."}

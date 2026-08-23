@@ -1,7 +1,7 @@
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { S, posColor } from "../../theme.js";
+import { TOKENS as T, S, posColor } from "../../theme.js";
 import { Section } from "../../components/shared.jsx";
 
 const MOVE_LABELS = {
@@ -14,11 +14,14 @@ const MOVE_LABELS = {
   ilShort: "Place on 15-day IL", ilLong: "Place on 60-day IL",
 };
 
+// Action colour map (inventory §A.2): protect warn · dfa/trade/nonTender bad ·
+// promote good · demote text2 · sign/accept_option/tender goodSoft ·
+// sign_milb/milfa series5 · decline_option badSoft · IL warn.
 const ACTION_COLORS = {
-  protect: "#fb923c", dfa: "#ef4444", trade: "#ef4444",
-  promote: "#22c55e", demote: "#94a3b8", sign: "#4ade80", sign_milb: "#c084fc",
-  decline_option: "#fca5a5", accept_option: "#4ade80", milfa: "#c084fc",
-  nonTender: "#ef4444", tender: "#4ade80", ilShort: "#fbbf24", ilLong: "#f97316",
+  protect: T.warn, dfa: T.bad, trade: T.bad,
+  promote: T.good, demote: T.text2, sign: T.goodSoft, sign_milb: T.CHART.series5,
+  decline_option: T.badSoft, accept_option: T.goodSoft, milfa: T.CHART.series5,
+  nonTender: T.bad, tender: T.goodSoft, ilShort: T.warn, ilLong: T.warn,
 };
 
 export { MOVE_LABELS };
@@ -26,12 +29,12 @@ export { MOVE_LABELS };
 function SortableMoveRow({ uid, move, player, label, deleteMove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: uid });
   const meta = player?.meta || {};
-  const color = ACTION_COLORS[move.action] || "#94a3b8";
+  const color = ACTION_COLORS[move.action] || T.text2;
   const style = {
-    display: "flex", alignItems: "center", gap: 10, padding: "5px 8px",
-    background: isDragging ? "rgba(56,189,248,0.12)" : "rgba(15,23,42,0.3)",
-    border: `1px solid ${isDragging ? "#38bdf8" : "#1e293b"}`,
-    borderRadius: 6, marginBottom: 4,
+    display: "flex", alignItems: "center", gap: 10, padding: "3px 8px", minHeight: 31,
+    background: isDragging ? T.accentBg : T.panel,
+    border: `1px solid ${isDragging ? T.accent : T.line}`,
+    borderRadius: T.radius, marginBottom: 4,
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.85 : 1,
@@ -42,19 +45,16 @@ function SortableMoveRow({ uid, move, player, label, deleteMove }) {
         {...attributes}
         {...listeners}
         title="Drag to reorder priority"
-        style={{ color: "#475569", fontSize: 12, cursor: "grab", padding: "0 4px", userSelect: "none" }}
+        style={{ color: T.textDisabled, fontSize: 12, cursor: "grab", padding: "0 4px", userSelect: "none" }}
       >
         &#x2630;
       </span>
-      <span style={{ color: posColor(meta.pos), fontWeight: 700, fontSize: 11, width: 28 }}>{meta.pos || "?"}</span>
-      <span style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 600, flex: 1 }}>{meta.name || uid}</span>
-      <span style={{ fontSize: 11, color, fontWeight: 600, minWidth: 120 }}>{label}</span>
+      <span style={{ color: posColor(meta.pos), fontFamily: T.fonts.narrow, fontWeight: 700, fontSize: 12.5, width: 28 }}>{meta.pos || "?"}</span>
+      <span style={{ color: T.text, fontSize: 12.5, fontWeight: 600, flex: 1 }}>{meta.name || uid}</span>
+      <span style={{ fontFamily: T.fonts.narrow, fontSize: 12.5, color, fontWeight: 700, minWidth: 120 }}>{label}</span>
       <button
         onClick={() => deleteMove(uid)}
-        style={{
-          ...S.pillBtn, fontSize: 10, padding: "2px 8px",
-          borderColor: "#475569", color: "#94a3b8",
-        }}
+        style={{ ...S.pillBtn, fontSize: 11, padding: "2px 8px", color: T.text2 }}
         title="Remove this move"
       >
         ✕ Undo
@@ -71,8 +71,8 @@ function YearGroup({ year, items, deleteMove, reorderMoves }) {
   const ids = items.map(i => i.uid);
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
-        {year} Season
+      <div style={{ fontFamily: T.fonts.narrow, fontSize: 12.5, fontWeight: 700, color: T.text2, marginBottom: 6 }}>
+        {year} season
       </div>
       <DndContext
         sensors={sensors}
@@ -95,8 +95,8 @@ function YearGroup({ year, items, deleteMove, reorderMoves }) {
 export function MovesLogPanel({ movesLog, totalMoves, deleteMove, reorderMoves }) {
   if (movesLog.length === 0) return null;
   return (
-    <Section title={`Moves Log (${totalMoves} total)`}>
-      <div style={{ fontSize: 10, color: "#64748b", marginBottom: 8 }}>
+    <Section title="Moves Log" count={`(${totalMoves} total)`}>
+      <div style={{ fontSize: 12, color: T.text3, marginBottom: 8 }}>
         Drag the ☰ handle to reorder by priority (highest at top).
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

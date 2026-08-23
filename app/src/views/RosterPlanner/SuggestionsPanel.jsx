@@ -1,5 +1,6 @@
-import { S, posColor } from "../../theme.js";
+import { TOKENS as T, posColor } from "../../theme.js";
 import { Section, PillBtn } from "../../components/shared.jsx";
+import { actionBtn } from "./_shared.js";
 
 const TYPE_TITLES = {
   protect: "Must Protect (R5)",
@@ -9,11 +10,11 @@ const TYPE_TITLES = {
   promote: "Promote to Active",
 };
 const TYPE_COLORS = {
-  protect: "#f97316",
-  considerProtect: "#fbbf24",
-  milfa: "#c084fc",
-  dfa: "#ef4444",
-  promote: "#22c55e",
+  protect: T.warn,
+  considerProtect: T.warn,
+  milfa: T.CHART.series5,
+  dfa: T.bad,
+  promote: T.good,
 };
 const GROUP_ORDER = ["protect", "considerProtect", "milfa", "dfa", "promote"];
 
@@ -31,7 +32,7 @@ export function SuggestionsPanel({ suggestions, showSuggestions, setShowSuggesti
             if (group.length === 0) return null;
             return (
               <div key={type}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TYPE_COLORS[type], marginBottom: 6 }}>
+                <div style={{ fontFamily: T.fonts.narrow, fontSize: 12.5, fontWeight: 700, color: TYPE_COLORS[type], marginBottom: 6 }}>
                   {TYPE_TITLES[type]}
                 </div>
                 {group.map(s => {
@@ -39,23 +40,23 @@ export function SuggestionsPanel({ suggestions, showSuggestions, setShowSuggesti
                   const alreadyApplied = moves[s.playerId]?.action === s.action;
                   return (
                     <div key={s.playerId} style={{
-                      display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
-                      background: alreadyApplied ? "rgba(34,197,94,0.08)" : "rgba(15,23,42,0.3)",
-                      border: "1px solid #1e293b", borderRadius: 6, marginBottom: 4,
+                      display: "flex", alignItems: "center", gap: 10, padding: "4px 10px", minHeight: 31,
+                      background: alreadyApplied ? T.goodBg : T.panel,
+                      border: `1px solid ${alreadyApplied ? T.good : T.line}`, borderRadius: T.radius, marginBottom: 4,
                     }}>
-                      <span style={{ color: posColor(meta.pos), fontWeight: 700, fontSize: 11 }}>{meta.pos}</span>
-                      <span style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 600, flex: 1 }}>{meta.name}</span>
-                      <span style={{ color: "#64748b", fontSize: 11, flex: 2 }}>{s.reason}</span>
+                      <span style={{ color: posColor(meta.pos), fontFamily: T.fonts.narrow, fontWeight: 700, fontSize: 12.5 }}>{meta.pos}</span>
+                      <span style={{ color: T.text, fontSize: 12.5, fontWeight: 600, flex: 1 }}>{meta.name}</span>
+                      <span style={{ color: T.text3, fontSize: 12, flex: 2 }}>{s.reason}</span>
                       {!alreadyApplied && (
                         <button
                           onClick={() => applyMove(s.playerId, s.action)}
-                          style={{ ...S.pillBtn, borderColor: TYPE_COLORS[type], color: TYPE_COLORS[type], fontSize: 10, padding: "3px 10px" }}
+                          style={actionBtn(TYPE_COLORS[type])}
                         >
                           Apply
                         </button>
                       )}
                       {alreadyApplied && (
-                        <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>Applied</span>
+                        <span style={{ fontFamily: T.fonts.narrow, fontSize: 12, color: T.good, fontWeight: 700 }}>Applied</span>
                       )}
                     </div>
                   );
@@ -66,12 +67,12 @@ export function SuggestionsPanel({ suggestions, showSuggestions, setShowSuggesti
         </div>
       )}
       {showSuggestions && suggestions.length === 0 && (
-        <div style={{ color: "#475569", fontSize: 12, fontStyle: "italic" }}>
+        <div style={{ color: T.text3, fontSize: 12.5, fontStyle: "italic" }}>
           No suggestions — roster looks clean!
         </div>
       )}
       {!showSuggestions && (
-        <div style={{ color: "#475569", fontSize: 12 }}>
+        <div style={{ color: T.text3, fontSize: 12.5 }}>
           Click "Show" for AI-powered roster management suggestions
         </div>
       )}
