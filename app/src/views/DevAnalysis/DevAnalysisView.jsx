@@ -1,7 +1,8 @@
 // Coordinator: owns curve sliders + the heavy player-pool/regression memos
 // that the chart sub-components consume as props.
 import { useState, useMemo, useRef } from "react";
-import { Section, PositionFilter } from "../../components/shared.jsx";
+import { TOKENS as T } from "../../theme.js";
+import { Section, PositionFilter, PillBtn, TabGroup } from "../../components/shared.jsx";
 import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, passesPositionFilter, pickFielderPos, pickPitcherRole, scaleRpWarP } from "../../utils/accessors.js";
 import { DEV_CURVE_DEFAULTS } from "../../utils/constants.js";
 import { isProspect, isInOrg } from "../../utils/prospects.js";
@@ -16,6 +17,8 @@ import { LiveProspectPreview } from "./LiveProspectPreview.jsx";
 import { CurveTuningPanel } from "./CurveTuningPanel.jsx";
 
 const PITCHER_FILTER_KEYS = ["Pitchers", "SP", "RP"];
+// Quick pool pills in the page header (write the same posFilter values the dropdown would).
+const POOL_PILLS = [["All", []], ["Hitters", ["Hitters"]], ["Pitchers", ["Pitchers"]]];
 
 function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
   const [posFilter, setPosFilter] = useState([]);
@@ -367,9 +370,15 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
     return "mixed";
   }, [filterIntent, posFilter]);
 
+  const poolIs = (v) => posFilter.length === v.length && v.every((x) => posFilter.includes(x));
   const filterRow = (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>Filter:</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <TabGroup label="Player pool">
+        {POOL_PILLS.map(([label, v]) => (
+          <PillBtn key={label} active={poolIs(v)} onClick={() => setPosFilter(v)}>{label}</PillBtn>
+        ))}
+      </TabGroup>
+      <span style={{ fontSize: 12, color: T.text2, fontWeight: 600 }}>Filter:</span>
       <PositionFilter value={posFilter} onChange={setPosFilter} />
     </div>
   );
@@ -377,10 +386,10 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
   const curveOpts = { gapMax, gapExp, maxCurrentAge };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {filterRow}
 
-      {players.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#475569", fontSize: 14 }}>No player data available for the selected type.</div>}
+      {players.length === 0 && <div style={{ padding: 40, textAlign: "center", color: T.text3, fontSize: 14 }}>No player data available for the selected type.</div>}
 
       {players.length > 0 && <>
         <Section title="Age vs WAR Distribution">
@@ -423,9 +432,7 @@ function DevAnalysisView({ data, curveSettings, updateCurveSettings }) {
           resetBandwidth={resetBandwidth}
         />
 
-        <Section title="Future Value Impact Analysis">
-          <FVImpactTable curveOpts={curveOpts} devCurves={devCurves} />
-        </Section>
+        <FVImpactTable curveOpts={curveOpts} devCurves={devCurves} />
 
         <CurveTuningPanel
           curveSettings={curveSettings}
