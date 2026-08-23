@@ -1,11 +1,11 @@
 import { useState, useMemo } from "react";
-import { S } from "../theme.js";
-import { posColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle } from "../theme.js";
+import { TOKENS as T, S } from "../theme.js";
+import { posColor, proneColor, PRONE, warStyle, intangibleColor, devPctStyle, gradeStyle } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows, rankSuffix } from "../utils/helpers.js";
 import { PER_PAGE } from "../utils/constants.js";
 import { calcOrgNeed } from "../utils/strength.js";
 import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
-import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
+import { Section, SortHeader, SearchInput, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination, colRule } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { readScoped, writeScoped } from "../hooks/useLocalStorage.js";
 
@@ -25,6 +25,18 @@ function loadSignedIds() {
 function saveSignedIds(set) {
   writeScoped(SIGNED_KEY, JSON.stringify([...set]));
 }
+
+// Scorecard board grammar (mockup `.board`): column-group left rules via colRule, numeric
+// columns right-aligned, first/last cells carry the 12px box padding.
+// Edge padding is written as the full `padding` shorthand (S.th / S.td also use the shorthand) so a
+// column that moves from first to second place (e.g. when the Smart column appears) never mixes
+// shorthand and longhand across renders — React 18 warns on that.
+const edgePad = (cols, i, v) => (i === 0 ? { padding: `${v} 6px ${v} 12px` } : i === cols.length - 1 ? { padding: `${v} 12px ${v} 6px` } : {});
+const thStyle = (cols, i) => ({ ...(colRule(cols, i) || {}), ...edgePad(cols, i, "6px") });
+const tdStyle = (cols, i) => ({ ...S.td, ...(colRule(cols, i) || {}), ...(cols[i].align ? { textAlign: cols[i].align } : {}), ...edgePad(cols, i, "0") });
+const posCell = { fontFamily: T.fonts.narrow, fontWeight: 600, fontSize: 13 };
+const rowStyle = (i) => (i % 2 === 1 ? S.zebraRow : undefined);
+const clearLink = { background: "none", border: "none", color: T.accent, fontFamily: T.fonts.narrow, fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: 0 };
 
 export default function IAFABoard({ data, myTeam, strength, curveSettings, leagueSettings, onSelectPlayer }) {
   const [toggles, setToggles] = useState({ orgNeed: false, devAdj: false, injury: false, intangibles: false });
@@ -70,84 +82,100 @@ export default function IAFABoard({ data, myTeam, strength, curveSettings, leagu
 
   const { paged, totalPages } = paginateRows(visiblePool, page, PER_PAGE);
   const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.injury || toggles.intangibles;
+  const togglesOn = [toggles.devAdj, toggles.orgNeed, toggles.injury, toggles.intangibles].filter(Boolean).length;
+
+  // B.3 groups: Signed Smart/WAR P | Name Age | Dev% | POS Best | [Raw] | Prone INTG WE INT | DEM.
+  const cols = [
+    { key: "_signed", label: "Signed", w: 50, group: "rank", align: "center", sortable: false },
+    { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70, group: "rank", align: "right" },
+    { key: "Name", label: "Name", w: 170, group: "identity" },
+    { key: "Age", label: "Age", w: 45, group: "identity", align: "right" },
+    { key: "_devPct", label: "Dev%", w: 48, group: "development", align: "right" },
+    { key: "POS", label: "POS", w: 48, group: "position" },
+    { key: "_bestPos", label: "Best", w: 48, group: "position" },
+    ...(anyToggle ? [{ key: "_baseVal", label: "Raw", w: 60, group: "raw", align: "right" }] : []),
+    { key: "Prone", label: "Prone", w: 65, group: "health" },
+    { key: "_intangibles", label: "INTG", w: 48, group: "health", align: "right" },
+    { key: "WE", label: "WE", w: 32, group: "health", align: "center" },
+    { key: "INT", label: "INT", w: 32, group: "health", align: "center" },
+    { key: "_demSort", label: "DEM", w: 75, group: "contract", align: "right" },
+  ];
+  const ci = Object.fromEntries(cols.map((c, i) => [c.key, i]));
+  const td = (key) => tdStyle(cols, ci[key]);
+  const sortedLabel = cols.find((c) => c.key === sort.col)?.label;
+  const sortState = sortedLabel ? `Sorted by ${sortedLabel}, ${sort.dir === "desc" ? "descending" : "ascending"}` : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Section title="Smart Rank Adjustments">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-          <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
-          <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
-          <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
-          <Toggle label="Intangibles" description="Bonus for elite 20-80 intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Section title="Smart Rank Adjustments" state={`${togglesOn} of 4 on`}>
+        {/* Ruled toggle rows in a 2 × 2 grid, edge to edge; the top rules sit on the header rule. */}
+        <div style={{ margin: "-13px -12px -12px", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+          <Toggle variant="row" label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
+          <div style={{ borderLeft: `1px solid ${T.line}` }}>
+            <Toggle variant="row" label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
+          </div>
+          <Toggle variant="row" label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
+          <div style={{ borderLeft: `1px solid ${T.line}` }}>
+            <Toggle variant="row" label="Intangibles" description="Bonus for elite 20-80 intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
+          </div>
         </div>
       </Section>
 
-      <Section title={`IAFA Board (${pool.length})`}>
-        <div style={{ marginBottom: 12 }}>
+      <Section title="IAFA Board" count={`(${pool.length.toLocaleString()})`} state={sortState}
+        toolbar={<>
           <PositionFilter value={posFilter} onChange={(v) => { setPosFilter(v); setPage(0); }} />
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-          <input type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} style={S.searchInput} />
+          <SearchInput type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
           <PillBtn active={hideSigned} onClick={() => { setHideSigned((v) => !v); setPage(0); }}>
             {hideSigned ? "Showing unsigned" : "Hide signed"}
           </PillBtn>
           {signedIds.size > 0 && (
-            <button onClick={clearSigned} style={{ background: "transparent", border: "none", color: "#94a3b8", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+            <button onClick={clearSigned} style={clearLink}>
               Clear signed ({signedIds.size})
             </button>
           )}
+        </>}>
+        <div style={{ margin: -12 }}>
+          <div style={{ ...S.tableWrap, border: "none", borderRadius: 0 }}>
+            <table style={S.table}>
+              <thead><tr>
+                {cols.map(({ key, label, w, align, sortable }, i) => (
+                  sortable === false
+                    ? <th key={key} style={{ ...S.th, ...thStyle(cols, i), width: w, minWidth: w, textAlign: align }}>{label}</th>
+                    : <SortHeader key={key} label={label} width={w} align={align} rule={thStyle(cols, i)} sortCol={sort.col} sortDir={sort.dir} colKey={key} onClick={() => setSort((prev) => ({ col: key, dir: prev.col === key && prev.dir === "desc" ? "asc" : "desc" }))} />
+                ))}
+              </tr></thead>
+              <tbody>
+                {paged.map((p, i) => {
+                  const isSigned = signedIds.has(p.ID);
+                  const prone = p.meta?.prone ?? p.Prone;
+                  const dem = p.meta?.dem ?? p.DEM;
+                  return (
+                  <tr key={p.ID + "-" + i} style={{ ...rowStyle(i), opacity: isSigned ? 0.5 : 1 }}>
+                    <td style={td("_signed")}>
+                      <input type="checkbox" checked={isSigned} onChange={() => toggleSigned(p.ID)} style={{ cursor: "pointer", accentColor: T.accent, margin: 0, verticalAlign: "middle" }} />
+                    </td>
+                    <td style={{ ...td("_rank"), ...warStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
+                    <td style={{ ...td("Name"), ...S.tdName, minWidth: 140, cursor: "pointer" }}
+                        onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
+                    <td style={td("Age")}>{fmtAge(p._age)}</td>
+                    <td style={{ ...td("_devPct"), ...(p._devPct != null ? devPctStyle(p._devPct) : { color: T.textDisabled }) }}>{p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—"}</td>
+                    <td style={{ ...td("POS"), ...posCell, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
+                    <td style={{ ...td("_bestPos"), ...posCell, color: p._bestPos ? posColor(p._bestPos?.replace("*", "")) : T.textDisabled }}>{p._bestPos || "—"}</td>
+                    {anyToggle && <td style={{ ...td("_baseVal"), ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
+                    <td style={{ ...td("Prone"), color: proneColor(prone), fontWeight: PRONE[prone]?.weight ?? 400 }}>{prone ?? "—"}</td>
+                    <td style={{ ...td("_intangibles"), ...gradeStyle(p._intangibles), fontWeight: 700 }}>{p._intangibles ?? "—"}</td>
+                    <td style={{ ...td("WE"), color: (p.meta?.we ?? p.WE) ? intangibleColor(p.meta?.we ?? p.WE) : T.textDisabled, fontWeight: 600 }}>{(p.meta?.we ?? p.WE) || "—"}</td>
+                    <td style={{ ...td("INT"), color: (p.meta?.int ?? p.INT) ? intangibleColor(p.meta?.int ?? p.INT) : T.textDisabled, fontWeight: 600 }}>{(p.meta?.int ?? p.INT) || "—"}</td>
+                    <td style={{ ...td("_demSort"), color: dem && dem !== "-" ? T.warn : T.textDisabled }}>{dem && dem !== "-" ? dem : "—"}</td>
+                  </tr>
+                  );
+                })}
+                {paged.length === 0 && <tr><td colSpan={cols.length} style={{ ...S.td, textAlign: "center", color: T.text3, padding: "16px 12px" }}>No IAFA players found</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} totalPages={totalPages} total={visiblePool.length} onPrev={() => setPage(Math.max(0, page - 1))} onNext={() => setPage(Math.min(totalPages - 1, page + 1))} />
         </div>
-
-        <div style={S.tableWrap}>
-          <table style={S.table}>
-            <thead><tr>
-              <th style={{ ...S.th, width: 50, textAlign: "center" }}>Signed</th>
-              {[
-                { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70 },
-                { key: "Name", label: "Name", w: 170 },
-                { key: "Age", label: "Age", w: 45 },
-                { key: "_devPct", label: "Dev%", w: 48 },
-                { key: "POS", label: "POS", w: 48 },
-                { key: "_bestPos", label: "Best", w: 48 },
-                ...(anyToggle ? [{ key: "_baseVal", label: "Raw", w: 60 }] : []),
-                { key: "Prone", label: "Prone", w: 65 },
-                { key: "_intangibles", label: "INTG", w: 48 },
-                { key: "WE", label: "WE", w: 32 },
-                { key: "INT", label: "INT", w: 32 },
-                { key: "_demSort", label: "DEM", w: 75 },
-              ].map(({ key, label, w }) => (
-                <SortHeader key={key} label={label} width={w} sortCol={sort.col} sortDir={sort.dir} colKey={key} onClick={() => setSort((prev) => ({ col: key, dir: prev.col === key && prev.dir === "desc" ? "asc" : "desc" }))} />
-              ))}
-            </tr></thead>
-            <tbody>
-              {paged.map((p, i) => {
-                const isSigned = signedIds.has(p.ID);
-                return (
-                <tr key={p.ID + "-" + i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)", opacity: isSigned ? 0.5 : 1 }}>
-                  <td style={{ ...S.td, textAlign: "center" }}>
-                    <input type="checkbox" checked={isSigned} onChange={() => toggleSigned(p.ID)} style={{ cursor: "pointer" }} />
-                  </td>
-                  <td style={{ ...S.td, ...warStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
-                  <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 140, cursor: "pointer" }}
-                      onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
-                  <td style={S.td}>{fmtAge(p._age)}</td>
-                  <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>{p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—"}</td>
-                  <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
-                  <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
-                  {anyToggle && <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
-                  <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
-                  <td style={{ ...S.td, ...gradeStyle(p._intangibles), fontWeight: 700 }}>{p._intangibles ?? "—"}</td>
-                  <td style={{ ...S.td, color: intangibleColor(p.meta?.we ?? p.WE) }}>{(p.meta?.we ?? p.WE) || "—"}</td>
-                  <td style={{ ...S.td, color: intangibleColor(p.meta?.int ?? p.INT) }}>{(p.meta?.int ?? p.INT) || "—"}</td>
-                  <td style={{ ...S.td, color: "#94a3b8" }}>{(p.meta?.dem ?? p.DEM) && (p.meta?.dem ?? p.DEM) !== "-" ? (p.meta?.dem ?? p.DEM) : "—"}</td>
-                </tr>
-                );
-              })}
-              {paged.length === 0 && <tr><td colSpan={anyToggle ? 13 : 12} style={{ ...S.td, textAlign: "center", color: "#475569" }}>No IAFA players found</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        <Pagination page={page} totalPages={totalPages} total={visiblePool.length} onPrev={() => setPage(Math.max(0, page - 1))} onNext={() => setPage(Math.min(totalPages - 1, page + 1))} />
       </Section>
     </div>
   );

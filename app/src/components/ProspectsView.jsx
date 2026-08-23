@@ -1,14 +1,31 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { S, TOKENS, FV_TIER_COLORS } from "../theme.js";
-import { posColor, levelColor, warStyle, devPctColor, scoutingRatingColor } from "../theme.js";
+import { S, TOKENS as T, FV_TIER_COLORS } from "../theme.js";
+import { posColor, levelChip, tierChip, warStyle, devPctStyle, scoutingRatingColor } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows, searchFilter, orgLabel, rankSuffix } from "../utils/helpers.js";
 import { genericSort, getMaxWar, getSpWar, getRpWar, passesPositionFilter, passesLevelFilter } from "../utils/accessors.js";
 import { FV_TIERS, PER_PAGE, PROSPECT_SUB_TABS } from "../utils/constants.js";
 import { loadProspectSettings, saveProspectSettings } from "../utils/settings.js";
 import { buildProspectPool, suggestThresholds, assignFVTier, getDollarValue, calcFarmRankings } from "../utils/prospects.js";
-import { Section, SortHeader, PillBtn, PositionFilter, LevelFilter, MultiSelectDropdown, TabGroup, TwoWayBadge, Pagination, NumInput } from "./shared.jsx";
+import { Section, SortHeader, PillBtn, PositionFilter, LevelFilter, MultiSelectDropdown, TabGroup, TwoWayBadge, Pagination, NumInput, SearchInput, colRule } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+
+// Night Scorecard encodings (theme.js helpers return { bg, text, border } — map them to CSS here).
+const tierPill = (id) => { const c = tierChip(id); return { ...S.tierPill, background: c.bg, color: c.text }; };
+const levelBadge = (lev) => { const c = levelChip(lev); return { ...S.badge, background: c.bg, color: c.text, borderColor: c.border, ...(c.borderStyle ? { borderStyle: c.borderStyle } : {}) }; };
+const numCell = { textAlign: "right", fontVariantNumeric: "tabular-nums" };
+const posCell = { fontFamily: T.fonts.narrow, fontWeight: 600, fontSize: 13 };
+// Per-column cell style: the column-group rule + the 12px box padding on the first / last cell.
+const cellStyles = (cols) => {
+  const m = {};
+  cols.forEach((c, i) => {
+    m[c.key] = { ...(colRule(cols, i) || {}), ...(i === 0 ? { paddingLeft: 12 } : {}), ...(i === cols.length - 1 ? { paddingRight: 12 } : {}) };
+  });
+  return m;
+};
+// Tables run edge-to-edge inside the box body; the pager is the foot strip.
+const edgeWrap = { ...S.tableWrap, margin: -12, border: "none", borderRadius: 0 };
+const footWrap = { margin: "0 -12px -12px" };
 
 function ProspectsView({ data, curveSettings, leagueSettings, onSelectPlayer }) {
   const [subTab, setSubTab] = useState("board");
@@ -185,177 +202,187 @@ function ProspectBoard({ data, prospectPool, thresholds, setThresholds, dollarVa
 
   const { paged, totalPages } = paginateRows(displayPool, page, PER_PAGE);
 
-  const cfgInputStyle = { ...S.filterSelect, width: 65, padding: "3px 4px", fontSize: 11, textAlign: "right" };
+  const cfgInputStyle = { ...S.searchInput, width: 65, height: 24, padding: "3px 4px", fontSize: 11, textAlign: "right", fontVariantNumeric: "tabular-nums" };
+
+  // Config table columns — groups: tier | thresholds | $ | counts | ranges (§B.3 item 8).
+  const cfgCols = [
+    { key: "tier", label: "Tier", w: 50, group: "tier" },
+    { key: "thresh", label: "FV ≥ Threshold", w: 80, group: "thresholds", align: "center" },
+    { key: "bat", label: "Bat $M", w: 65, group: "money", align: "center" },
+    { key: "pit", label: "Pit $M", w: 65, group: "money", align: "center" },
+    { key: "count", label: "Count", w: 45, group: "counts", align: "right" },
+    { key: "hit", label: "H", w: 35, group: "counts", align: "right" },
+    { key: "pitc", label: "P", w: 35, group: "counts", align: "right" },
+    { key: "cum", label: "Cum.", w: 45, group: "counts", align: "right" },
+    { key: "range", label: "FV Range", w: 100, group: "ranges" },
+    { key: "mlb", label: "MLB Players ≥ FV", w: 140, group: "ranges", align: "right", title: "Current-season MLB players whose WAR is at or above this tier's FV threshold" },
+  ];
+  const cfgCell = cellStyles(cfgCols);
+
+  // Board columns — groups: Rank Org Tier | Name Age | Dev% | POS Best Team Lvl | FV WAR WAR P | $ Val (§B.3 item 8).
+  const cols = [
+    { key: "_overallRank", label: "Rank", w: 45, group: "rank", align: "right" },
+    { key: "_orgRank", label: "Org", w: 40, group: "rank", align: "right" },
+    { key: "_tierId", label: "FV Tier", w: 65, group: "rank" },
+    { key: "Name", label: "Name", w: 170, group: "identity" },
+    { key: "Age", label: "Age", w: 45, group: "identity", align: "right" },
+    { key: "_devPct", label: "Dev%", w: 48, group: "development", align: "right" },
+    { key: "POS", label: "POS", w: 48, group: "position" },
+    { key: "_bestPos", label: "Best", w: 48, group: "position" },
+    { key: "ORG", label: "Team", w: 130, group: "position" },
+    { key: "Lev", label: "Lvl", w: 45, group: "position" },
+    { key: "_fv", label: "FV", w: 60, group: "value", align: "right" },
+    { key: "_currentVal", label: "WAR", w: 65, group: "value", align: "right" },
+    { key: "_baseVal", label: "WAR P", w: 65, group: "value", align: "right" },
+    { key: "_dollarVal", label: "$ Val", w: 55, group: "contract", align: "right" },
+  ];
+  const cell = cellStyles(cols);
+  const sortedLabel = cols.find((c) => c.key === sort.col)?.label;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Config Section */}
-      <Section title="Prospect Board Configuration" actions={
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setConfigOpen(!configOpen)} style={{ ...S.pillBtn, borderColor: "#334155", color: "#94a3b8", fontSize: 11 }}>
-            {configOpen ? "Hide Config" : "Show Config"}
-          </button>
-          <button onClick={() => {
-            const suggested = suggestThresholds(prospectPool, data.teams.length);
-            setThresholds(suggested);
-          }} style={{ ...S.pillBtn, borderColor: "#3b82f6", color: "#93c5fd", fontSize: 11 }}>
-            Suggest Thresholds
-          </button>
-          <button onClick={() => {
-            const dv = {};
-            FV_TIERS.forEach((t) => { dv[t.id] = { bat: t.defaultBat, pit: t.defaultPit }; });
-            setDollarValues(dv);
-          }} style={{ ...S.pillBtn, borderColor: "#334155", color: "#94a3b8", fontSize: 11 }}>
-            Reset $ Defaults
-          </button>
-        </div>
-      }>
-        {configOpen && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Config Table */}
-            <div style={S.tableWrap}>
-              <table style={S.table}>
-                <thead><tr>
-                  <th style={{ ...S.th, width: 50 }}>Tier</th>
-                  <th style={{ ...S.th, width: 80, textAlign: "center" }}>FV ≥ Threshold</th>
-                  <th style={{ ...S.th, width: 65, textAlign: "center" }}>Bat $M</th>
-                  <th style={{ ...S.th, width: 65, textAlign: "center" }}>Pit $M</th>
-                  <th style={{ ...S.th, width: 45, textAlign: "right" }}>Count</th>
-                  <th style={{ ...S.th, width: 35, textAlign: "right" }}>H</th>
-                  <th style={{ ...S.th, width: 35, textAlign: "right" }}>P</th>
-                  <th style={{ ...S.th, width: 45, textAlign: "right" }}>Cum.</th>
-                  <th style={{ ...S.th, width: 100 }}>FV Range</th>
-                  <th style={{ ...S.th, width: 140, textAlign: "right" }} title="Current-season MLB players whose WAR is at or above this tier's FV threshold">MLB Players ≥ FV</th>
-                </tr></thead>
-                <tbody>
-                  {FV_TIERS.map((tier, ti) => {
-                    const ts = tierStats[tier.id];
-                    const thresh = thresholds[tier.id];
-                    const mlbCount = countMlbAtOrAbove(thresh);
-                    return (
-                      <tr key={tier.id} style={{ background: ti % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
-                        <td style={S.td}>
-                          <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
-                            background: FV_TIER_COLORS[tier.id].bg, color: FV_TIER_COLORS[tier.id].text, border: `1px solid ${FV_TIER_COLORS[tier.id].bg}` }}>
-                            {tier.label}
-                          </span>
-                        </td>
-                        <td style={{ ...S.td, textAlign: "center" }}>
-                          <input type="number" step="0.1" value={thresh ?? ""} onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (!isNaN(v)) setThresholds((prev) => ({ ...prev, [tier.id]: v }));
-                          }} style={cfgInputStyle} />
-                        </td>
-                        <td style={{ ...S.td, textAlign: "center" }}>
-                          <input type="number" step="0.5" value={dollarValues[tier.id]?.bat ?? 0} onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (!isNaN(v)) setDollarValues((prev) => ({ ...prev, [tier.id]: { ...prev[tier.id], bat: v } }));
-                          }} style={cfgInputStyle} />
-                        </td>
-                        <td style={{ ...S.td, textAlign: "center" }}>
-                          <input type="number" step="0.5" value={dollarValues[tier.id]?.pit ?? 0} onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (!isNaN(v)) setDollarValues((prev) => ({ ...prev, [tier.id]: { ...prev[tier.id], pit: v } }));
-                          }} style={cfgInputStyle} />
-                        </td>
-                        <td style={{ ...S.td, textAlign: "right", fontWeight: 600, color: ts.count > 0 ? "#e2e8f0" : "#334155" }}>{ts.count}</td>
-                        <td style={{ ...S.td, textAlign: "right", color: ts.hit > 0 ? "#60a5fa" : "#334155" }}>{ts.hit}</td>
-                        <td style={{ ...S.td, textAlign: "right", color: ts.pit > 0 ? "#f472b6" : "#334155" }}>{ts.pit}</td>
-                        <td style={{ ...S.td, textAlign: "right", color: "#64748b" }}>{ts.cumulative}</td>
-                        <td style={{ ...S.td, color: "#475569", fontSize: 11 }}>
-                          {ts.count > 0 ? `${fmt(ts.minFV)}–${fmt(ts.maxFV)}` : "—"}
-                        </td>
-                        <td style={{ ...S.td, color: "#94a3b8", fontSize: 11, textAlign: "right" }}>
-                          {mlbCount == null ? "—" : `${mlbCount} of ${mlbWAR.length}`}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ fontSize: 11, color: "#475569" }}>
-              {prospectPool.length} total prospects across {data.teams.length} teams
-            </div>
+      <Section title="Prospect Board Configuration"
+        state={`${FV_TIERS.length} tiers · ${prospectPool.length.toLocaleString()} prospects`}
+        actions={
+          <>
+            <button onClick={() => setConfigOpen(!configOpen)} style={S.btn} aria-expanded={configOpen}>
+              {configOpen ? "Hide Config" : "Show Config"}
+            </button>
+            <button onClick={() => {
+              const suggested = suggestThresholds(prospectPool, data.teams.length);
+              setThresholds(suggested);
+            }} style={{ ...S.btn, ...S.btnPrimary }}>
+              Suggest Thresholds
+            </button>
+            <button onClick={() => {
+              const dv = {};
+              FV_TIERS.forEach((t) => { dv[t.id] = { bat: t.defaultBat, pit: t.defaultPit }; });
+              setDollarValues(dv);
+            }} style={S.btn}>
+              Reset $ Defaults
+            </button>
+          </>
+        }
+        footer={configOpen ? `${prospectPool.length} total prospects across ${data.teams.length} teams` : null}>
+        {configOpen ? (
+          <div style={edgeWrap}>
+            <table style={S.table}>
+              <thead><tr>
+                {cfgCols.map((c) => (
+                  <th key={c.key} style={{ ...S.th, ...cfgCell[c.key], width: c.w, ...(c.align ? { textAlign: c.align } : {}) }} title={c.title}>{c.label}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {FV_TIERS.map((tier, ti) => {
+                  const ts = tierStats[tier.id];
+                  const thresh = thresholds[tier.id];
+                  const mlbCount = countMlbAtOrAbove(thresh);
+                  return (
+                    <tr key={tier.id} style={ti % 2 === 1 ? S.zebraRow : undefined}>
+                      <td style={{ ...S.td, ...cfgCell.tier }}>
+                        <span style={tierPill(tier.id)}>{tier.label}</span>
+                      </td>
+                      <td style={{ ...S.td, ...cfgCell.thresh, textAlign: "center" }}>
+                        <input type="number" step="0.1" value={thresh ?? ""} onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v)) setThresholds((prev) => ({ ...prev, [tier.id]: v }));
+                        }} style={cfgInputStyle} aria-label={`FV threshold for tier ${tier.label}`} />
+                      </td>
+                      <td style={{ ...S.td, ...cfgCell.bat, textAlign: "center" }}>
+                        <input type="number" step="0.5" value={dollarValues[tier.id]?.bat ?? 0} onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v)) setDollarValues((prev) => ({ ...prev, [tier.id]: { ...prev[tier.id], bat: v } }));
+                        }} style={cfgInputStyle} aria-label={`Batter dollar value for tier ${tier.label}`} />
+                      </td>
+                      <td style={{ ...S.td, ...cfgCell.pit, textAlign: "center" }}>
+                        <input type="number" step="0.5" value={dollarValues[tier.id]?.pit ?? 0} onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          if (!isNaN(v)) setDollarValues((prev) => ({ ...prev, [tier.id]: { ...prev[tier.id], pit: v } }));
+                        }} style={cfgInputStyle} aria-label={`Pitcher dollar value for tier ${tier.label}`} />
+                      </td>
+                      <td style={{ ...S.td, ...cfgCell.count, ...numCell, fontWeight: 600, color: ts.count > 0 ? T.text : T.textDisabled }}>{ts.count}</td>
+                      <td style={{ ...S.td, ...cfgCell.hit, ...numCell, color: ts.hit > 0 ? T.CHART.series1 : T.textDisabled }}>{ts.hit}</td>
+                      <td style={{ ...S.td, ...cfgCell.pitc, ...numCell, color: ts.pit > 0 ? T.CHART.series3 : T.textDisabled }}>{ts.pit}</td>
+                      <td style={{ ...S.td, ...cfgCell.cum, ...numCell, color: T.text3 }}>{ts.cumulative}</td>
+                      <td style={{ ...S.td, ...cfgCell.range, color: ts.count > 0 ? T.text3 : T.textDisabled, fontSize: 12 }}>
+                        {ts.count > 0 ? `${fmt(ts.minFV)}–${fmt(ts.maxFV)}` : "—"}
+                      </td>
+                      <td style={{ ...S.td, ...cfgCell.mlb, ...numCell, color: mlbCount == null ? T.textDisabled : T.text2, fontSize: 12 }}>
+                        {mlbCount == null ? "—" : `${mlbCount} of ${mlbWAR.length}`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12.5, color: T.text2 }}>
+            Tier thresholds and per-tier $ values are hidden — <span style={{ color: T.text3 }}>Show Config to edit.</span>
           </div>
         )}
       </Section>
 
       {/* Filter Bar + Table */}
-      <Section title={`The Board (${prospectPool.length})`}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-          <PositionFilter value={posFilter} onChange={(v) => { setPosFilter(v); setPage(0); }} />
-          <MultiSelectDropdown
-            options={data.teams.map((t) => ({ value: t, label: t }))}
-            value={orgFilter} onChange={(v) => { setOrgFilter(v); setPage(0); }}
-            placeholder="All Teams" ariaLabel="Filter by team"
-          />
-          <LevelFilter players={prospectPool} value={levelFilter} onChange={(v) => { setLevelFilter(v); setPage(0); }} expandRookieTeams={false} />
-          <MultiSelectDropdown
-            options={FV_TIERS.map((t) => ({ value: t.id, label: t.label }))}
-            value={tierFilter} onChange={(v) => { setTierFilter(v); setPage(0); }}
-            placeholder="All Tiers" ariaLabel="Filter by tier"
-          />
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-          <input type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} style={S.searchInput} />
-        </div>
-
-        <div style={S.tableWrap}>
+      <Section title="The Board" count={`(${displayPool.length.toLocaleString()})`}
+        state={sortedLabel ? `Sorted by ${sortedLabel}, ${sort.dir === "asc" ? "ascending" : "descending"}` : null}
+        toolbar={
+          <>
+            <PositionFilter value={posFilter} onChange={(v) => { setPosFilter(v); setPage(0); }} />
+            <MultiSelectDropdown
+              options={data.teams.map((t) => ({ value: t, label: t }))}
+              value={orgFilter} onChange={(v) => { setOrgFilter(v); setPage(0); }}
+              placeholder="All Teams" ariaLabel="Filter by team"
+            />
+            <LevelFilter players={prospectPool} value={levelFilter} onChange={(v) => { setLevelFilter(v); setPage(0); }} expandRookieTeams={false} />
+            <MultiSelectDropdown
+              options={FV_TIERS.map((t) => ({ value: t.id, label: t.label }))}
+              value={tierFilter} onChange={(v) => { setTierFilter(v); setPage(0); }}
+              placeholder="All Tiers" ariaLabel="Filter by tier"
+            />
+            <SearchInput type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} aria-label="Search prospects by name" />
+          </>
+        }>
+        <div style={edgeWrap}>
           <table style={S.table}>
             <thead><tr>
-              {[
-                { key: "_overallRank", label: "Rank", w: 45 },
-                { key: "_orgRank", label: "Org", w: 40 },
-                { key: "_tierId", label: "FV Tier", w: 65 },
-                { key: "Name", label: "Name", w: 170 },
-                { key: "Age", label: "Age", w: 45 },
-                { key: "_devPct", label: "Dev%", w: 48 },
-                { key: "POS", label: "POS", w: 48 },
-                { key: "_bestPos", label: "Best", w: 48 },
-                { key: "ORG", label: "Team", w: 130 },
-                { key: "Lev", label: "Lvl", w: 45 },
-                { key: "_fv", label: "FV", w: 60 },
-                { key: "_currentVal", label: "WAR", w: 65 },
-                { key: "_baseVal", label: "WAR P", w: 65 },
-                { key: "_dollarVal", label: "$ Val", w: 55 },
-              ].map(({ key, label, w }) => (
-                <SortHeader key={key} label={label} width={w} sortCol={sort.col} sortDir={sort.dir} colKey={key}
-                  onClick={() => setSort((prev) => ({ col: key, dir: prev.col === key && prev.dir === "desc" ? "asc" : "desc" }))} />
+              {cols.map((c) => (
+                <SortHeader key={c.key} label={c.label} width={c.w} sortCol={sort.col} sortDir={sort.dir} colKey={c.key} rule={cell[c.key]} align={c.align}
+                  onClick={() => setSort((prev) => ({ col: c.key, dir: prev.col === c.key && prev.dir === "desc" ? "asc" : "desc" }))} />
               ))}
             </tr></thead>
             <tbody>
               {paged.map((p, i) => (
-                  <tr key={p._uid || (p.ID + "-" + i)} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
-                    <td style={{ ...S.td, color: "#e2e8f0", fontWeight: 700 }}>{p._overallRank}</td>
-                    <td style={{ ...S.td, color: "#64748b" }}>{p._orgRank}</td>
-                    <td style={S.td}>
-                      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700,
-                        background: FV_TIER_COLORS[p._tierId].bg, color: FV_TIER_COLORS[p._tierId].text, border: `1px solid ${FV_TIER_COLORS[p._tierId].bg}` }}>
-                        {p._tierId}
-                      </span>
+                  <tr key={p._uid || (p.ID + "-" + i)} style={i % 2 === 1 ? S.zebraRow : undefined}>
+                    <td style={{ ...S.td, ...cell._overallRank, ...numCell, color: T.text, fontWeight: 700 }}>{p._overallRank}</td>
+                    <td style={{ ...S.td, ...cell._orgRank, ...numCell, color: T.text3 }}>{p._orgRank}</td>
+                    <td style={{ ...S.td, ...cell._tierId }}>
+                      <span style={tierPill(p._tierId)}>{p._tierId}</span>
                     </td>
-                    <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
+                    <td style={{ ...S.td, ...S.tdName, ...cell.Name, minWidth: 170, cursor: "pointer" }}
                         onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
-                    <td style={S.td}>{fmtAge(p._age)}</td>
-                    <td style={{ ...S.td, color: p._devPct != null ? devPctColor(p._devPct) : "#475569", fontWeight: p._devPct != null ? 600 : 400 }}>
+                    <td style={{ ...S.td, ...cell.Age, ...numCell }}>{fmtAge(p._age)}</td>
+                    <td style={{ ...S.td, ...cell._devPct, ...numCell, ...(p._devPct != null ? devPctStyle(p._devPct) : { color: T.textDisabled }) }}>
                       {p._devPct != null ? rankSuffix(Math.round(p._devPct * 100)) : "—"}
                     </td>
-                    <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
-                    <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
-                    <td style={S.td}>{orgLabel(p)}</td>
-                    <td style={{ ...S.td, color: levelColor(p.meta?.lev ?? p.Lev) }}>{p.meta?.lev ?? p.Lev ?? "—"}</td>
-                    <td style={{ ...S.td, ...warStyle(p._fv ?? p._baseVal) }}>{fmt(p._fv ?? p._baseVal)}</td>
-                    <td style={{ ...S.td, ...warStyle(p._currentVal) }}>{fmt(p._currentValDisplay ?? p._currentVal)}</td>
-                    <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>
-                    <td style={{ ...S.td, color: "#fbbf24", fontWeight: 600 }}>{p._dollarVal > 0 ? `$${fmt(p._dollarVal, 1)}M` : "—"}</td>
+                    <td style={{ ...S.td, ...cell.POS, ...posCell, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
+                    <td style={{ ...S.td, ...cell._bestPos, ...posCell, color: p._bestPos ? posColor(p._bestPos?.replace("*", "")) : T.textDisabled }}>{p._bestPos || "—"}</td>
+                    <td style={{ ...S.td, ...cell.ORG }}>{orgLabel(p)}</td>
+                    <td style={{ ...S.td, ...cell.Lev }}>{(p.meta?.lev ?? p.Lev) ? <span style={levelBadge(p.meta?.lev ?? p.Lev)}>{p.meta?.lev ?? p.Lev}</span> : <span style={{ color: T.textDisabled }}>—</span>}</td>
+                    <td style={{ ...S.td, ...cell._fv, ...numCell, ...warStyle(p._fv ?? p._baseVal) }}>{fmt(p._fv ?? p._baseVal)}</td>
+                    <td style={{ ...S.td, ...cell._currentVal, ...numCell, ...warStyle(p._currentVal) }}>{fmt(p._currentValDisplay ?? p._currentVal)}</td>
+                    <td style={{ ...S.td, ...cell._baseVal, ...numCell, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>
+                    <td style={{ ...S.td, ...cell._dollarVal, ...numCell, color: p._dollarVal > 0 ? T.warn : T.textDisabled, fontWeight: 600 }}>{p._dollarVal > 0 ? `$${fmt(p._dollarVal, 1)}M` : "—"}</td>
                   </tr>
               ))}
-              {paged.length === 0 && <tr><td colSpan={14} style={{ ...S.td, textAlign: "center", color: "#475569" }}>No prospects found</td></tr>}
+              {paged.length === 0 && <tr><td colSpan={cols.length} style={{ ...S.td, textAlign: "center", color: T.text3 }}>No prospects found</td></tr>}
             </tbody>
           </table>
         </div>
-        <Pagination page={page} totalPages={totalPages} total={displayPool.length} onPrev={() => setPage(Math.max(0, page - 1))} onNext={() => setPage(Math.min(totalPages - 1, page + 1))} />
+        <div style={footWrap}>
+          <Pagination page={page} totalPages={totalPages} total={displayPool.length} onPrev={() => setPage(Math.max(0, page - 1))} onNext={() => setPage(Math.min(totalPages - 1, page + 1))} />
+        </div>
       </Section>
     </div>
   );
@@ -369,21 +396,18 @@ function FarmStackedTooltip({ active, payload, label, playersByTeamTier, hovered
   const tierValue = tierEntry?.value ?? 0;
   if (tierValue === 0 && players.length === 0) return null;
   return (
-    <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: "10px 14px", fontSize: 11, color: "#e2e8f0", maxWidth: 280 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{label}</div>
+    <div style={{ background: T.CHART.tooltipBg, border: `1px solid ${T.CHART.tooltipBorder}`, borderRadius: T.radius, padding: "10px 14px", fontSize: 12, color: T.CHART.tooltipText, maxWidth: 280 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2, fontFamily: T.fonts.narrow }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 8, fontSize: 10, fontWeight: 700,
-          background: FV_TIER_COLORS[tierId].bg, color: FV_TIER_COLORS[tierId].text, border: `1px solid ${FV_TIER_COLORS[tierId].bg}` }}>
-          FV {tierId}
-        </span>
-        <span style={{ color: "#fbbf24", fontWeight: 600 }}>${fmt(tierValue, 1)}M</span>
-        <span style={{ color: "#475569" }}>{players.length} player{players.length !== 1 ? "s" : ""}</span>
+        <span style={tierPill(tierId)}>FV {tierId}</span>
+        <span style={{ color: T.warn, fontWeight: 600 }}>${fmt(tierValue, 1)}M</span>
+        <span style={{ color: T.text3 }}>{players.length} player{players.length !== 1 ? "s" : ""}</span>
       </div>
       {players.map((p, i) => (
-        <div key={i} style={{ display: "flex", gap: 6, color: "#94a3b8", paddingLeft: 4 }}>
-          <span style={{ color: "#e2e8f0", fontWeight: 500, minWidth: 110 }}>{p.name}</span>
-          <span style={{ color: posColor(p.pos), minWidth: 24 }}>{p.pos}</span>
-          <span style={{ color: "#475569" }}>{fmt(p.fv)}</span>
+        <div key={i} style={{ display: "flex", gap: 6, color: T.text2, paddingLeft: 4 }}>
+          <span style={{ color: T.text, fontWeight: 500, minWidth: 110 }}>{p.name}</span>
+          <span style={{ color: posColor(p.pos), minWidth: 24, fontFamily: T.fonts.narrow, fontWeight: 600 }}>{p.pos}</span>
+          <span style={{ color: T.text3, fontVariantNumeric: "tabular-nums" }}>{fmt(p.fv)}</span>
         </div>
       ))}
     </div>
@@ -454,55 +478,62 @@ function FarmRankings({ data, prospectPool, thresholds, dollarValues, onNavigate
   const doSort = (col) => setSort((prev) => ({ col, dir: prev.col === col && prev.dir === "desc" ? "asc" : "desc" }));
   const clickStyle = { cursor: "pointer", textDecoration: "none", borderBottom: "1px dashed currentColor" };
 
+  // Farm columns — groups: # Team | Value #P Avg | tier counts | Ceil Floor Bat Pit | Report (§B.3 item 8).
+  const cols = [
+    { key: "rank", label: "#", w: 35, group: "identity", align: "right" },
+    { key: "team", label: "Team", w: 110, group: "identity" },
+    { key: "totalValue", label: "Value", w: 65, group: "value", align: "right" },
+    { key: "count", label: "#P", w: 35, group: "value", align: "right" },
+    { key: "avgValue", label: "Avg", w: 50, group: "value", align: "right" },
+    ...FV_TIERS.map((t) => ({ key: `tier_${t.id}`, label: t.label, w: 35, group: "tiers", align: "right" })),
+    { key: "ceiling", label: "Ceil", w: 40, group: "scouting", align: "right" },
+    { key: "floor", label: "Floor", w: 42, group: "scouting", align: "right" },
+    { key: "batting", label: "Bat", w: 38, group: "scouting", align: "right" },
+    { key: "pitching", label: "Pit", w: 38, group: "scouting", align: "right" },
+    { key: "report", label: "Scouting Report", w: 260, group: "report" },
+  ];
+  const cell = cellStyles(cols);
+  const sortedLabel = cols.find((c) => c.key === sort.col)?.label;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Rankings Table */}
-      <Section title="Farm System Rankings">
-        <div style={S.tableWrap}>
+      <Section title="Farm System Rankings" count={`(${sortedRankings.length})`}
+        state={sortedLabel ? `Sorted by ${sortedLabel}, ${sort.dir === "asc" ? "ascending" : "descending"}` : null}
+        footer="Click a team or a tier count to open it on the Board.">
+        <div style={edgeWrap}>
           <table style={S.table}>
             <thead><tr>
-              {[
-                { key: "rank", label: "#", w: 35 },
-                { key: "team", label: "Team", w: 110 },
-                { key: "totalValue", label: "Value", w: 65 },
-                { key: "count", label: "#P", w: 35 },
-                { key: "avgValue", label: "Avg", w: 50 },
-                ...FV_TIERS.map((t) => ({ key: `tier_${t.id}`, label: t.label, w: 35 })),
-                { key: "ceiling", label: "Ceil", w: 40 },
-                { key: "floor", label: "Floor", w: 42 },
-                { key: "batting", label: "Bat", w: 38 },
-                { key: "pitching", label: "Pit", w: 38 },
-                { key: "report", label: "Scouting Report", w: 260 },
-              ].map(({ key, label, w }) => (
-                <SortHeader key={key} label={label} width={w} sortCol={sort.col} sortDir={sort.dir} colKey={key}
-                  onClick={() => doSort(key)} />
+              {cols.map((c) => (
+                <SortHeader key={c.key} label={c.label} width={c.w} sortCol={sort.col} sortDir={sort.dir} colKey={c.key} rule={cell[c.key]} align={c.align}
+                  onClick={() => doSort(c.key)} />
               ))}
             </tr></thead>
             <tbody>
               {sortedRankings.map((r, i) => (
-                <tr key={r.team} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
-                  <td style={{ ...S.td, color: "#475569", fontWeight: 600 }}>{r.rank}</td>
-                  <td style={{ ...S.td, fontWeight: 600, color: "#93c5fd" }}>
+                <tr key={r.team} style={i % 2 === 1 ? S.zebraRow : undefined}>
+                  <td style={{ ...S.td, ...cell.rank, ...numCell, color: T.text3, fontWeight: 600 }}>{r.rank}</td>
+                  <td style={{ ...S.td, ...cell.team, fontWeight: 600, color: T.accent }}>
                     <span style={clickStyle} onClick={() => onNavigate(r.team, null)}>{r.team}</span>
                   </td>
-                  <td style={{ ...S.td, color: "#fbbf24", fontWeight: 700 }}>${fmt(r.totalValue, 1)}M</td>
-                  <td style={S.td}>{r.count}</td>
-                  <td style={{ ...S.td, color: "#94a3b8" }}>${fmt(r.avgValue, 1)}</td>
+                  <td style={{ ...S.td, ...cell.totalValue, ...numCell, color: T.warn, fontWeight: 700 }}>${fmt(r.totalValue, 1)}M</td>
+                  <td style={{ ...S.td, ...cell.count, ...numCell }}>{r.count}</td>
+                  <td style={{ ...S.td, ...cell.avgValue, ...numCell, color: T.text2 }}>${fmt(r.avgValue, 1)}</td>
                   {FV_TIERS.map((t) => {
                     const cnt = r.tierCounts[t.id] || 0;
                     return (
-                      <td key={t.id} style={{ ...S.td, color: cnt > 0 ? FV_TIER_COLORS[t.id].bg : TOKENS.textDisabled, fontWeight: cnt > 0 ? 600 : 400 }}>
+                      <td key={t.id} style={{ ...S.td, ...cell[`tier_${t.id}`], ...numCell, color: cnt > 0 ? FV_TIER_COLORS[t.id].bg : T.textDisabled, fontWeight: cnt > 0 ? 600 : 400 }}>
                         {cnt > 0 ? (
                           <span style={clickStyle} onClick={() => onNavigate(r.team, t.id)}>{cnt}</span>
                         ) : 0}
                       </td>
                     );
                   })}
-                  <td style={{ ...S.td, color: scoutingRatingColor(r.ceiling), fontWeight: 600 }}>{r.ceiling}</td>
-                  <td style={{ ...S.td, color: scoutingRatingColor(r.floor), fontWeight: 600 }}>{r.floor}</td>
-                  <td style={{ ...S.td, color: scoutingRatingColor(r.batting), fontWeight: 600 }}>{r.batting}</td>
-                  <td style={{ ...S.td, color: scoutingRatingColor(r.pitching), fontWeight: 600 }}>{r.pitching}</td>
-                  <td style={{ ...S.td, fontSize: 11, color: "#94a3b8", whiteSpace: "normal", maxWidth: 260 }}>{r.report}</td>
+                  <td style={{ ...S.td, ...cell.ceiling, ...numCell, color: scoutingRatingColor(r.ceiling), fontWeight: 600 }}>{r.ceiling}</td>
+                  <td style={{ ...S.td, ...cell.floor, ...numCell, color: scoutingRatingColor(r.floor), fontWeight: 600 }}>{r.floor}</td>
+                  <td style={{ ...S.td, ...cell.batting, ...numCell, color: scoutingRatingColor(r.batting), fontWeight: 600 }}>{r.batting}</td>
+                  <td style={{ ...S.td, ...cell.pitching, ...numCell, color: scoutingRatingColor(r.pitching), fontWeight: 600 }}>{r.pitching}</td>
+                  <td style={{ ...S.td, ...cell.report, fontSize: 12, color: T.text2, whiteSpace: "normal", maxWidth: 260, height: "auto", padding: "5px 12px 5px 6px", lineHeight: 1.35 }}>{r.report}</td>
                 </tr>
               ))}
             </tbody>
@@ -511,15 +542,25 @@ function FarmRankings({ data, prospectPool, thresholds, dollarValues, onNavigate
       </Section>
 
       {/* Stacked Bar Chart */}
-      <Section title="Farm System Values">
+      <Section title="Farm System Values" state="System value ($M) by FV tier"
+        footer={
+          <span style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            {FV_TIERS.map((t) => (
+              <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 10, height: 10, borderRadius: T.radius, background: FV_TIER_COLORS[t.id].bg, display: "inline-block" }} />
+                <span style={{ color: T.text2 }}>{t.label}</span>
+              </span>
+            ))}
+          </span>
+        }>
         <div style={{ width: "100%", height: 420, overflowX: "auto" }}>
           <div style={{ width: Math.max(chartData.length * 50, 600), height: 400 }}>
             <ResponsiveContainer>
               <BarChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 60 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="team" tick={{ fill: "#94a3b8", fontSize: 10 }} angle={-45} textAnchor="end" interval={0} height={60} />
-                <YAxis tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "System Value ($M)", angle: -90, position: "insideLeft", fill: "#475569", fontSize: 11 }} />
-                <Tooltip content={<FarmStackedTooltip playersByTeamTier={playersByTeamTier} hoveredTier={hoveredTier} />} />
+                <CartesianGrid strokeDasharray="3 3" stroke={T.CHART.grid} vertical={false} />
+                <XAxis dataKey="team" tick={{ fill: T.CHART.axis, fontSize: 10 }} angle={-45} textAnchor="end" interval={0} height={60} />
+                <YAxis tick={{ fill: T.CHART.axis, fontSize: 11 }} label={{ value: "System Value ($M)", angle: -90, position: "insideLeft", fill: T.CHART.axis, fontSize: 11 }} />
+                <Tooltip content={<FarmStackedTooltip playersByTeamTier={playersByTeamTier} hoveredTier={hoveredTier} />} cursor={{ fill: T.panel3 }} />
                 {[...FV_TIERS].reverse().map((t) => (
                   <Bar key={t.id} dataKey={`tier_${t.id}`} stackId="value" fill={FV_TIER_COLORS[t.id].bg} name={`FV ${t.label}`}
                     onMouseEnter={() => setHoveredTier(t.id)} onMouseLeave={() => setHoveredTier(null)} />
@@ -527,14 +568,6 @@ function FarmRankings({ data, prospectPool, thresholds, dollarValues, onNavigate
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-          {FV_TIERS.map((t) => (
-            <span key={t.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-              <span style={{ width: 10, height: 10, borderRadius: 2, background: FV_TIER_COLORS[t.id].bg, display: "inline-block" }} />
-              <span style={{ color: "#94a3b8" }}>{t.label}</span>
-            </span>
-          ))}
         </div>
       </Section>
     </div>

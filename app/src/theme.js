@@ -369,8 +369,8 @@ export const S = {
   // its padding so existing Section children still sit inside a padded box.
   section: { background: T.panel, border: `1px solid ${T.line2}`, borderRadius: R, padding: 16 },
   sectionTitle: { fontFamily: T.fonts.narrow, fontSize: 13.5, fontWeight: 700, letterSpacing: "0.01em", color: T.text, margin: 0 },
-  box: { background: T.panel, border: `1px solid ${T.line2}`, borderRadius: R, overflow: "hidden" },                                   // NEW: unpadded scorecard box
-  boxHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 34, padding: "7px 12px", background: T.panel2, borderBottom: `1px solid ${T.line2}`, fontFamily: T.fonts.narrow, fontSize: 13.5, fontWeight: 700, letterSpacing: "0.01em", color: T.text }, // NEW: header strip
+  box: { background: T.panel, border: `1px solid ${T.line2}`, borderRadius: R },                                   // NEW: unpadded scorecard box
+  boxHead: { borderTopLeftRadius: 2, borderTopRightRadius: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 34, padding: "7px 12px", background: T.panel2, borderBottom: `1px solid ${T.line2}`, fontFamily: T.fonts.narrow, fontSize: 13.5, fontWeight: 700, letterSpacing: "0.01em", color: T.text }, // NEW: header strip
   boxHeadRight: { marginLeft: "auto", fontFamily: T.fonts.narrow, fontWeight: 500, fontSize: 12, color: T.text3 },                         // NEW
   boxSub: { color: T.text2, fontSize: 12.5, padding: "10px 12px 0" },                                                                     // NEW
   boxFoot: { fontFamily: T.fonts.narrow, fontSize: 12, color: T.text3, padding: "7px 12px 8px", borderTop: `1px solid ${T.line}` },      // NEW
