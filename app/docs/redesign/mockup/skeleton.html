@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>SKELETON — Free Agent Finder (unstyled)</title>
+<!--
+  SHARED SKELETON for the 5 redesign mockups. Data is real SSB (Spreadsheet Baseball) free agents,
+  game date 2043-10-08, team = Atlanta Braves. Every direction restyles THIS markup. You may change
+  chrome structure (sidebar -> top rail etc.), wrap things, add decorative elements, but keep:
+    - every section, every row, every column, every value below, in this order
+    - the column names exactly as written (they are the real codebase column labels)
+  data-* attributes carry the semantic encodings you must render:
+    data-grade="20|30|40|45|50|55|60|70|80"  -> 20-80 scouting grade ramp (warStyle / gradeStyle)
+    data-pos="C|1B|2B|3B|SS|LF|CF|RF|DH|SP|RP" -> position color (posColor)
+    data-lvl="MLB|AAA|AA|A+|A|R|INT"           -> level color (levelColor)
+    data-tier="80|70|65|60|55|50|45+|45|40+|40|35+" -> FV tier badge (FV_TIER_COLORS)
+    data-z="-2.5 .. +2.5"                       -> z-score heat cell (zToColor)
+    data-prone="Iron Man|Durable|Normal|Fragile|Wrecked" -> injury proneness (proneColor)
+    data-dev="pct"                              -> dev percentile color (devPctColor)
+    data-need="1"                               -> row/cell at a below-average position for my team
+-->
+</head>
+<body>
+<div class="app">
+
+<!-- ============ NAV / CHROME ============ -->
+<nav class="nav" aria-label="Main navigation">
+  <div class="brand">SSB</div>
+  <div class="nav-controls">
+    <label>League</label><div class="select">Spreadsheet Baseball ▾</div>
+    <label>My Team</label><div class="select">Atlanta Braves ▾</div>
+    <label>Game Date</label><div class="input">2043-10-08</div>
+  </div>
+  <ul class="pages">
+    <li data-page="org">My Organization</li>
+    <li data-page="players">All Players</li>
+    <li data-page="fa" class="active">Free Agent Finder</li>
+    <li data-page="waivers">Waiver Wire</li>
+    <li data-page="draft">Draft Board</li>
+    <li data-page="iafa">IAFA Board</li>
+    <li data-page="dev">Dev Analysis</li>
+    <li data-page="scout">Scout View</li>
+    <li data-page="compare">Player Compare</li>
+    <li data-page="r5">Rule 5 Board</li>
+    <li data-page="prospects">Prospects</li>
+    <li data-page="roster">Roster Planner</li>
+    <li data-page="settings" class="settings">Settings</li>
+  </ul>
+</nav>
+
+<main class="content">
+<header class="page-head">
+  <h1>Free Agent Finder</h1>
+  <div class="page-sub">Unsigned players available to sign · pool 1,545 · Atlanta Braves · 2043-10-08</div>
+</header>
+
+<!-- ============ TOP ROW: NEEDS + SMART RANK ============ -->
+<div class="top-row">
+<section class="panel panel-needs">
+  <h2>Team Positional Needs</h2>
+  <table class="needs">
+    <thead><tr><th>POS</th><th>Now</th><th>Score</th><th>Rank</th></tr></thead>
+    <tbody>
+      <tr><td data-pos="C">C</td>   <td class="zbar" data-z="-1.8"></td><td class="num" data-z="-1.8">0.6</td><td class="num" data-z="-1.8">27th</td></tr>
+      <tr><td data-pos="SS">SS</td> <td class="zbar" data-z="-1.1"></td><td class="num" data-z="-1.1">1.4</td><td class="num" data-z="-1.1">23rd</td></tr>
+      <tr><td data-pos="LF">LF</td> <td class="zbar" data-z="-0.7"></td><td class="num" data-z="-0.7">1.9</td><td class="num" data-z="-0.7">20th</td></tr>
+      <tr><td data-pos="RP">RP</td> <td class="zbar" data-z="-0.4"></td><td class="num" data-z="-0.4">2.2</td><td class="num" data-z="-0.4">18th</td></tr>
+      <tr><td data-pos="2B">2B</td> <td class="zbar" data-z="-0.1"></td><td class="num" data-z="-0.1">2.6</td><td class="num" data-z="-0.1">15th</td></tr>
+      <tr><td data-pos="3B">3B</td> <td class="zbar" data-z="0.2"></td> <td class="num" data-z="0.2">2.9</td> <td class="num" data-z="0.2">13th</td></tr>
+      <tr><td data-pos="CF">CF</td> <td class="zbar" data-z="0.5"></td> <td class="num" data-z="0.5">3.3</td> <td class="num" data-z="0.5">10th</td></tr>
+      <tr><td data-pos="1B">1B</td> <td class="zbar" data-z="0.8"></td> <td class="num" data-z="0.8">3.6</td> <td class="num" data-z="0.8">8th</td></tr>
+      <tr><td data-pos="RF">RF</td> <td class="zbar" data-z="1.1"></td> <td class="num" data-z="1.1">3.9</td> <td class="num" data-z="1.1">6th</td></tr>
+      <tr><td data-pos="SP">SP</td> <td class="zbar" data-z="1.6"></td> <td class="num" data-z="1.6">4.4</td> <td class="num" data-z="1.6">3rd</td></tr>
+    </tbody>
+  </table>
+  <div class="panel-foot">Sorted weakest to strongest. 4 positions below league average.</div>
+</section>
+
+<section class="panel panel-smart">
+  <h2>Smart Rank Adjustments</h2>
+  <ul class="toggles">
+    <li class="toggle on"><span class="switch"></span><div><b>Future Value</b><small>Use FV (cur + age-weighted gap) instead of raw potential</small></div></li>
+    <li class="toggle on"><span class="switch"></span><div><b>Org Positional Need</b><small>Boost players at your org's weak positions</small></div></li>
+    <li class="toggle"><span class="switch"></span><div><b>Injury Proneness</b><small>Bonus for Iron Man / Durable, penalty for Fragile / Wrecked</small></div></li>
+    <li class="toggle"><span class="switch"></span><div><b>Intangibles</b><small>Bonus for elite 20-80 intangible grades, penalty for poor ones</small></div></li>
+  </ul>
+</section>
+</div>
+
+<!-- ============ FA BOARD ============ -->
+<section class="panel panel-board">
+  <h2>Free Agent Board <span class="count">(1,545)</span></h2>
+  <div class="toolbar">
+    <div class="select pos-filter">All Positions ▾</div>
+    <input class="input search" placeholder="Search name..." />
+    <div class="range"><label>Age</label><input class="input" placeholder="min"/><span>–</span><input class="input" placeholder="max"/></div>
+    <div class="range"><label>Pro Yrs</label><input class="input" placeholder="min"/><span>–</span><input class="input" placeholder="max"/></div>
+    <div class="toggle inline"><span class="switch"></span><div><b>Gap fills only</b><small>Only positions below league avg</small></div></div>
+  </div>
+  <table class="board">
+    <thead><tr>
+      <th class="sorted desc">Smart ▼</th><th>Name</th><th>Age</th><th>POS</th><th>Best</th><th>FV</th><th>WAR</th><th>WAR P</th><th>Dev%</th><th>Pro Yrs</th><th>Prone</th><th>Salary</th>
+    </tr></thead>
+    <tbody>
+      <tr data-need="1"><td class="num" data-grade="60">3.75</td><td class="name">Chris Rae</td><td class="num">25.4</td><td data-pos="LF" data-need="1">LF <i class="need">NEED</i></td><td data-pos="LF">LF</td><td class="num" data-grade="60">3.41</td><td class="num" data-grade="60">3.06</td><td class="num" data-grade="60">3.49</td><td class="num" data-dev="58">58th</td><td class="num">7</td><td data-prone="Normal">Normal</td><td class="num">$720,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="60">3.62</td><td class="name">Ernie Johnson</td><td class="num">28.3</td><td data-pos="C" data-need="1">C <i class="need">NEED</i></td><td data-pos="C">C</td><td class="num" data-grade="55">2.95</td><td class="num" data-grade="55">2.89</td><td class="num" data-grade="55">2.97</td><td class="num" data-dev="71">71st</td><td class="num">11</td><td data-prone="Normal">Normal</td><td class="num">$950,000</td></tr>
+      <tr><td class="num" data-grade="60">3.62</td><td class="name">Bobby Pierce</td><td class="num">26.1</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td class="num" data-grade="60">3.62</td><td class="num" data-grade="60">3.40</td><td class="num" data-grade="60">3.70</td><td class="num" data-dev="64">64th</td><td class="num">8</td><td data-prone="Normal">Normal</td><td class="num">$1,200,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="60">3.24</td><td class="name">Andres Vazquez</td><td class="num">31.6</td><td data-pos="C" data-need="1">C <i class="need">NEED</i></td><td data-pos="C">C</td><td class="num" data-grade="55">2.63</td><td class="num" data-grade="55">2.64</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">12</td><td data-prone="Iron Man">Iron Man</td><td class="num">$1,500,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="60">3.17</td><td class="name">Raul Medina</td><td class="num">29.4</td><td data-pos="C" data-need="1">C <i class="need">NEED</i></td><td data-pos="C">C</td><td class="num" data-grade="55">2.58</td><td class="num" data-grade="55">2.59</td><td class="num" data-grade="55">2.58</td><td class="num" data-dev="49">49th</td><td class="num">11</td><td data-prone="Normal">Normal</td><td class="num">$1,100,000</td></tr>
+      <tr><td class="num" data-grade="60">3.10</td><td class="name">Alvaro Grajales</td><td class="num">29.0</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td class="num" data-grade="60">3.10</td><td class="num" data-grade="55">2.70</td><td class="num" data-grade="60">3.52</td><td class="num" data-dev="55">55th</td><td class="num">11</td><td data-prone="Fragile">Fragile</td><td class="num">$850,000</td></tr>
+      <tr><td class="num" data-grade="60">3.01</td><td class="name">Edgar Pozas</td><td class="num">33.2</td><td data-pos="CF">CF</td><td data-pos="LF">LF</td><td class="num" data-grade="60">3.01</td><td class="num" data-grade="60">3.03</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">12</td><td data-prone="Durable">Durable</td><td class="num">$2,400,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="55">2.86</td><td class="name">Nate Dukes</td><td class="num">30.1</td><td data-pos="SS" data-need="1">SS <i class="need">NEED</i></td><td data-pos="SS">SS</td><td class="num" data-grade="55">2.39</td><td class="num" data-grade="55">2.38</td><td class="num" data-grade="55">2.41</td><td class="num" data-dev="38">38th</td><td class="num">9</td><td data-prone="Normal">Normal</td><td class="num">$980,000</td></tr>
+      <tr><td class="num" data-grade="55">2.74</td><td class="name">Tim Stabb</td><td class="num">25.9</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td class="num" data-grade="55">2.74</td><td class="num" data-grade="55">2.59</td><td class="num" data-grade="55">2.88</td><td class="num" data-dev="47">47th</td><td class="num">7</td><td data-prone="Fragile">Fragile</td><td class="num">$720,000</td></tr>
+      <tr><td class="num" data-grade="55">2.47</td><td class="name">Sam Goodnight</td><td class="num">27.2</td><td data-pos="SP">SP</td><td data-pos="SP">SP</td><td class="num" data-grade="55">2.47</td><td class="num" data-grade="55">2.17</td><td class="num" data-grade="55">2.55</td><td class="num" data-dev="52">52nd</td><td class="num">9</td><td data-prone="Fragile">Fragile</td><td class="num">$1,400,000</td></tr>
+      <tr><td class="num" data-grade="55">2.39</td><td class="name">Joe Spoden</td><td class="num">28.5</td><td data-pos="SP">SP</td><td data-pos="SP">SP</td><td class="num" data-grade="55">2.39</td><td class="num" data-grade="55">2.12</td><td class="num" data-grade="55">2.57</td><td class="num" data-dev="44">44th</td><td class="num">10</td><td data-prone="Normal">Normal</td><td class="num">$1,050,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="55">2.15</td><td class="name">Juan Rojas</td><td class="num">39.3</td><td data-pos="RP" data-need="1">RP <i class="need">NEED</i></td><td data-pos="RP">RP</td><td class="num" data-grade="50">1.95</td><td class="num" data-grade="50">1.95</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">21</td><td data-prone="Fragile">Fragile</td><td class="num">$720,000</td></tr>
+    </tbody>
+  </table>
+  <div class="pagination"><span>Showing 1–12 of 1,545</span><button>‹ Prev</button><span>Page 1 of 129</span><button>Next ›</button></div>
+</section>
+
+<!-- ============ ROW-LEVEL DETAIL (specimen) ============ -->
+<section class="panel panel-detail">
+  <h2>Row-level detail</h2>
+  <p class="panel-sub">One table row enlarged, plus the semantic encodings rendered in this direction's palette.</p>
+
+  <table class="specimen">
+    <thead><tr><th>Name</th><th>POS</th><th>Lvl</th><th>FV</th><th>WAR</th><th>Strength z</th></tr></thead>
+    <tbody><tr>
+      <td class="name">Bobby Pierce</td>
+      <td><span class="badge" data-pos="CF">CF</span></td>
+      <td><span class="badge" data-lvl="AAA">AAA</span></td>
+      <td><span class="tier" data-tier="55">55</span></td>
+      <td class="num" data-grade="60">3.40</td>
+      <td class="zcell" data-z="-1.8">−1.8</td>
+    </tr></tbody>
+  </table>
+
+  <div class="encodings">
+    <div class="enc"><h3>20–80 grade ramp (stat text)</h3>
+      <div class="swatches">
+        <span class="num" data-grade="20">20 · −2.10</span><span class="num" data-grade="30">30 · −0.85</span><span class="num" data-grade="40">40 · 0.30</span><span class="num" data-grade="50">50 · 1.09</span><span class="num" data-grade="60">60 · 3.45</span><span class="num" data-grade="70">70 · 5.81</span><span class="num" data-grade="80">80 · 8.17</span>
+      </div></div>
+    <div class="enc"><h3>Position colors</h3>
+      <div class="swatches">
+        <span class="badge" data-pos="C">C</span><span class="badge" data-pos="1B">1B</span><span class="badge" data-pos="2B">2B</span><span class="badge" data-pos="3B">3B</span><span class="badge" data-pos="SS">SS</span><span class="badge" data-pos="LF">LF</span><span class="badge" data-pos="CF">CF</span><span class="badge" data-pos="RF">RF</span><span class="badge" data-pos="DH">DH</span><span class="badge" data-pos="SP">SP</span><span class="badge" data-pos="RP">RP</span>
+      </div></div>
+    <div class="enc"><h3>Level colors</h3>
+      <div class="swatches">
+        <span class="badge" data-lvl="MLB">MLB</span><span class="badge" data-lvl="AAA">AAA</span><span class="badge" data-lvl="AA">AA</span><span class="badge" data-lvl="A+">A+</span><span class="badge" data-lvl="A">A</span><span class="badge" data-lvl="R">R</span><span class="badge" data-lvl="INT">INT</span>
+      </div></div>
+    <div class="enc"><h3>FV tier badges</h3>
+      <div class="swatches">
+        <span class="tier" data-tier="80">80</span><span class="tier" data-tier="70">70</span><span class="tier" data-tier="65">65</span><span class="tier" data-tier="60">60</span><span class="tier" data-tier="55">55</span><span class="tier" data-tier="50">50</span><span class="tier" data-tier="45+">45+</span><span class="tier" data-tier="45">45</span><span class="tier" data-tier="40+">40+</span><span class="tier" data-tier="40">40</span><span class="tier" data-tier="35+">35+</span>
+      </div></div>
+    <div class="enc"><h3>z-score heat cells (Positional Strength)</h3>
+      <div class="swatches">
+        <span class="zcell" data-z="-2.5">−2.5</span><span class="zcell" data-z="-2">−2.0</span><span class="zcell" data-z="-1">−1.0</span><span class="zcell" data-z="-0.5">−0.5</span><span class="zcell" data-z="0">0.0</span><span class="zcell" data-z="0.5">+0.5</span><span class="zcell" data-z="1">+1.0</span><span class="zcell" data-z="2">+2.0</span><span class="zcell" data-z="2.5">+2.5</span>
+      </div></div>
+    <div class="enc"><h3>Injury proneness</h3>
+      <div class="swatches">
+        <span data-prone="Iron Man">Iron Man</span><span data-prone="Durable">Durable</span><span data-prone="Normal">Normal</span><span data-prone="Fragile">Fragile</span><span data-prone="Wrecked">Wrecked</span>
+      </div></div>
+  </div>
+</section>
+
+<!-- ============ DENSITY PROOF ============ -->
+<section class="panel panel-density">
+  <h2>Density proof — All Players columns at 1440px</h2>
+  <p class="panel-sub">24 columns must fit with no horizontal scroll at 1440px viewport width.</p>
+  <table class="dense">
+    <thead><tr><th>Name</th><th>Age</th><th>POS</th><th>Best</th><th>Org</th><th>Lvl</th><th>B/T</th><th>OVR</th><th>POT</th><th>FV</th><th>WAR</th><th>WAR P</th><th>Floor</th><th>Dev%</th><th>OBP</th><th>wOBA</th><th>BsR</th><th>DEF</th><th>INTG</th><th>Prone</th><th>40M</th><th>R5</th><th>Opt</th><th>Salary</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Bobby Pierce</td><td class="num">26.1</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td>FA</td><td>—</td><td>L/R</td><td class="num">44</td><td class="num">44</td><td class="num" data-grade="60">3.62</td><td class="num" data-grade="60">3.40</td><td class="num" data-grade="60">3.70</td><td class="num" data-grade="55">2.10</td><td class="num" data-dev="64">64th</td><td class="num">.312</td><td class="num">.307</td><td class="num" data-grade="55">1.7</td><td class="num" data-grade="60">+4.2</td><td class="num" data-grade="55">55</td><td data-prone="Normal">Normal</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$1,200,000</td></tr>
+      <tr><td class="name">Chris Rae</td><td class="num">25.4</td><td data-pos="LF">LF</td><td data-pos="LF">LF</td><td>FA</td><td>—</td><td>R/R</td><td class="num">39</td><td class="num">39</td><td class="num" data-grade="60">3.41</td><td class="num" data-grade="60">3.06</td><td class="num" data-grade="60">3.49</td><td class="num" data-grade="55">1.80</td><td class="num" data-dev="58">58th</td><td class="num">.306</td><td class="num">.290</td><td class="num" data-grade="70">4.0</td><td class="num" data-grade="50">+1.1</td><td class="num" data-grade="45">45</td><td data-prone="Normal">Normal</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$720,000</td></tr>
+      <tr><td class="name">Ernie Johnson</td><td class="num">28.3</td><td data-pos="C">C</td><td data-pos="C">C</td><td>FA</td><td>—</td><td>R/R</td><td class="num">40</td><td class="num">40</td><td class="num" data-grade="55">2.95</td><td class="num" data-grade="55">2.89</td><td class="num" data-grade="55">2.97</td><td class="num" data-grade="55">2.20</td><td class="num" data-dev="71">71st</td><td class="num">.291</td><td class="num">.280</td><td class="num" data-grade="40">−1.3</td><td class="num" data-grade="70">+6.8</td><td class="num" data-grade="50">50</td><td data-prone="Normal">Normal</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$950,000</td></tr>
+      <tr><td class="name">Edgar Pozas</td><td class="num">33.2</td><td data-pos="CF">CF</td><td data-pos="LF">LF</td><td>FA</td><td>—</td><td>L/L</td><td class="num">43</td><td class="num">43</td><td class="num" data-grade="60">3.01</td><td class="num" data-grade="60">3.03</td><td class="num dim">—</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">.299</td><td class="num">.290</td><td class="num" data-grade="55">2.0</td><td class="num" data-grade="40">−2.4</td><td class="num" data-grade="60">60</td><td data-prone="Durable">Durable</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$2,400,000</td></tr>
+      <tr><td class="name">Javy Abeyta</td><td class="num">23.2</td><td data-pos="SS">SS</td><td data-pos="SS">SS</td><td>ATL</td><td><span class="badge" data-lvl="AA">AA</span></td><td>R/R</td><td class="num">31</td><td class="num">52</td><td class="num" data-grade="50">1.85</td><td class="num" data-grade="40">−1.20</td><td class="num" data-grade="55">2.90</td><td class="num" data-grade="45">0.40</td><td class="num" data-dev="33">33rd</td><td class="num">.241</td><td class="num">.230</td><td class="num" data-grade="50">0.8</td><td class="num" data-grade="70">+7.1</td><td class="num" data-grade="50">50</td><td data-prone="Normal">Normal</td><td>—</td><td class="check">✓</td><td class="num">3</td><td class="num">$180,000</td></tr>
+      <tr><td class="name">Jaisten Adkins</td><td class="num">34.5</td><td data-pos="3B">3B</td><td data-pos="1B">1B</td><td>NYM</td><td><span class="badge" data-lvl="MLB">MLB</span></td><td>R/R</td><td class="num">41</td><td class="num">41</td><td class="num" data-grade="45">0.49</td><td class="num" data-grade="45">0.49</td><td class="num dim">—</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">.280</td><td class="num">.270</td><td class="num" data-grade="40">−2.1</td><td class="num" data-grade="40">−3.0</td><td class="num" data-grade="30">35</td><td data-prone="Wrecked">Wrecked</td><td class="check">✓</td><td>—</td><td class="num">0</td><td class="num">$3,200,000</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</div>
+</body></html>

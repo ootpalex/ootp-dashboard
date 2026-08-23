@@ -1,38 +1,38 @@
 // MiLB Free Agents accordion — prospects losing MiLB rights in the planning year.
-import { S } from "../../theme.js";
+import { TOKENS as T, S } from "../../theme.js";
 import { CompactRowHeader, CompactPlayerRow } from "./CompactPlayerRow.jsx";
+import { POTENTIAL_CHIP_BG, actionBtn } from "./_shared.js";
 
 export function MlfaSection({
   mlfaPlayers, activePlanYear, showMlfa, setShowMlfa, moves, applyMove, onSelectPlayer,
 }) {
   if (mlfaPlayers.length === 0) return null;
+  const violet = T.CHART.series5; // MiLB-FA family (D.5)
   return (
-    <div style={{ background: "rgba(15,23,42,0.6)", border: "1px solid #1e293b", borderRadius: 8, marginBottom: 12 }}>
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "10px 14px", borderBottom: "1px solid #1e293b",
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#c084fc" }}>
-          MiLB Free Agents ({activePlanYear}) — {mlfaPlayers.length} player{mlfaPlayers.length !== 1 ? "s" : ""}
+    <div style={S.box}>
+      <div style={{ ...S.boxHead, paddingLeft: 14, boxShadow: `inset 3px 0 0 ${violet}` }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span>MiLB Free Agents ({activePlanYear})</span>
+          <span style={{ fontWeight: 500, color: T.text3 }}>{mlfaPlayers.length} player{mlfaPlayers.length !== 1 ? "s" : ""}</span>
         </span>
         <button
           onClick={() => setShowMlfa(!showMlfa)}
-          style={{ ...S.pillBtn, fontSize: 10, padding: "3px 10px", borderColor: "#7c3aed", color: "#c084fc" }}
+          style={actionBtn(violet)}
         >
           {showMlfa ? "Hide" : "Show"}
         </button>
       </div>
       {showMlfa && (
-        <div style={{ padding: 8 }}>
+        <div>
           <CompactRowHeader />
           {mlfaPlayers.map(p => {
-            const tag = { label: "MiLB FA", bg: "rgba(124,58,237,0.15)", color: "#c084fc" };
+            const tag = { label: "MiLB FA", bg: POTENTIAL_CHIP_BG, color: violet };
             const alreadySigned = moves[p._uid]?.action === "sign_milb";
             const resignAction = alreadySigned
-              ? <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 9 }}>Re-signed</span>
+              ? <span style={{ color: T.good, fontFamily: T.fonts.narrow, fontWeight: 700, fontSize: 11 }}>Re-signed</span>
               : <button
                   onClick={(e) => { e.stopPropagation(); applyMove(p._uid, "sign_milb"); }}
-                  style={{ ...S.pillBtn, borderColor: "#22c55e", color: "#4ade80", fontSize: 9, padding: "2px 8px" }}
+                  style={actionBtn("good", { fontSize: 11, padding: "1px 8px" })}
                 >Re-sign</button>;
             return <CompactPlayerRow key={p._uid} player={p} onSelect={onSelectPlayer} tags={[tag]} actions={resignAction} />;
           })}

@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
-import { S } from "../../theme.js";
+import { TOKENS as T, S, mixOklab } from "../../theme.js";
+import { colRule } from "../../components/shared.jsx";
 import { fmtMLD, fmtSalary } from "../../utils/helpers.js";
 import {
   parseContractStatus,
@@ -9,18 +10,27 @@ import {
   getOptionsInfo,
 } from "../../utils/rosterPlanning/index.js";
 
-const sectionLabel = { fontSize: 9, color: "#475569", marginBottom: 6, letterSpacing: 1 };
-const tS = { background: "rgba(15,23,42,0.6)", borderRadius: 6, border: "1px solid #1e293b", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
-const tL = { fontSize: 9, color: "#475569", letterSpacing: 1, textTransform: "uppercase" };
-const tV = { fontSize: 13, fontWeight: 700, color: "#e2e8f0" };
+import { TAB_BODY, TILE as tS, TILE_LABEL as tL, TILE_VALUE as tV, SECTION_LABEL as sectionLabel } from "./_shared.js";
 
+// Contract status family (D.5): signed accent · arb warn · pre-arb goodSoft ·
+// fa text2 · minors CHART.series6; each chip wears a token fill.
 const STATUS_STYLE = {
-  signed:    { label: "Signed",    color: "#60a5fa" },
-  arb:       { label: "Arbitration", color: "#fbbf24" },
-  "pre-arb": { label: "Pre-Arb",   color: "#a3e635" },
-  fa:        { label: "Free Agent",color: "#94a3b8" },
-  minors:    { label: "Minor Lg",  color: "#f472b6" },
+  signed:    { label: "Signed",      color: T.accent,        bg: T.accentBg2 },
+  arb:       { label: "Arbitration", color: T.warn,          bg: T.warnBg },
+  "pre-arb": { label: "Pre-Arb",     color: T.goodSoft,      bg: T.goodBg },
+  fa:        { label: "Free Agent",  color: T.text2,         bg: T.panel3 },
+  minors:    { label: "Minor Lg",    color: T.CHART.series6, bg: mixOklab(T.CHART.series6, 0.10, T.panel) },
 };
+// Year-table status text colours (same family; "signed" rows read as plain text).
+const ROW_STATUS_COLOR = { fa: T.text2, minors: T.CHART.series6, arb: T.warn, "pre-arb": T.goodSoft, option: T.CHART.series5 };
+// Year table columns (§B.3 item 14): Year Age Status | Salary | Notes.
+const YEAR_COLS = [
+  { key: "year", label: "Year", group: "identity" },
+  { key: "age", label: "Age", group: "identity" },
+  { key: "status", label: "Status", group: "identity" },
+  { key: "salary", label: "Salary", group: "money", align: "right" },
+  { key: "notes", label: "Notes", group: "notes" },
+];
 const OPTION_LABEL = { club: "Team Option", player: "Player Option", vesting: "Vesting Option" };
 
 // Per-year rendering helpers — `_projection.baseline[year]` already encodes
@@ -171,19 +181,15 @@ function ContractTab({ player, gameYear }) {
   if (status.isSuperTwo) summaryParts.push("Super-Two candidate");
 
   return (
-    <div style={{ padding: "12px 18px" }}>
+    <div style={TAB_BODY}>
       {/* Status header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <span style={{
-          fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 4,
-          background: `${stStyle.color}1f`, color: stStyle.color, letterSpacing: 0.6, textTransform: "uppercase",
-        }}>
+        <span style={{ ...S.badge, lineHeight: "19px", padding: "0 9px", background: stStyle.bg, color: stStyle.color, border: `1px solid ${stStyle.color}` }}>
           {stStyle.label}
         </span>
-        <span style={{ fontSize: 12, color: "#94a3b8" }}>{summaryParts.join(" · ")}</span>
+        <span style={{ fontSize: 12.5, color: T.text2 }}>{summaryParts.join(" · ")}</span>
         {contract?.noTrade && (
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#fbbf24",
-                         border: "1px solid #fbbf2444", background: "#fbbf2415", padding: "2px 6px", borderRadius: 4 }}>
+          <span style={{ ...S.badge, fontSize: 11, color: T.warn, border: `1px solid ${T.warn}`, background: "transparent" }}>
             NO-TRADE
           </span>
         )}
@@ -204,7 +210,7 @@ function ContractTab({ player, gameYear }) {
           <span style={tV}>
             {opts.used}/3 used
             {opts.outOfOptions && (
-              <span style={{ fontSize: 10, color: "#f87171", marginLeft: 6, fontWeight: 700 }}>OUT</span>
+              <span style={{ fontFamily: T.fonts.narrow, fontSize: 11, color: T.bad, marginLeft: 6, fontWeight: 700 }}>OUT</span>
             )}
           </span>
         </div>
@@ -215,7 +221,7 @@ function ContractTab({ player, gameYear }) {
         {(isMinors || r5?.r5Year != null) && (
           <div style={tS}>
             <span style={tL}>R5 Eligible</span>
-            <span style={{ ...tV, color: r5?.isProtected ? "#94a3b8" : (r5?.r5Countdown === 0 ? "#f87171" : "#fbbf24") }}>
+            <span style={{ ...tV, color: r5?.isProtected ? T.text2 : (r5?.r5Countdown === 0 ? T.bad : T.warn) }}>
               {r5?.isProtected ? "Protected (40-Man)" :
                 r5?.r5Year == null ? "—" :
                 r5.r5Countdown === 0 ? "Now" :
@@ -232,41 +238,38 @@ function ContractTab({ player, gameYear }) {
         {status.isSuperTwo && (
           <div style={tS}>
             <span style={tL}>Super-Two</span>
-            <span style={{ ...tV, color: "#fbbf24" }}>Yes</span>
+            <span style={{ ...tV, color: T.CHART.series5 }}>Yes</span>
           </div>
         )}
       </div>
 
       {/* Year-by-year breakdown */}
-      <div style={sectionLabel}>YEAR-BY-YEAR</div>
+      <div style={sectionLabel}>Year-by-year</div>
       <div style={S.tableWrap}>
         <table style={S.table}>
           <thead><tr>
-            {["Year", "Age", "Status", "Salary", "Notes"].map((h) => (
-              <th key={h} style={{ ...S.th, padding: "5px 9px" }}>{h}</th>
+            {YEAR_COLS.map((c, ci) => (
+              <th key={c.key} style={{ ...S.th, padding: "6px 9px", ...(colRule(YEAR_COLS, ci) || {}), ...(c.align ? { textAlign: c.align } : {}) }}>{c.label}</th>
             ))}
           </tr></thead>
           <tbody>
-            {rows.map((r) => {
+            {rows.map((r, ri) => {
               const notes = [];
               if (r.optionType) notes.push(OPTION_LABEL[r.optionType]);
               if (r.buyout) notes.push(`Buyout ${fmtSalary(r.buyout) || "—"}`);
               if (r.r5Eligible) notes.push("R5 eligible");
               if (r.guaranteed === false) notes.push("Non-guaranteed");
               if (r.status === "fa" && meta.dem && meta.dem !== "-") notes.push(`Demand: ${meta.dem}`);
-              const statusColor = r.status === "fa" ? "#94a3b8"
-                : r.status === "minors" ? "#f472b6"
-                : r.status === "arb" ? "#fbbf24"
-                : r.status === "pre-arb" ? "#a3e635"
-                : r.status === "option" ? "#a78bfa"
-                : "#cbd5e1";
+              const statusColor = ROW_STATUS_COLOR[r.status] ?? T.text;
+              const td = (ci, extra) => ({ ...S.td, padding: "0 9px", ...(colRule(YEAR_COLS, ci) || {}), ...extra });
+              const rowBg = r.r5Eligible ? { background: T.warnBg } : (ri % 2 === 1 ? S.zebraRow : undefined);
               return (
-                <tr key={r.year} style={r.r5Eligible ? { background: "rgba(251,191,36,0.05)" } : undefined}>
-                  <td style={{ ...S.td, fontWeight: 700, color: "#e2e8f0" }}>{r.year}</td>
-                  <td style={S.td}>{r.age ?? "—"}</td>
-                  <td style={{ ...S.td, color: statusColor }}>{r.statusLabel}</td>
-                  <td style={S.td}>{fmtSalary(r.salary) || "—"}</td>
-                  <td style={{ ...S.td, color: "#64748b" }}>{notes.join(" · ") || ""}</td>
+                <tr key={r.year} style={rowBg}>
+                  <td style={td(0, { fontWeight: 700, color: T.text })}>{r.year}</td>
+                  <td style={td(1, { color: T.text2 })}>{r.age ?? "—"}</td>
+                  <td style={td(2, { color: statusColor, fontWeight: r.status === "fa" || r.status === "option" ? 600 : 400 })}>{r.statusLabel}</td>
+                  <td style={td(3, { textAlign: "right", color: r.salary != null ? T.text : T.textDisabled })}>{fmtSalary(r.salary) || "—"}</td>
+                  <td style={td(4, { color: T.text3, whiteSpace: "normal" })}>{notes.join(" · ") || ""}</td>
                 </tr>
               );
             })}
@@ -276,12 +279,12 @@ function ContractTab({ player, gameYear }) {
 
       {/* Footer */}
       {contract?.extension && (
-        <div style={{ marginTop: 8, fontSize: 11, color: "#94a3b8" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: T.text3 }}>
           Extension begins {contract.seasonYear + contract.years} ({contract.extension.years} year{contract.extension.years === 1 ? "" : "s"})
         </div>
       )}
       {meta.dfa && meta.dfa !== "-" && (
-        <div style={{ marginTop: 4, fontSize: 11, color: "#fbbf24" }}>
+        <div style={{ marginTop: 4, fontSize: 12, color: T.warn }}>
           DFA status: {meta.dfa}
         </div>
       )}

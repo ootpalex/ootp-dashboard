@@ -1,31 +1,31 @@
 // Forced-choice action queues at the top of the planner. All panels are
 // collapsible so they don't dominate the page when the list grows long.
+// Styling: scorecard box + header strip; the panel title carries the semantic
+// colour (warn / bad / accent) instead of a tinted background.
 import { useState } from "react";
-import { S, posColor } from "../../theme.js";
+import { TOKENS as T, S, posColor } from "../../theme.js";
 import { fmtSalary } from "../../utils/helpers.js";
+import { actionBtn } from "./_shared.js";
 
-function CollapsiblePanel({ title, count, accent, headerBg, headerColor, children, defaultOpen = true }) {
+function CollapsiblePanel({ title, count, accent, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{
-      background: `${accent}0d`, border: `1px solid ${accent}`,
-      borderRadius: 8, padding: 0, marginBottom: 12,
-    }}>
+    <div style={S.box}>
       <button
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
         style={{
-          display: "flex", alignItems: "center", gap: 8, width: "100%",
-          padding: "10px 14px", borderBottom: open ? `1px solid ${accent}` : "none",
-          background: headerBg || `${accent}14`, borderRadius: open ? "8px 8px 0 0" : 8,
-          border: "none", cursor: "pointer", textAlign: "left",
+          ...S.boxHead, width: "100%", justifyContent: "flex-start", gap: 8, cursor: "pointer", textAlign: "left",
+          paddingLeft: 14, boxShadow: `inset 3px 0 0 ${accent}`, color: accent,
+          borderBottom: open ? `1px solid ${T.line2}` : "none", borderTop: "none", borderLeft: "none", borderRight: "none",
+          borderBottomLeftRadius: open ? 0 : 2, borderBottomRightRadius: open ? 0 : 2,
         }}
       >
-        <span style={{ color: headerColor, fontSize: 11, fontWeight: 700, width: 12 }}>{open ? "▼" : "▶"}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: headerColor }}>
-          {title}{count != null ? ` (${count})` : ""}
-        </span>
+        <span style={{ color: T.text3, fontSize: 10, width: 12 }}>{open ? "▼" : "▶"}</span>
+        <span>{title}</span>
+        {count != null && <span style={{ fontWeight: 500, color: T.text3 }}>({count})</span>}
       </button>
-      {open && <div style={{ padding: "4px 8px" }}>{children}</div>}
+      {open && <div style={{ padding: "0 0 2px" }}>{children}</div>}
     </div>
   );
 }
@@ -33,13 +33,17 @@ function CollapsiblePanel({ title, count, accent, headerBg, headerColor, childre
 function QueueRow({ children }) {
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 10, padding: "6px 8px",
-      borderBottom: "1px solid #1e293b",
+      display: "flex", alignItems: "center", gap: 10, padding: "4px 12px", minHeight: 31,
+      borderBottom: `1px solid ${T.line}`, fontSize: 12.5,
     }}>
       {children}
     </div>
   );
 }
+
+const posStyle = (pos) => ({ color: posColor(pos), fontFamily: T.fonts.narrow, fontWeight: 700, fontSize: 12.5, width: 28 });
+const nameStyle = { color: T.text, fontWeight: 600, flex: 1 };
+const decidedStyle = (ok) => ({ fontFamily: T.fonts.narrow, fontSize: 12, color: ok ? T.good : T.bad, fontWeight: 700 });
 
 export function OptionDecisionsPanel({ optionDecisions, projection, activePlanYear, moves, applyMove }) {
   if (optionDecisions.length === 0) return null;
@@ -47,9 +51,7 @@ export function OptionDecisionsPanel({ optionDecisions, projection, activePlanYe
     <CollapsiblePanel
       title={`Team Options Due (${activePlanYear})`}
       count={optionDecisions.length}
-      accent="#78350f"
-      headerBg="rgba(251,191,36,0.08)"
-      headerColor="#fde047"
+      accent={T.warn}
     >
       {optionDecisions.map(ep => {
         const meta = ep.meta || {};
@@ -57,22 +59,20 @@ export function OptionDecisionsPanel({ optionDecisions, projection, activePlanYe
         const decision = moves[ep._uid]?.action;
         return (
           <QueueRow key={ep._uid}>
-            <span style={{ color: posColor(meta.pos), fontWeight: 700, fontSize: 11, width: 28 }}>{meta.pos}</span>
-            <span style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 600, flex: 1 }}>{meta.name}</span>
-            <span style={{ color: "#fde047", fontSize: 11 }}>{optStatus?.label || "Team Opt"}</span>
+            <span style={posStyle(meta.pos)}>{meta.pos}</span>
+            <span style={nameStyle}>{meta.name}</span>
+            <span style={{ color: T.warn, fontSize: 12, fontWeight: 600 }}>{optStatus?.label || "Team Opt"}</span>
             {!decision ? (
               <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => applyMove(ep._uid, "accept_option")}
-                  style={{ ...S.pillBtn, borderColor: "#22c55e", color: "#4ade80", fontSize: 10, padding: "3px 10px" }}>
+                <button onClick={() => applyMove(ep._uid, "accept_option")} style={actionBtn("good")}>
                   Accept
                 </button>
-                <button onClick={() => applyMove(ep._uid, "decline_option")}
-                  style={{ ...S.pillBtn, borderColor: "#ef4444", color: "#fca5a5", fontSize: 10, padding: "3px 10px" }}>
+                <button onClick={() => applyMove(ep._uid, "decline_option")} style={actionBtn("bad")}>
                   Decline
                 </button>
               </div>
             ) : (
-              <span style={{ fontSize: 10, color: decision === "accept_option" ? "#4ade80" : "#fca5a5", fontWeight: 600 }}>
+              <span style={decidedStyle(decision === "accept_option")}>
                 {decision === "accept_option" ? "Accepted" : "Declined"}
               </span>
             )}
@@ -89,9 +89,7 @@ export function ExpiringContractsPanel({ expiringPlayers, projection, gameYear, 
     <CollapsiblePanel
       title="Expiring Contracts"
       count={expiringPlayers.length}
-      accent="#7f1d1d"
-      headerBg="rgba(239,68,68,0.08)"
-      headerColor="#fca5a5"
+      accent={T.bad}
     >
       {expiringPlayers.map(ep => {
         const meta = ep.meta || {};
@@ -103,19 +101,18 @@ export function ExpiringContractsPanel({ expiringPlayers, projection, gameYear, 
         const alreadySigned = moves[ep._uid]?.action === "sign";
         return (
           <QueueRow key={ep._uid}>
-            <span style={{ color: posColor(meta.pos), fontWeight: 700, fontSize: 11, width: 28 }}>{meta.pos}</span>
-            <span style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 600, flex: 1 }}>{meta.name}</span>
-            <span style={{ color: demStr ? "#fbbf24" : "#475569", fontSize: 11, fontWeight: 600, minWidth: 80, textAlign: "right" }}
+            <span style={posStyle(meta.pos)}>{meta.pos}</span>
+            <span style={nameStyle}>{meta.name}</span>
+            <span style={{ color: demStr ? T.warn : T.textDisabled, fontSize: 12, fontWeight: 600, minWidth: 80, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
               title="OOTP salary demand — approximate AAV for re-signing">
               {demStr ? `${demStr} demand` : "—"}
             </span>
             {!alreadySigned ? (
-              <button onClick={() => applyMove(ep._uid, "sign")}
-                style={{ ...S.pillBtn, borderColor: "#22c55e", color: "#4ade80", fontSize: 10, padding: "3px 10px" }}>
+              <button onClick={() => applyMove(ep._uid, "sign")} style={actionBtn("good")}>
                 Re-sign
               </button>
             ) : (
-              <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>Re-signed</span>
+              <span style={decidedStyle(true)}>Re-signed</span>
             )}
           </QueueRow>
         );
@@ -130,9 +127,7 @@ export function OutOfOptionsDecisionsPanel({ players, activePlanYear, moves, app
     <CollapsiblePanel
       title={`Out of Options (${activePlanYear}) — must promote or DFA`}
       count={players.length}
-      accent="#7f1d1d"
-      headerBg="rgba(239,68,68,0.10)"
-      headerColor="#fca5a5"
+      accent={T.bad}
     >
       {players.map(ep => {
         const meta = ep.meta || {};
@@ -143,22 +138,20 @@ export function OutOfOptionsDecisionsPanel({ players, activePlanYear, moves, app
           decision === "trade" ? "Traded" : null;
         return (
           <QueueRow key={ep._uid}>
-            <span style={{ color: posColor(meta.pos), fontWeight: 700, fontSize: 11, width: 28 }}>{meta.pos}</span>
-            <span style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 600, flex: 1 }}>{meta.name}</span>
-            <span style={{ color: "#fca5a5", fontSize: 10, fontWeight: 700 }}>NoOpt</span>
+            <span style={posStyle(meta.pos)}>{meta.pos}</span>
+            <span style={nameStyle}>{meta.name}</span>
+            <span style={{ color: T.badSoft, fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 700 }}>NoOpt</span>
             {!decisionLabel ? (
               <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => applyMove(ep._uid, "promote")}
-                  style={{ ...S.pillBtn, borderColor: "#22c55e", color: "#4ade80", fontSize: 10, padding: "3px 10px" }}>
+                <button onClick={() => applyMove(ep._uid, "promote")} style={actionBtn("good")}>
                   Promote
                 </button>
-                <button onClick={() => applyMove(ep._uid, "dfa")}
-                  style={{ ...S.pillBtn, borderColor: "#ef4444", color: "#fca5a5", fontSize: 10, padding: "3px 10px" }}>
+                <button onClick={() => applyMove(ep._uid, "dfa")} style={actionBtn("bad")}>
                   DFA
                 </button>
               </div>
             ) : (
-              <span style={{ fontSize: 10, color: decision === "promote" ? "#4ade80" : "#fca5a5", fontWeight: 600 }}>
+              <span style={decidedStyle(decision === "promote")}>
                 {decisionLabel}
               </span>
             )}
@@ -175,9 +168,7 @@ export function ArbitrationDecisionsPanel({ players, activePlanYear, moves, appl
     <CollapsiblePanel
       title={`Arbitration Eligible (${activePlanYear}) — tender or non-tender`}
       count={players.length}
-      accent="#1e3a8a"
-      headerBg="rgba(96,165,250,0.10)"
-      headerColor="#93c5fd"
+      accent={T.accent}
     >
       {players.map(ep => {
         const meta = ep.meta || {};
@@ -191,30 +182,26 @@ export function ArbitrationDecisionsPanel({ players, activePlanYear, moves, appl
           decision === "nonTender" ? "Non-Tendered" : null;
         return (
           <QueueRow key={ep._uid}>
-            <span style={{ color: posColor(meta.pos), fontWeight: 700, fontSize: 11, width: 28 }}>{meta.pos}</span>
-            <span style={{ color: "#e2e8f0", fontSize: 12, fontWeight: 600, flex: 1 }}>{meta.name}</span>
-            <span style={{ color: "#93c5fd", fontSize: 11, fontWeight: 600, minWidth: 60 }}>{arbLabel}</span>
-            <span style={{ color: salaryLabel ? "#fbbf24" : "#475569", fontSize: 11, fontWeight: 600, minWidth: 64, textAlign: "right" }}
+            <span style={posStyle(meta.pos)}>{meta.pos}</span>
+            <span style={nameStyle}>{meta.name}</span>
+            <span style={{ color: T.accent, fontSize: 12, fontWeight: 600, minWidth: 60 }}>{arbLabel}</span>
+            <span style={{ color: salaryLabel ? T.warn : T.textDisabled, fontSize: 12, fontWeight: 600, minWidth: 64, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
               title="Projected non-guaranteed arbitration salary">
               {salaryLabel || "—"}
             </span>
             {!decisionLabel ? (
               <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => applyMove(ep._uid, "tender")}
-                  style={{ ...S.pillBtn, borderColor: "#22c55e", color: "#4ade80", fontSize: 10, padding: "3px 10px" }}>
+                <button onClick={() => applyMove(ep._uid, "tender")} style={actionBtn("good")}>
                   Sign
                 </button>
-                <button onClick={() => applyMove(ep._uid, "nonTender")}
-                  style={{ ...S.pillBtn, borderColor: "#ef4444", color: "#fca5a5", fontSize: 10, padding: "3px 10px" }}>
+                <button onClick={() => applyMove(ep._uid, "nonTender")} style={actionBtn("bad")}>
                   Non-Tender
                 </button>
               </div>
             ) : (
               <button onClick={() => deleteMove?.(arbKey)}
                 title="Click to undo"
-                style={{ ...S.pillBtn, fontSize: 10, padding: "3px 10px",
-                  borderColor: decision === "nonTender" ? "#ef4444" : "#22c55e",
-                  color: decision === "nonTender" ? "#fca5a5" : "#4ade80", fontWeight: 600 }}>
+                style={actionBtn(decision === "nonTender" ? "bad" : "good")}>
                 {decisionLabel} ✕
               </button>
             )}

@@ -1,5 +1,6 @@
 import { memo } from "react";
-import { S, gradeToColor, posColor, warStyle } from "../../theme.js";
+import { TOKENS as T, S, posColor, warStyle } from "../../theme.js";
+import { colRule } from "../../components/shared.jsx";
 import { num } from "../../utils/helpers.js";
 import { isEligible, getRunsP, getWar, getWarP } from "../../utils/accessors.js";
 import {
@@ -8,15 +9,16 @@ import {
   ARM_THR_BY_SLUG,
   ARM_THR_DEFAULT,
 } from "../../utils/constants.js";
-import { leaguePercentile } from "./_shared.js";
+import { leaguePercentile, TAB_BODY, TILE as tS, TILE_LABEL as tL, SECTION_LABEL as sectionLabel, SUB_LABEL, SEP_COLOR, NULL_COLOR, scoutColor, pctColor } from "./_shared.js";
 
-const tS = { background: "rgba(15,23,42,0.6)", borderRadius: 6, border: "1px solid #1e293b", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
-const tL = { fontSize: 9, color: "#475569", letterSpacing: 1, textTransform: "uppercase" };
-const sectionLabel = { fontSize: 9, color: "#475569", marginBottom: 6, letterSpacing: 1 };
-const scoutColor = (v) => { const n = num(v); return n != null ? gradeToColor(n) : "#475569"; };
-// Map 0-100 percentile → 20-80 OOTP grade so the dot color matches the rest of the dashboard.
-const pctToGrade = (pct) => 20 + Math.max(0, Math.min(100, pct)) * 0.6;
-const pctColor = (pct) => pct == null ? "#475569" : gradeToColor(pctToGrade(pct));
+// Eligibility table columns (§B.3 item 14): Pos | WAR RunsP | PosAdj Score.
+const ELIG_COLS = [
+  { key: "pos", label: "Pos", group: "identity" },
+  { key: "war", label: "WAR (vL / vR / wtd)", group: "value" },
+  { key: "runsP", label: "RunsP", group: "value" },
+  { key: "adj", label: "PosAdj", group: "score", align: "right" },
+  { key: "score", label: "Score", group: "score", align: "right" },
+];
 
 const FIELD_POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"];
 const INF_POS = ["1B", "2B", "3B", "SS"];
@@ -49,25 +51,18 @@ function RatingTile({ label, val }) {
   );
 }
 
-// Inline percentile mini-bar (~64px wide). Track + dot, colored by the OOTP grade
-// equivalent of the percentile so green = above avg, red = below.
+// Inline percentile mini-pill (56px track): a filled pill to pct% on a panel3
+// track, coloured by the OOTP-grade equivalent of the percentile (same rule as
+// the header PercentileBar) so green = above avg, red = below.
 function PercentileMini({ pct }) {
   if (pct == null) return null;
   const color = pctColor(pct);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       <span style={{ position: "relative", display: "inline-block", width: 56, height: 8 }}>
-        <span style={{ position: "absolute", inset: 0, background: "#1e293b", borderRadius: 4 }} />
-        <span style={{ position: "absolute", top: 3, left: "50%", width: 1, height: 2, background: "#334155" }} />
-        <span style={{
-          position: "absolute",
-          top: 0,
-          left: `calc(${Math.max(0, Math.min(100, pct))}% - 4px)`,
-          width: 8, height: 8,
-          borderRadius: "50%",
-          background: color,
-          boxShadow: "0 0 0 1.5px rgba(15,23,42,0.95)",
-        }} />
+        <span style={{ position: "absolute", inset: 0, background: T.panel3, borderRadius: T.radiusPill }} />
+        <span style={{ position: "absolute", top: 0, left: 0, height: 8, width: `${Math.max(0, Math.min(100, pct))}%`, minWidth: 4, background: color, borderRadius: T.radiusPill }} />
+        <span style={{ position: "absolute", top: 0, left: "50%", width: 1, height: 8, background: T.line2 }} />
       </span>
       <span style={{ color, fontWeight: 700, fontSize: 11, fontVariantNumeric: "tabular-nums", minWidth: 18, textAlign: "right" }}>{pct}</span>
     </span>
@@ -77,18 +72,18 @@ function PercentileMini({ pct }) {
 // Split cell for the WAR column: vL / vR / wtd → POT, all colored by warStyle.
 function WarCell({ vR, vL, wtd, pot, matured }) {
   const fmt = (v) => v == null ? "—" : fmtWar(v);
-  const colorFor = (v) => v == null ? { color: "#475569" } : warStyle(v);
+  const colorFor = (v) => v == null ? { color: NULL_COLOR } : warStyle(v);
   return (
     <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
       <span style={{ ...colorFor(vL), fontWeight: 600 }}>{fmt(vL)}</span>
-      <span style={{ color: "#475569" }}>/</span>
+      <span style={{ color: SEP_COLOR }}>/</span>
       <span style={{ ...colorFor(vR), fontWeight: 600 }}>{fmt(vR)}</span>
-      <span style={{ color: "#475569" }}>/</span>
+      <span style={{ color: SEP_COLOR }}>/</span>
       <span style={{ ...colorFor(wtd), fontWeight: 800 }}>{fmt(wtd)}</span>
       {!matured && pot != null && (
         <>
-          <span style={{ color: "#475569" }}>→</span>
-          <span style={{ color: "#4ade80", fontWeight: 700 }}>{fmt(pot)}</span>
+          <span style={{ color: SEP_COLOR }}>→</span>
+          <span style={{ color: T.good, fontWeight: 700 }}>{fmt(pot)}</span>
         </>
       )}
     </span>
@@ -155,14 +150,14 @@ function FieldingTab({ player, peerPools, leagueSlug }) {
   };
 
   return (
-    <div style={{ padding: "12px 18px" }}>
+    <div style={TAB_BODY}>
       {/* Section 1 — OOTP scouting grades (top) */}
       {(isCatcher || isInf || isOf) && (
         <div style={{ marginBottom: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={sectionLabel}>OOTP SCOUTING GRADES</div>
+          <div style={{ ...sectionLabel, marginBottom: 0 }}>OOTP scouting grades</div>
           {isCatcher && (
             <div>
-              <div style={{ fontSize: 9, color: "#64748b", marginBottom: 4, letterSpacing: 1 }}>CATCHER</div>
+              <div style={SUB_LABEL}>Catcher</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 <RatingTile label="C Ability" val={fr.cAbi} />
                 <RatingTile label="Framing"   val={fr.cFrm} />
@@ -172,7 +167,7 @@ function FieldingTab({ player, peerPools, leagueSlug }) {
           )}
           {isInf && (
             <div>
-              <div style={{ fontSize: 9, color: "#64748b", marginBottom: 4, letterSpacing: 1 }}>INFIELD</div>
+              <div style={SUB_LABEL}>Infield</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
                 <RatingTile label="IF Range"   val={fr.ifRng} />
                 <RatingTile label="IF Errors"  val={fr.ifErr} />
@@ -183,7 +178,7 @@ function FieldingTab({ player, peerPools, leagueSlug }) {
           )}
           {isOf && (
             <div>
-              <div style={{ fontSize: 9, color: "#64748b", marginBottom: 4, letterSpacing: 1 }}>OUTFIELD</div>
+              <div style={SUB_LABEL}>Outfield</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 <RatingTile label="OF Range"  val={fr.ofRng} />
                 <RatingTile label="OF Errors" val={fr.ofErr} />
@@ -197,20 +192,20 @@ function FieldingTab({ player, peerPools, leagueSlug }) {
       {/* Section 2 — Model projections per position (compact table) */}
       {orderedPositions.length > 0 && (
         <div>
-          <div style={sectionLabel}>MODEL PROJECTIONS PER POSITION</div>
+          <div style={sectionLabel}>Model projections per position</div>
           <div style={S.tableWrap}>
             <table style={S.table}>
               <thead>
                 <tr>
-                  <th style={{ ...S.th, padding: "6px 8px" }}>Pos</th>
-                  <th style={{ ...S.th, padding: "6px 8px" }}>WAR (vL / vR / wtd{matured ? "" : " → POT"})</th>
-                  <th style={{ ...S.th, padding: "6px 8px" }}>RunsP</th>
-                  <th style={{ ...S.th, padding: "6px 8px", textAlign: "right" }}>PosAdj</th>
-                  <th style={{ ...S.th, padding: "6px 8px", textAlign: "right" }}>Score</th>
+                  {ELIG_COLS.map((c, ci) => (
+                    <th key={c.key} style={{ ...S.th, padding: "6px 8px", ...(colRule(ELIG_COLS, ci) || {}), ...(c.align ? { textAlign: c.align } : {}) }}>
+                      {c.key === "war" ? `WAR (vL / vR / wtd${matured ? "" : " → POT"})` : c.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {orderedPositions.map((pos) => {
+                {orderedPositions.map((pos, ri) => {
                   const isBest = pos === displayedBestPos;
                   const armLeaf = isArmLeaf(pos);
                   const warWtd = num(getWar(player, pos));
@@ -222,22 +217,24 @@ function FieldingTab({ player, peerPools, leagueSlug }) {
                   const pct = runsP != null && pool ? leaguePercentile(runsP, pool) : null;
                   const adj = defSpectrum[pos] ?? 0;
                   const score = scores[pos];
+                  const td = (ci, extra) => ({ ...S.td, padding: "0 8px", height: 32, ...(colRule(ELIG_COLS, ci) || {}), ...extra });
+                  const rowBg = isBest ? { background: T.goodBg } : (ri % 2 === 1 ? S.zebraRow : undefined);
                   return (
-                    <tr key={pos} style={{ background: isBest ? "rgba(34,197,94,0.06)" : "transparent" }}>
-                      <td style={{ ...S.td, padding: "8px" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <span style={{ color: posColor(pos), fontWeight: 800, fontSize: 13, letterSpacing: 0.5 }}>
-                            {pos}{isBest ? " ★" : ""}{armLeaf ? <span style={{ color: "#64748b", marginLeft: 4 }}>⤴</span> : null}
+                    <tr key={pos} style={rowBg}>
+                      <td style={td(0)}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.15 }}>
+                          <span style={{ fontFamily: T.fonts.narrow, color: posColor(pos), fontWeight: 700, fontSize: 13 }}>
+                            {pos}{isBest ? " ★" : ""}{armLeaf ? <span style={{ color: T.text3, marginLeft: 4 }}>⤴</span> : null}
                           </span>
                           {armLeaf && ofArm != null && (
-                            <span style={{ fontSize: 9, color: "#94a3b8", letterSpacing: 0.3 }}>arm {ofArm}</span>
+                            <span style={{ fontFamily: T.fonts.narrow, fontSize: 11, color: T.text3 }}>arm {ofArm}</span>
                           )}
                         </div>
                       </td>
-                      <td style={{ ...S.td, padding: "8px" }}>
+                      <td style={td(1)}>
                         <WarCell vR={warVR} vL={warVL} wtd={warWtd} pot={warPot} matured={matured} />
                       </td>
-                      <td style={{ ...S.td, padding: "8px" }}>
+                      <td style={td(2)}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
                           <span style={{ ...warStyle(runsP), fontWeight: 700, fontSize: 12, minWidth: 40, display: "inline-block" }}>
                             {fmtRunVal(runsP)}
@@ -245,10 +242,10 @@ function FieldingTab({ player, peerPools, leagueSlug }) {
                           <PercentileMini pct={pct} />
                         </span>
                       </td>
-                      <td style={{ ...S.td, padding: "8px", textAlign: "right", fontWeight: 600, ...warStyle(adj) }}>
+                      <td style={td(3, { textAlign: "right", ...warStyle(adj) })}>
                         {fmtAdj(adj)}
                       </td>
-                      <td style={{ ...S.td, padding: "8px", textAlign: "right", fontWeight: 800, fontSize: 13, ...warStyle(score) }}>
+                      <td style={td(4, { textAlign: "right", fontSize: 13, ...warStyle(score), fontWeight: 800 })}>
                         {fmtAdj(score)}
                       </td>
                     </tr>
@@ -261,7 +258,7 @@ function FieldingTab({ player, peerPools, leagueSlug }) {
       )}
 
       {orderedPositions.length === 0 && !isCatcher && !isInf && !isOf && (
-        <div style={{ fontSize: 11, color: "#64748b", padding: "12px 0" }}>
+        <div style={{ fontSize: 12, color: T.text3, padding: "12px 0" }}>
           No fielding eligibility data available.
         </div>
       )}

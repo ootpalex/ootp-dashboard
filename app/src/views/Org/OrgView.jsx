@@ -25,14 +25,17 @@ export default function OrgView({ data, team, strength, curveSettings, onSelectP
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <TabGroup label="Organization sections" style={{ display: "flex", gap: 8, borderBottom: "1px solid #1e293b", paddingBottom: 12 }}>
-        {ORG_SUB_TABS.map((tab) => (
-          <PillBtn key={tab.id} active={orgSubTab === tab.id} onClick={() => setOrgSubTab(tab.id)}>
-            {tab.label}
-          </PillBtn>
-        ))}
-      </TabGroup>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Sub-tabs: PillBtns inside the panel2 TabGroup strip (sits inline, not full width). */}
+      <div>
+        <TabGroup label="Organization sections">
+          {ORG_SUB_TABS.map((tab) => (
+            <PillBtn key={tab.id} active={orgSubTab === tab.id} onClick={() => setOrgSubTab(tab.id)}>
+              {tab.label}
+            </PillBtn>
+          ))}
+        </TabGroup>
+      </div>
 
       {orgSubTab === "overview" && (
         <OverviewSubTab

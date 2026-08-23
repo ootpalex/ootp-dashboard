@@ -1,14 +1,14 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import * as Papa from "papaparse";
-import { S } from "../theme.js";
-import { posColor, proneColor, warStyle, intangibleColor, devPctColor, gradeStyle, zToColor, signColor, signShort } from "../theme.js";
+import { S, TOKENS as T } from "../theme.js";
+import { posColor, proneColor, warStyle, intangibleColor, devPctStyle, gradeStyle, signColor, signShort } from "../theme.js";
 import { fmt, fmtAge, num, paginateRows, rankSuffix } from "../utils/helpers.js";
 import { PER_PAGE, CAP_TREE_WALK, POS_TO_LEAF, LEAF_CHAINS, SMART_RANK_TUNING } from "../utils/constants.js";
 import { getStatsplusBase } from "../utils/settings.js";
 import { calcOrgNeed } from "../utils/strength.js";
 import { effectiveDemand, computeCoverageFloorContext } from "../utils/futureValue.js";
 import { buildBoardPool, buildDisplayPool } from "./boardUtils.js";
-import { Section, SortHeader, PillBtn, PositionFilter, Toggle, TwoWayBadge, Pagination } from "./shared.jsx";
+import { Section, SortHeader, PillBtn, PositionFilter, SearchInput, Toggle, TwoWayBadge, Pagination, colRule } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
 import { useScopedLocalStorage } from "../hooks/useLocalStorage.js";
 
@@ -51,12 +51,13 @@ const capsNeedMigration = (caps) =>
 
 // Shared stepper-button style (used by Total Picks + the position-cap +/−).
 const STEP_BTN = {
-  background: "rgba(51,65,85,0.5)",
-  border: "1px solid #334155",
-  color: "#cbd5e1",
+  background: T.panel3,
+  border: `1px solid ${T.line2}`,
+  color: T.text,
   width: 18,
   height: 18,
-  borderRadius: 4,
+  borderRadius: T.radius,
+  fontFamily: T.fonts.narrow,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 700,
@@ -430,10 +431,44 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
   const anyToggle = toggles.orgNeed || toggles.devAdj || toggles.posCaps || toggles.signability || toggles.injury || toggles.intangibles || toggles.coverage !== false;
   const signabilityAvailable = demandsOn && budget > 0;
 
+  // Board columns (lifted from the inline header map so the column-group rules
+  // can be spread into every <td>). Groups per MIGRATION_INVENTORY §B.3 item 4:
+  // [pick] Smart/WAR P | Name Age | Dev% | POS Best | [Raw] | [DEM Sign] | Prone INTG INT WE LEA.
+  const cols = [
+    { key: "_pick", label: "", w: 40, group: "pick", sortable: false },
+    { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70, group: "pick", align: "right" },
+    { key: "Name", label: "Name", w: 170, group: "identity" },
+    { key: "Age", label: "Age", w: 45, group: "identity", align: "right" },
+    { key: "_devPct", label: "Dev%", w: 48, group: "development", align: "right" },
+    { key: "POS", label: "POS", w: 48, group: "position" },
+    { key: "_bestPos", label: "Best", w: 48, group: "position" },
+    ...(anyToggle ? [{ key: "_baseVal", label: "Raw", w: 60, group: "raw", align: "right" }] : []),
+    ...(demandsOn ? [{ key: "_demSort", label: "DEM", w: 75, group: "contract", align: "right" }, { key: "sign", label: "Sign", w: 72, group: "contract" }] : []),
+    { key: "Prone", label: "Prone", w: 65, group: "health" },
+    { key: "_intangibles", label: "INTG", w: 45, group: "health", align: "right" },
+    { key: "INT", label: "INT", w: 32, group: "health" },
+    { key: "WE", label: "WE", w: 32, group: "health" },
+    { key: "LEA", label: "LEA", w: 32, group: "health" },
+  ];
+  // Per-column cell style: group rule + the 12px box padding on the first / last cell.
+  const cell = {};
+  cols.forEach((c, i) => {
+    cell[c.key] = { ...(colRule(cols, i) || {}), ...(i === 0 ? { paddingLeft: 12 } : {}), ...(i === cols.length - 1 ? { paddingRight: 12 } : {}) };
+  });
+  const numCell = { textAlign: "right", fontVariantNumeric: "tabular-nums" };
+  const posCell = { fontFamily: T.fonts.narrow, fontWeight: 600, fontSize: 13 };
+  const sortedLabel = cols.find((c) => c.key === sort.col)?.label;
+  const smartOn = [toggles.devAdj, toggles.orgNeed, toggles.posCaps, toggles.coverage !== false, toggles.signability && signabilityAvailable, toggles.injury, toggles.intangibles].filter(Boolean).length;
+  const capLegend = { fontFamily: T.fonts.narrow, fontWeight: 600, fontSize: 11, color: T.text3 };
+  const editPanel = { display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", margin: "0 0 6px", background: T.accentBg2, border: `1px solid ${T.line2}`, borderRadius: T.radius, fontSize: 11, color: T.text2 };
+  const smallBtn = { ...S.btn, padding: "2px 8px", fontSize: 11 };
+  const meterColor = (over, inOverage) => (over ? T.bad : inOverage ? T.warn : T.good);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Draft Class Selector */}
-      <Section title="Draft Class">
+      <Section title="Draft Class"
+        footer={<>{fullPool.length} players in {selectedClass === "__ALL__" ? "full draft pool" : `"${selectedClass}"`}</>}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {draftClasses.map((dc) => (
             <PillBtn key={dc} active={selectedClass === dc} onClick={() => { setSelectedClass(dc); setPage(0); setMyManualPicks([]); }}>
@@ -444,63 +479,70 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
             All Draft Eligible
           </PillBtn>
         </div>
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>
-          {fullPool.length} players in {selectedClass === "__ALL__" ? "full draft pool" : `"${selectedClass}"`}
-        </div>
       </Section>
 
       {/* API Status */}
-      <Section title="StatsPlus Draft Feed" actions={
-        <>
-          <button onClick={fetchDraft} disabled={apiLoading} style={{ ...S.pillBtn, borderColor: "#3b82f6", color: "#93c5fd", background: "rgba(59,130,246,0.15)" }}>
-            {apiLoading ? "Fetching..." : "🔄 Refresh"}
-          </button>
-          <button onClick={() => setShowManual(!showManual)} style={{ ...S.pillBtn, borderColor: "#334155", color: "#64748b" }}>
-            📋 Paste CSV
-          </button>
-          {draftedPlayers.length > 0 && (
-            <button onClick={clearDraft} title="Clear the loaded draft and reset to zero drafted players" style={{ ...S.pillBtn, borderColor: "#7f1d1d", color: "#f87171", background: "rgba(239,68,68,0.10)" }}>
-              🗑 Clear
+      <Section title="StatsPlus Draft Feed"
+        state={lastFetch ? `Updated ${new Date(lastFetch).toLocaleString()}` : null}
+        actions={
+          <>
+            <button onClick={fetchDraft} disabled={apiLoading} style={{ ...S.btn, ...S.btnPrimary, opacity: apiLoading ? 0.6 : 1 }}>
+              {apiLoading ? "Fetching..." : "Refresh"}
             </button>
-          )}
-        </>
-      }>
+            <button onClick={() => setShowManual(!showManual)} style={S.btn}>
+              Paste CSV
+            </button>
+            {draftedPlayers.length > 0 && (
+              <button onClick={clearDraft} title="Clear the loaded draft and reset to zero drafted players" style={{ ...S.btn, color: T.bad, borderColor: T.bad }}>
+                Clear
+              </button>
+            )}
+          </>
+        }
+        footer={
+          <span style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <span>Drafted <strong style={{ color: T.text }}>{draftedRows.length}</strong></span>
+            <span>Available <strong style={{ color: T.text }}>{availablePool.length}</strong></span>
+            <span>My picks <strong style={{ color: T.text }}>{myDraftCards.length}</strong></span>
+          </span>
+        }>
         {apiError && <div style={{ ...S.errorBox, marginBottom: 12 }}>{apiError}</div>}
-        {showManual && (
-          <div style={{ marginBottom: 12 }}>
-            <textarea value={manualCSV} onChange={(e) => setManualCSV(e.target.value)} placeholder="Paste /draftv2/?all=1 CSV here..." style={{ width: "100%", height: 80, background: "#0f172a", border: "1px solid #334155", borderRadius: 6, color: "#e2e8f0", padding: 8, fontSize: 11, fontFamily: "inherit", resize: "vertical" }} />
-            <button onClick={handleManualPaste} style={{ ...S.pillBtn, borderColor: "#22c55e", color: "#86efac", marginTop: 6 }}>Parse</button>
+        {showManual ? (
+          <div>
+            <textarea value={manualCSV} onChange={(e) => setManualCSV(e.target.value)} placeholder="Paste /draftv2/?all=1 CSV here..." style={{ width: "100%", boxSizing: "border-box", height: 80, background: T.bg, border: `1px solid ${T.line2}`, borderRadius: T.radius, color: T.text, padding: 8, fontSize: 11, fontFamily: "inherit", resize: "vertical" }} />
+            <button onClick={handleManualPaste} style={{ ...S.btn, marginTop: 6 }}>Parse</button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12.5, color: T.text2 }}>
+            Pull the live draft order from StatsPlus (Refresh) or paste the <span style={{ color: T.text, fontWeight: 600 }}>/draftv2/?all=1</span> CSV.
           </div>
         )}
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#94a3b8" }}>
-          <span>Drafted: <strong style={{ color: "#e2e8f0" }}>{draftedRows.length}</strong></span>
-          <span>Available: <strong style={{ color: "#e2e8f0" }}>{availablePool.length}</strong></span>
-          <span>My picks: <strong style={{ color: "#e2e8f0" }}>{myDraftCards.length}</strong></span>
-          {lastFetch && <span>Updated: {new Date(lastFetch).toLocaleString()}</span>}
-        </div>
       </Section>
 
       {/* Draft Settings — page-level controls mirrored to leagueSettings */}
-      <Section title={
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }} onClick={() => setShowDraftSettings((s) => !s)}>
-          <span style={{ fontSize: 11, color: "#64748b" }}>{showDraftSettings ? "▼" : "▶"}</span>
-          Draft Settings
-        </span>
-      }>
+      <Section title="Draft Settings"
+        state={`Demands ${demandsOn ? "on" : "off"}${demandsOn && budget > 0 ? ` · $${remaining.toLocaleString()} of $${budget.toLocaleString()} remaining` : ""}`}
+        actions={
+          <button onClick={() => setShowDraftSettings((s) => !s)} style={S.btn} aria-expanded={showDraftSettings}>
+            {showDraftSettings ? "Hide ▴" : "Show ▾"}
+          </button>
+        }
+        footer={showDraftSettings ? "These controls mirror the league-wide settings modal — changes here update both places." : null}>
         {showDraftSettings ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "center" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: T.text, cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={demandsOn}
                   onChange={(e) => updateLeagueField("draftDemands", e.target.checked)}
+                  style={{ accentColor: T.accent, margin: 0 }}
                 />
                 Enable Draft Demands tracking
               </label>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 12, color: "#94a3b8" }}>Budget</span>
-                <span style={{ color: "#64748b" }}>$</span>
+                <span style={{ fontFamily: T.fonts.narrow, fontWeight: 600, fontSize: 12.5, color: T.text2 }}>Budget</span>
+                <span style={{ color: T.warn }}>$</span>
                 <input
                   type="number"
                   min={0}
@@ -514,33 +556,30 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
             </div>
             {demandsOn && budget > 0 && (() => {
               const pct = budget > 0 ? Math.max(0, remaining / budget) : 1;
-              const barColor = pct > 0.5 ? "#22c55e" : pct > 0.2 ? "#eab308" : "#ef4444";
+              const barColor = pct > 0.5 ? T.good : pct > 0.2 ? T.warn : T.bad;
               return (
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
-                    <span style={{ color: "#94a3b8" }}>Budget: <strong style={{ color: barColor }}>${remaining.toLocaleString()}</strong> remaining</span>
-                    <span style={{ color: "#64748b" }}>${spent.toLocaleString()} / ${budget.toLocaleString()}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: T.text2 }}>Budget: <strong style={{ color: barColor }}>${remaining.toLocaleString()}</strong> remaining</span>
+                    <span style={{ color: T.text3 }}>${spent.toLocaleString()} / ${budget.toLocaleString()}</span>
                   </div>
-                  <div style={{ height: 8, background: "#1e293b", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${pct * 100}%`, background: barColor, borderRadius: 4, transition: "width 0.3s" }} />
+                  <div style={{ height: 8, background: T.panel3, borderRadius: T.radius, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct * 100}%`, background: barColor, transition: "width 0.3s" }} />
                   </div>
                 </div>
               );
             })()}
-            <div style={{ fontSize: 10, color: "#64748b" }}>
-              These controls mirror the league-wide settings modal — changes here update both places.
-            </div>
           </div>
         ) : (
-          <div style={{ fontSize: 11, color: "#64748b" }}>
-            Demands {demandsOn ? "ON" : "OFF"}{demandsOn && budget > 0 ? ` · $${remaining.toLocaleString()} of $${budget.toLocaleString()} remaining` : ""}
+          <div style={{ fontSize: 12.5, color: T.text2 }}>
+            Draft demands tracking and the budget live here — <span style={{ color: T.text3 }}>open to edit.</span>
           </div>
         )}
       </Section>
 
       {/* My Draft Class */}
       {myDraftCards.length > 0 && (
-        <Section title={`My Draft Class (${myDraftCards.length} picks)`}>
+        <Section title="My Draft Class" count={`(${myDraftCards.length} picks)`}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
             {myDraftCards.map((p, i) => {
               const roundLabel = p.Round
@@ -552,9 +591,9 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
               if (p._empty) {
                 return (
                   <div key={i} style={{
-                    background: "rgba(15,23,42,0.3)",
-                    border: "1px dashed #334155",
-                    borderRadius: 8,
+                    background: T.panel,
+                    border: `1px dashed ${T.line2}`,
+                    borderRadius: T.radius,
                     padding: "8px 10px",
                     display: "flex",
                     flexDirection: "column",
@@ -564,10 +603,10 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
                     opacity: 0.7,
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                      <span style={{ color: "#64748b", fontWeight: 700, fontSize: 11 }}>{roundLabel || "—"}</span>
-                      {overallLabel && <span style={{ color: "#475569", fontSize: 10 }}>{overallLabel}</span>}
+                      <span style={{ color: T.text3, fontWeight: 700, fontSize: 11, fontFamily: T.fonts.narrow }}>{roundLabel || "—"}</span>
+                      {overallLabel && <span style={{ color: T.textDisabled, fontSize: 11 }}>{overallLabel}</span>}
                     </div>
-                    <div style={{ color: "#64748b", fontStyle: "italic", fontSize: 12 }}>upcoming pick</div>
+                    <div style={{ color: T.text3, fontStyle: "italic", fontSize: 12 }}>upcoming pick</div>
                   </div>
                 );
               }
@@ -584,9 +623,9 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
               const sign = p.meta?.sign ?? p.Sign;
               return (
                 <div key={i} style={{
-                  background: isManual ? "rgba(59,130,246,0.10)" : "rgba(15,23,42,0.5)",
-                  border: `1px solid ${isManual ? "#1e3a5f" : "#1e293b"}`,
-                  borderRadius: 8,
+                  background: isManual ? T.accentBg2 : T.panel2,
+                  border: `1px solid ${isManual ? T.line2 : T.line}`,
+                  borderRadius: T.radius,
                   padding: "8px 10px",
                   display: "flex",
                   flexDirection: "column",
@@ -599,27 +638,27 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
                     <button
                       onClick={() => removeManualPick(p.ID)}
                       title="Remove manual pick"
-                      style={{ position: "absolute", top: 2, right: 4, background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 2 }}
+                      style={{ position: "absolute", top: 2, right: 4, background: "none", border: "none", color: T.bad, cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 2 }}
                     >✕</button>
                   )}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                    <span style={{ color: posColor(pos), fontWeight: 700, fontSize: 12 }}>{pos || "—"}</span>
-                    {roundLabel && <span style={{ color: "#64748b", fontSize: 10, paddingRight: isManual ? 14 : 0 }}>{roundLabel}{overallLabel ? ` ${overallLabel}` : ""}</span>}
+                    <span style={{ color: posColor(pos), fontWeight: 700, fontSize: 13, fontFamily: T.fonts.narrow }}>{pos || "—"}</span>
+                    {roundLabel && <span style={{ color: T.text3, fontSize: 11, fontFamily: T.fonts.narrow, paddingRight: isManual ? 14 : 0 }}>{roundLabel}{overallLabel ? ` ${overallLabel}` : ""}</span>}
                   </div>
                   <div
                     onClick={() => onSelectPlayer?.(p)}
-                    style={{ color: "#e2e8f0", fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: onSelectPlayer ? "pointer" : "default" }}
+                    style={{ color: T.text, fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: onSelectPlayer ? "pointer" : "default" }}
                     title={name}
                   >
                     {name}
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 8, rowGap: 2, fontSize: 10, color: "#64748b" }}>
-                    <span>Age <span style={{ color: "#cbd5e1" }}>{fmtAge(age)}</span></span>
-                    {best && <span>Best <span style={{ color: posColor(best.replace("*", "")) }}>{best}</span></span>}
-                    {baseVal != null && <span>WAR <span style={{ color: "#cbd5e1", ...warStyle(baseVal) }}>{fmt(baseVal)}</span></span>}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 8, rowGap: 2, fontSize: 11, color: T.text3 }}>
+                    <span>Age <span style={{ color: T.text }}>{fmtAge(age)}</span></span>
+                    {best && <span>Best <span style={{ color: posColor(best.replace("*", "")), fontWeight: 600 }}>{best}</span></span>}
+                    {baseVal != null && <span>WAR <span style={{ color: T.text, ...warStyle(baseVal) }}>{fmt(baseVal)}</span></span>}
                     {prone && prone !== "-" && <span>Prone <span style={{ color: proneColor(prone) }}>{prone}</span></span>}
                     {demandsOn && (
-                      <span style={{ gridColumn: "1 / 2" }}>Demand <span style={{ color: dem ? "#facc15" : "#475569", fontWeight: dem ? 600 : 400 }}>{dem || "—"}</span></span>
+                      <span style={{ gridColumn: "1 / 2" }}>Demand <span style={{ color: dem ? T.warn : T.textDisabled, fontWeight: dem ? 600 : 400 }}>{dem || "—"}</span></span>
                     )}
                     {demandsOn && sign && sign !== "-" && (
                       <span style={{ gridColumn: "2 / 3" }} title={sign}>Sign <span style={{ color: signColor(sign), fontWeight: 600 }}>{signShort(sign)}</span></span>
@@ -636,50 +675,46 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <Section title="Position Caps" actions={
           <>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>Total picks</span>
+            <span style={{ fontFamily: T.fonts.narrow, fontWeight: 600, fontSize: 12, color: T.text2 }}>Total picks</span>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <button onClick={() => setTotalPicks((n) => Math.max(1, n - 1))} style={STEP_BTN} title="Decrease total picks" aria-label="Decrease total picks">−</button>
-              <span style={{ minWidth: 22, textAlign: "center", fontWeight: 700, color: "#e2e8f0", fontSize: 13 }}>{totalPicks}</span>
+              <span style={{ minWidth: 22, textAlign: "center", fontWeight: 700, color: T.text, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{totalPicks}</span>
               <button onClick={() => setTotalPicks((n) => Math.max(1, n + 1))} style={STEP_BTN} title="Increase total picks" aria-label="Increase total picks">+</button>
             </div>
-            <button onClick={() => { resetCapsToProportions(); resetFloorMins(); }} style={{ ...S.pillBtn, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+            <button onClick={() => { resetCapsToProportions(); resetFloorMins(); }} style={S.btn}>Reset</button>
             <button onClick={() => setEditCaps((v) => !v)}
-              style={{ ...S.pillBtn, borderColor: editCaps ? "#3b82f6" : "#334155", color: editCaps ? "#93c5fd" : "#94a3b8", background: editCaps ? "rgba(59,130,246,0.12)" : "transparent" }}
+              style={{ ...S.btn, ...(editCaps ? S.pillBtnActive : {}) }}
               title={editCaps ? "Done editing caps" : "Edit soft / hard caps"} aria-label="Edit caps" aria-pressed={editCaps}>
               {editCaps ? "✓ Done" : "✎ Edit"}
             </button>
           </>
-        }>
-          {myDraftSlots.length > 0 && (
-            <div style={{ fontSize: 10, color: "#64748b", marginBottom: 6 }}>
-              Auto-detected <strong style={{ color: "#94a3b8" }}>{myDraftSlots.length}</strong> picks for {myTeam} from the draft order.
-            </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 4px", fontSize: 9, color: "#475569" }}>
+        }
+        footer={myDraftSlots.length > 0 ? <>Auto-detected <strong style={{ color: T.text }}>{myDraftSlots.length}</strong> picks for {myTeam} from the draft order.</> : null}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px 4px", ...capLegend }}>
             <span style={{ width: 104 }} />
             <span style={{ width: 18, textAlign: "center" }}>#</span>
-            <span style={{ width: 46, textAlign: "center", color: "#60a5fa" }}>min</span>
+            <span style={{ width: 46, textAlign: "center", color: T.accent }}>min</span>
             <span style={{ flex: 1 }}>fill (green ≤ soft · amber overage · red over)</span>
             <span style={{ width: 46, textAlign: "center" }}>soft</span>
-            <span style={{ width: 46, textAlign: "center", fontWeight: 700, color: "#94a3b8" }}>hard</span>
+            <span style={{ width: 46, textAlign: "center", fontWeight: 700, color: T.text2 }}>hard</span>
             <span style={{ width: 20 }} />
           </div>
           {editCaps && (() => {
             const penStepper = (val, dec, inc, color, lbl, weight = 700) => (
               <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
                 <button onClick={dec} style={STEP_BTN} title={`Decrease over-${lbl} penalty`} aria-label={`Decrease over-${lbl} penalty`}>−</button>
-                <span style={{ minWidth: 30, textAlign: "center", fontSize: 11, fontWeight: weight, color }}>{fmt(val, 2)}</span>
+                <span style={{ minWidth: 30, textAlign: "center", fontSize: 11, fontWeight: weight, color, fontVariantNumeric: "tabular-nums" }}>{fmt(val, 2)}</span>
                 <button onClick={inc} style={STEP_BTN} title={`Increase over-${lbl} penalty`} aria-label={`Increase over-${lbl} penalty`}>+</button>
               </div>
             );
             return (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", margin: "0 0 6px", background: "rgba(59,130,246,0.07)", border: "1px solid #1e3a5f", borderRadius: 4, fontSize: 10, color: "#94a3b8" }}>
+              <div style={editPanel}>
                 <span style={{ fontWeight: 600 }}>WAR penalty / pick over —</span>
                 <span>soft</span>
-                {penStepper(capPenalty.soft, () => adjPen("soft", -0.25), () => adjPen("soft", 0.25), "#cbd5e1", "soft", 500)}
-                <span style={{ marginLeft: 4, fontWeight: 700, color: "#cbd5e1" }}>hard</span>
-                {penStepper(capPenalty.hard, () => adjPen("hard", -0.5), () => adjPen("hard", 0.5), "#e2e8f0", "hard", 800)}
-                <button onClick={resetCapPenalty} style={{ ...S.pillBtn, marginLeft: "auto", padding: "1px 8px", fontSize: 10, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+                {penStepper(capPenalty.soft, () => adjPen("soft", -0.25), () => adjPen("soft", 0.25), T.text, "soft", 500)}
+                <span style={{ marginLeft: 4, fontWeight: 700, color: T.text }}>hard</span>
+                {penStepper(capPenalty.hard, () => adjPen("hard", -0.5), () => adjPen("hard", 0.5), T.text, "hard", 800)}
+                <button onClick={resetCapPenalty} style={{ ...smallBtn, marginLeft: "auto" }}>Reset</button>
               </div>
             );
           })()}
@@ -687,19 +722,19 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
             const tuneStepper = (val, dec, inc, lbl) => (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
                 <button onClick={dec} style={STEP_BTN} title={`Decrease ${lbl}`} aria-label={`Decrease ${lbl}`}>−</button>
-                <span style={{ minWidth: 16, textAlign: "center", fontSize: 11, fontWeight: 700, color: "#93c5fd" }}>{val}</span>
+                <span style={{ minWidth: 16, textAlign: "center", fontSize: 11, fontWeight: 700, color: T.accent, fontVariantNumeric: "tabular-nums" }}>{val}</span>
                 <button onClick={inc} style={STEP_BTN} title={`Increase ${lbl}`} aria-label={`Increase ${lbl}`}>+</button>
               </span>
             );
             return (
-              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, padding: "5px 8px", margin: "0 0 6px", background: "rgba(59,130,246,0.07)", border: "1px solid #1e3a5f", borderRadius: 4, fontSize: 10, color: "#94a3b8" }}>
-                <span style={{ fontWeight: 600, color: "#60a5fa" }}>Min coverage — start nudging when</span>
+              <div style={{ ...editPanel, flexWrap: "wrap", gap: 6 }}>
+                <span style={{ fontWeight: 600, color: T.accent }}>Min coverage — start nudging when</span>
                 <span>a position has ≤</span>
                 {tuneStepper(floorTuning.cushionS, () => adjFloorTuning("cushionS", -1), () => adjFloorTuning("cushionS", 1), "players-left trigger")}
                 <span>quality players left, or you have ≤</span>
                 {tuneStepper(floorTuning.picksStart, () => adjFloorTuning("picksStart", -1), () => adjFloorTuning("picksStart", 1), "picks-left trigger")}
                 <span>of your picks left</span>
-                <button onClick={resetFloorTuning} style={{ ...S.pillBtn, marginLeft: "auto", padding: "1px 8px", fontSize: 10, borderColor: "#334155", color: "#94a3b8" }}>Reset</button>
+                <button onClick={resetFloorTuning} style={{ ...smallBtn, marginLeft: "auto" }}>Reset</button>
               </div>
             );
           })()}
@@ -715,10 +750,10 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
               const unmetFloor = toggles.coverage !== false && minVal > 0 && s.picked < minVal;
               // Red if the floor is unmet; else neutral until you've drafted one; no-max
               // rows are always green; otherwise green ≤ soft, amber overage, red over hard.
-              const valueColor = unmetFloor ? "#f87171"
-                : s.picked === 0 ? "#64748b"
-                : isOpen ? "#86efac"
-                : over ? "#f87171" : inOverage ? "#fbbf24" : "#86efac";
+              const valueColor = unmetFloor ? T.bad
+                : s.picked === 0 ? T.text3
+                : isOpen ? T.good
+                : over ? T.bad : inOverage ? T.warn : T.good;
               const hard = s.hard || 1;
               const adjustSoft = (delta) => setCaps((c) => {
                 const v = c[n.id]; if (v === "open" || !v) return c;
@@ -736,18 +771,18 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
               const stepper = (val, dec, inc, color, lbl, weight = 700) => (
                 <div style={{ width: 46, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
                   <button onClick={dec} style={STEP_BTN} title={`Decrease ${n.label} ${lbl} cap`} aria-label={`Decrease ${n.label} ${lbl} cap`}>−</button>
-                  <span style={{ minWidth: 12, textAlign: "center", fontSize: 11, fontWeight: weight, color }}>{val}</span>
+                  <span style={{ minWidth: 12, textAlign: "center", fontSize: 11, fontWeight: weight, color, fontVariantNumeric: "tabular-nums" }}>{val}</span>
                   <button onClick={inc} style={STEP_BTN} title={`Increase ${n.label} ${lbl} cap`} aria-label={`Increase ${n.label} ${lbl} cap`}>+</button>
                 </div>
               );
               return (
                 <div key={n.id} style={{
                   display: "flex", alignItems: "center", gap: 6,
-                  padding: "3px 6px", borderRadius: 4,
-                  background: n.isLeaf ? "transparent" : "rgba(30,41,59,0.45)",
+                  padding: "3px 6px", borderRadius: T.radius,
+                  background: n.isLeaf ? "transparent" : T.panel3,
                 }}>
-                  <span style={{ width: 104, paddingLeft: n.depth * 14, boxSizing: "border-box", fontSize: 11, fontWeight: n.isLeaf ? 600 : 700, color: n.isLeaf ? "#cbd5e1" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.label}</span>
-                  <span style={{ width: 18, textAlign: "center", fontSize: 11, fontWeight: 700, color: valueColor }}>{s.picked}</span>
+                  <span style={{ width: 104, paddingLeft: n.depth * 14, boxSizing: "border-box", fontSize: 12, fontFamily: T.fonts.narrow, fontWeight: n.isLeaf ? 600 : 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n.label}</span>
+                  <span style={{ width: 18, textAlign: "center", fontSize: 11, fontWeight: 700, color: valueColor, fontVariantNumeric: "tabular-nums" }}>{s.picked}</span>
                   {/* minimum-coverage target (left of the bar): the floor MIN-puller, edited
                       like soft/hard. Leaves only; 0 shows as "—". */}
                   {!n.isLeaf ? (
@@ -755,27 +790,27 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
                   ) : editCaps ? (
                     <div style={{ width: 46, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
                       <button onClick={() => adjMin(n.id, -1)} style={STEP_BTN} title={`Decrease ${n.label} minimum`} aria-label={`Decrease ${n.label} minimum`}>−</button>
-                      <span style={{ minWidth: 12, textAlign: "center", fontSize: 11, fontWeight: 600, color: minVal > 0 ? "#93c5fd" : "#475569" }}>{minVal}</span>
+                      <span style={{ minWidth: 12, textAlign: "center", fontSize: 11, fontWeight: 600, color: minVal > 0 ? T.accent : T.textDisabled, fontVariantNumeric: "tabular-nums" }}>{minVal}</span>
                       <button onClick={() => adjMin(n.id, 1)} style={STEP_BTN} title={`Increase ${n.label} minimum`} aria-label={`Increase ${n.label} minimum`}>+</button>
                     </div>
                   ) : (
-                    <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 600, color: minVal > 0 ? "#93c5fd" : "#475569" }}>{minVal > 0 ? minVal : "—"}</span>
+                    <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 600, color: minVal > 0 ? T.accent : T.textDisabled, fontVariantNumeric: "tabular-nums" }}>{minVal > 0 ? minVal : "—"}</span>
                   )}
                   {/* zoned fill bar (green ≤ soft, amber overage, red over hard) with a soft-cap tick */}
                   <div style={{ flex: 1, minWidth: 30 }}>
                     {isOpen ? (
-                      <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: 1.5 }}>NO MAX</div>
+                      <div style={{ textAlign: "center", fontSize: 11, fontWeight: 600, fontFamily: T.fonts.narrow, color: T.text2 }}>No max</div>
                     ) : (
-                      <div style={{ position: "relative", height: 6, background: "#0f172a", borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ position: "relative", height: 6, background: T.panel3, borderRadius: T.radius, overflow: "hidden" }}>
                         {/* whole fill tracks the status zone (matches the # color):
                             green ≤ soft, amber soft→hard, red over hard; width fills
                             to the hard cap (clamped) so it reads as a status meter. */}
                         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0,
                           width: `${Math.min(s.picked, hard) / hard * 100}%`,
-                          background: over ? "#ef4444" : inOverage ? "#f59e0b" : "#22c55e",
+                          background: meterColor(over, inOverage),
                           transition: "width 120ms ease, background 120ms ease" }} />
                         {/* soft-cap reference tick */}
-                        <div style={{ position: "absolute", top: 0, bottom: 0, left: `${s.soft / hard * 100}%`, width: 1, background: "#94a3b8" }} />
+                        <div style={{ position: "absolute", top: 0, bottom: 0, left: `${s.soft / hard * 100}%`, width: 1, background: T.text2 }} />
                       </div>
                     )}
                   </div>
@@ -785,23 +820,23 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
                       {isOpen
                         ? <span style={{ width: 92 }} />
                         : <>
-                            {stepper(s.soft, () => adjustSoft(-1), () => adjustSoft(1), "#cbd5e1", "soft", 500)}
-                            {stepper(s.hard, () => adjustHard(-1), () => adjustHard(1), "#e2e8f0", "hard", 800)}
+                            {stepper(s.soft, () => adjustSoft(-1), () => adjustSoft(1), T.text, "soft", 500)}
+                            {stepper(s.hard, () => adjustHard(-1), () => adjustHard(1), T.text, "hard", 800)}
                           </>}
-                      <button onClick={toggleOpen} style={{ ...STEP_BTN, color: isOpen ? "#38bdf8" : "#64748b" }}
+                      <button onClick={toggleOpen} style={{ ...STEP_BTN, color: isOpen ? T.accent : T.text3 }}
                         title={isOpen ? `Set caps for ${n.label}` : `Remove caps (no max) for ${n.label}`}
                         aria-label={isOpen ? `Set caps for ${n.label}` : `Remove caps for ${n.label}`}>{isOpen ? "＋" : "∞"}</button>
                     </>
                   ) : isOpen ? (
                     <>
-                      <span style={{ width: 46, textAlign: "center", fontSize: 11, color: "#475569" }}>—</span>
-                      <span style={{ width: 46, textAlign: "center", fontSize: 11, color: "#475569" }}>—</span>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, color: T.textDisabled }}>—</span>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, color: T.textDisabled }}>—</span>
                       <span style={{ width: 20 }} />
                     </>
                   ) : (
                     <>
-                      <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 500, color: "#cbd5e1" }}>{s.soft}</span>
-                      <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 800, color: "#e2e8f0" }}>{s.hard}</span>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 500, color: T.text, fontVariantNumeric: "tabular-nums" }}>{s.soft}</span>
+                      <span style={{ width: 46, textAlign: "center", fontSize: 11, fontWeight: 800, color: T.text, fontVariantNumeric: "tabular-nums" }}>{s.hard}</span>
                       <span style={{ width: 20 }} />
                     </>
                   )}
@@ -811,13 +846,14 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
           </div>
         </Section>
 
-        <Section title="Smart Rank Adjustments">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Toggle label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
-            <Toggle label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
-            <Toggle label="Position Caps" description="Penalize players whose eligible positions are filling up — falls off as they have alternative landing spots" checked={toggles.posCaps} onChange={() => setToggle("posCaps")} />
-            <Toggle label="Min Coverage" description="Nudge toward securing at least one at scarce premium spots (C / MI / CF). Fires as the position thins out or your picks run low — stays off the top of the draft." checked={toggles.coverage !== false} onChange={() => setToggle("coverage")} />
+        <Section title="Smart Rank Adjustments" state={`${smartOn} of 7 on`}>
+          <div style={{ display: "flex", flexDirection: "column", margin: "-13px -12px -12px" }}>
+            <Toggle variant="row" label="Future Value" description="Use FV (cur + age-weighted gap) instead of raw potential" checked={toggles.devAdj} onChange={() => setToggle("devAdj")} />
+            <Toggle variant="row" label="Org Positional Need" description="Boost players at your org's weak positions" checked={toggles.orgNeed} onChange={() => setToggle("orgNeed")} />
+            <Toggle variant="row" label="Position Caps" description="Penalize players whose eligible positions are filling up — falls off as they have alternative landing spots" checked={toggles.posCaps} onChange={() => setToggle("posCaps")} />
+            <Toggle variant="row" label="Min Coverage" description="Nudge toward securing at least one at scarce premium spots (C / MI / CF). Fires as the position thins out or your picks run low — stays off the top of the draft." checked={toggles.coverage !== false} onChange={() => setToggle("coverage")} />
             <Toggle
+              variant="row"
               label="Signability"
               description={signabilityAvailable
                 ? "Penalize players whose demand eats your budget — scales harder as you spend down"
@@ -826,19 +862,16 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
               onChange={() => signabilityAvailable && setToggle("signability")}
               disabled={!signabilityAvailable}
             />
-            <Toggle label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
-            <Toggle label="Intangibles" description="Bonus for elite 20-80 intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
+            <Toggle variant="row" label="Injury Proneness" description="Bonus for Iron Man / Durable, penalty for Fragile / Wrecked" checked={toggles.injury} onChange={() => setToggle("injury")} />
+            <Toggle variant="row" label="Intangibles" description="Bonus for elite 20-80 intangible grades, penalty for poor ones" checked={toggles.intangibles} onChange={() => setToggle("intangibles")} />
           </div>
         </Section>
       </div>
 
       {/* Draft Board Table */}
-      <Section title="Draft Board">
-        <div style={{ marginBottom: 12 }}>
-          <PositionFilter value={posFilter} onChange={(v) => { setPosFilter(v); setPage(0); }} />
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-          <input type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} style={S.searchInput} />
+      <Section title="Draft Board" count={`(${displayPool.length.toLocaleString()})`}
+        state={sortedLabel ? `Sorted by ${sortedLabel}, ${sort.dir === "asc" ? "ascending" : "descending"}` : null}
+        actions={
           <button onClick={() => {
             const seen = new Set();
             const top500 = [];
@@ -851,29 +884,22 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a"); a.href = url; a.download = "draft_list.csv"; a.click();
             URL.revokeObjectURL(url);
-          }} style={{ ...S.pillBtn, borderColor: "#22c55e", color: "#86efac", background: "rgba(34,197,94,0.10)" }}>Export Top 500</button>
-        </div>
-
-        <div style={S.tableWrap}>
+          }} style={S.btn}>Export Top 500</button>
+        }
+        toolbar={
+          <>
+            <PositionFilter value={posFilter} onChange={(v) => { setPosFilter(v); setPage(0); }} />
+            <SearchInput type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} aria-label="Search draft pool by name" />
+          </>
+        }>
+        <div style={{ ...S.tableWrap, margin: -12, border: "none", borderRadius: 0 }}>
           <table style={S.table}>
             <thead><tr>
-              <th style={{ ...S.th, width: 40 }}></th>
-              {[
-                { key: "_rank", label: anyToggle ? "Smart" : "WAR P", w: 70 },
-                { key: "Name", label: "Name", w: 170 },
-                { key: "Age", label: "Age", w: 45 },
-                { key: "_devPct", label: "Dev%", w: 48 },
-                { key: "POS", label: "POS", w: 48 },
-                { key: "_bestPos", label: "Best", w: 48 },
-                ...(anyToggle ? [{ key: "_baseVal", label: "Raw", w: 60 }] : []),
-                ...(demandsOn ? [{ key: "_demSort", label: "DEM", w: 75 }, { key: "sign", label: "Sign", w: 72 }] : []),
-                { key: "Prone", label: "Prone", w: 65 },
-                { key: "_intangibles", label: "INTG", w: 45 },
-                { key: "INT", label: "INT", w: 32 },
-                { key: "WE", label: "WE", w: 32 },
-                { key: "LEA", label: "LEA", w: 32 },
-              ].map(({ key, label, w }) => (
-                <SortHeader key={key} label={label} width={w} sortCol={sort.col} sortDir={sort.dir} colKey={key} onClick={() => setSort((prev) => ({ col: key, dir: prev.col === key && prev.dir === "desc" ? "asc" : "desc" }))} />
+              {cols.map((c, i) => c.sortable === false ? (
+                <th key={c.key} style={{ ...S.th, ...cell[c.key], width: c.w, minWidth: c.w }} aria-label="Mark as drafted" />
+              ) : (
+                <SortHeader key={c.key} label={c.label} width={c.w} sortCol={sort.col} sortDir={sort.dir} colKey={c.key} rule={cell[c.key]} align={c.align}
+                  onClick={() => setSort((prev) => ({ col: c.key, dir: prev.col === c.key && prev.dir === "desc" ? "asc" : "desc" }))} />
               ))}
             </tr></thead>
             <tbody>
@@ -881,41 +907,44 @@ function DraftBoard({ data, myTeam, strength, curveSettings, leagueSettings, onU
                 const isManualPick = manualPickIds.has(String(p.ID));
                 const dpct = p._devPct;
                 const showDevPct = p._age != null && p._age < curveSettings.maxCurrentAge;
+                const dem = (p.meta?.dem ?? p.DEM) && (p.meta?.dem ?? p.DEM) !== "-" ? (p.meta?.dem ?? p.DEM) : null;
                 return (
-                  <tr key={p.ID + "-" + i} style={{ background: isManualPick ? "rgba(59,130,246,0.08)" : i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
-                    <td style={S.td}>
+                  <tr key={p.ID + "-" + i} style={{ ...(i % 2 === 1 ? S.zebraRow : {}), ...(isManualPick ? { background: T.accentBg2 } : {}) }}>
+                    <td style={{ ...S.td, ...cell._pick }}>
                       {!isManualPick ? (
-                        <button onClick={() => addManualPick(p)} title="I Drafted This Player" style={{ background: "none", border: "1px solid #334155", borderRadius: 4, color: "#64748b", cursor: "pointer", fontSize: 10, padding: "2px 4px", lineHeight: 1 }}>+</button>
+                        <button onClick={() => addManualPick(p)} title="I Drafted This Player" style={{ ...S.badge, background: "transparent", borderColor: T.line2, color: T.text3, cursor: "pointer", minWidth: 0, padding: "0 5px", lineHeight: "15px" }}>+</button>
                       ) : (
-                        <span style={{ color: "#3b82f6", fontSize: 12 }}>★</span>
+                        <span style={{ color: T.accent, fontSize: 12 }} title="Drafted by you">★</span>
                       )}
                     </td>
-                    <td style={{ ...S.td, ...warStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
-                    <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
+                    <td style={{ ...S.td, ...cell._rank, ...numCell, ...warStyle(p._rank), fontWeight: 700 }}>{fmt(anyToggle ? p._rank : (p._baseValDisplay ?? p._baseVal))}</td>
+                    <td style={{ ...S.td, ...S.tdName, ...cell.Name, minWidth: 170, cursor: "pointer" }}
                         onClick={() => onSelectPlayer?.(p)}>
                       {p.meta?.name ?? p.Name}<TwoWayBadge player={p} />
-                      {isManualPick && <span style={{ color: "#3b82f6", marginLeft: 6, fontSize: 9 }}>DRAFTED</span>}
+                      {isManualPick && <span style={{ ...S.badge, fontSize: 10, lineHeight: "14px", minWidth: 0, padding: "0 4px", background: "transparent", borderColor: T.accent, color: T.accent, marginLeft: 6, verticalAlign: 1 }}>DRAFTED</span>}
                     </td>
-                    <td style={S.td}>{fmtAge(p._age)}</td>
-                    <td style={{ ...S.td, color: showDevPct && dpct != null ? devPctColor(dpct) : "#475569", fontWeight: showDevPct && dpct != null ? 600 : 400 }}>{showDevPct && dpct != null ? rankSuffix(Math.round(dpct * 100)) : "—"}</td>
-                    <td style={{ ...S.td, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
-                    <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
-                    {anyToggle && <td style={{ ...S.td, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
-                    {demandsOn && <td style={{ ...S.td, color: "#94a3b8" }}>{(p.meta?.dem ?? p.DEM) && (p.meta?.dem ?? p.DEM) !== "-" ? (p.meta?.dem ?? p.DEM) : "—"}</td>}
-                    {demandsOn && <td style={{ ...S.td, color: signColor(p.meta?.sign ?? p.Sign), fontWeight: 600 }} title={p.meta?.sign ?? p.Sign ?? ""}>{(p.meta?.sign ?? p.Sign) ? signShort(p.meta?.sign ?? p.Sign) : "—"}</td>}
-                    <td style={{ ...S.td, color: proneColor(p.meta?.prone ?? p.Prone) }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
-                    <td style={{ ...S.td, ...gradeStyle(p._intangibles), fontWeight: 700 }}>{p._intangibles ?? "—"}</td>
-                    <td style={{ ...S.td, color: intangibleColor(p.meta?.int ?? p.INT) }}>{(p.meta?.int ?? p.INT) || "—"}</td>
-                    <td style={{ ...S.td, color: intangibleColor(p.meta?.we ?? p.WE) }}>{(p.meta?.we ?? p.WE) || "—"}</td>
-                    <td style={{ ...S.td, color: intangibleColor(p.meta?.lea ?? p.LEA) }}>{(p.meta?.lea ?? p.LEA) || "—"}</td>
+                    <td style={{ ...S.td, ...cell.Age, ...numCell }}>{fmtAge(p._age)}</td>
+                    <td style={{ ...S.td, ...cell._devPct, ...numCell, ...(showDevPct && dpct != null ? devPctStyle(dpct) : { color: T.textDisabled }) }}>{showDevPct && dpct != null ? rankSuffix(Math.round(dpct * 100)) : "—"}</td>
+                    <td style={{ ...S.td, ...cell.POS, ...posCell, color: posColor(p.meta?.pos ?? p.POS) }}>{p.meta?.pos ?? p.POS}</td>
+                    <td style={{ ...S.td, ...cell._bestPos, ...posCell, color: p._bestPos ? posColor(p._bestPos?.replace("*", "")) : T.textDisabled }}>{p._bestPos || "—"}</td>
+                    {anyToggle && <td style={{ ...S.td, ...cell._baseVal, ...numCell, ...warStyle(p._baseVal) }}>{fmt(p._baseValDisplay ?? p._baseVal)}</td>}
+                    {demandsOn && <td style={{ ...S.td, ...cell._demSort, ...numCell, color: dem ? T.warn : T.textDisabled, fontWeight: dem ? 600 : 400 }}>{dem || "—"}</td>}
+                    {demandsOn && <td style={{ ...S.td, ...cell.sign, color: (p.meta?.sign ?? p.Sign) ? signColor(p.meta?.sign ?? p.Sign) : T.textDisabled, fontWeight: 600 }} title={p.meta?.sign ?? p.Sign ?? ""}>{(p.meta?.sign ?? p.Sign) ? signShort(p.meta?.sign ?? p.Sign) : "—"}</td>}
+                    <td style={{ ...S.td, ...cell.Prone, color: (p.meta?.prone ?? p.Prone) ? proneColor(p.meta?.prone ?? p.Prone) : T.textDisabled }}>{p.meta?.prone ?? p.Prone ?? "—"}</td>
+                    <td style={{ ...S.td, ...cell._intangibles, ...numCell, ...gradeStyle(p._intangibles), fontWeight: 700 }}>{p._intangibles ?? "—"}</td>
+                    <td style={{ ...S.td, ...cell.INT, color: (p.meta?.int ?? p.INT) ? intangibleColor(p.meta?.int ?? p.INT) : T.textDisabled, fontWeight: 600 }}>{(p.meta?.int ?? p.INT) || "—"}</td>
+                    <td style={{ ...S.td, ...cell.WE, color: (p.meta?.we ?? p.WE) ? intangibleColor(p.meta?.we ?? p.WE) : T.textDisabled, fontWeight: 600 }}>{(p.meta?.we ?? p.WE) || "—"}</td>
+                    <td style={{ ...S.td, ...cell.LEA, color: (p.meta?.lea ?? p.LEA) ? intangibleColor(p.meta?.lea ?? p.LEA) : T.textDisabled, fontWeight: 600 }}>{(p.meta?.lea ?? p.LEA) || "—"}</td>
                   </tr>
                 );
               })}
-              {paged.length === 0 && <tr><td colSpan={12 + (anyToggle ? 1 : 0) + (demandsOn ? 2 : 0)} style={{ ...S.td, textAlign: "center", color: "#475569" }}>No players found</td></tr>}
+              {paged.length === 0 && <tr><td colSpan={cols.length} style={{ ...S.td, textAlign: "center", color: T.text3 }}>No players found</td></tr>}
             </tbody>
           </table>
         </div>
-        <Pagination page={page} totalPages={totalPages} total={displayPool.length} onPrev={() => setPage(Math.max(0, page - 1))} onNext={() => setPage(Math.min(totalPages - 1, page + 1))} />
+        <div style={{ margin: "0 -12px -12px" }}>
+          <Pagination page={page} totalPages={totalPages} total={displayPool.length} onPrev={() => setPage(Math.max(0, page - 1))} onNext={() => setPage(Math.min(totalPages - 1, page + 1))} />
+        </div>
       </Section>
     </div>
   );

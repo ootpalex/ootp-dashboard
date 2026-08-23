@@ -1,5 +1,5 @@
 // R5 protection shortlist droppable + below-threshold expander.
-import { S } from "../../theme.js";
+import { TOKENS as T, S } from "../../theme.js";
 import { DroppablePanel } from "./Panels.jsx";
 import { CompactRowHeader, CompactPlayerRow } from "./CompactPlayerRow.jsx";
 import { BUCKET_CONFIG } from "./_shared.js";
@@ -15,29 +15,26 @@ export function Rule5RiskPanel({
       subtitle={`FV ≥ ${r5Threshold.toFixed(1)} — drag into 40-Man to protect`}
       accent={BUCKET_CONFIG.r5Risk.color}
     >
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-        borderBottom: "1px solid #1e293b", background: "rgba(15,23,42,0.35)",
-      }}>
-        <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>FV threshold:</span>
+      <div style={{ ...S.toolbar, gap: 10 }}>
+        <span style={{ fontFamily: T.fonts.narrow, fontSize: 12.5, color: T.text2, fontWeight: 600 }}>FV threshold:</span>
         <input
           type="range" min={-3} max={3} step={0.1} value={r5Threshold}
           onChange={e => setR5Threshold(parseFloat(e.target.value))}
-          style={{ flex: 1, maxWidth: 280 }}
+          style={{ flex: 1, maxWidth: 280, accentColor: T.accent }}
         />
-        <span style={{ fontSize: 12, color: "#fbbf24", fontWeight: 700, minWidth: 44, textAlign: "right" }}>
+        <span style={{ fontSize: 12.5, color: T.warn, fontWeight: 700, minWidth: 44, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
           {r5Threshold.toFixed(1)}
         </span>
         <button
           onClick={() => setR5Threshold(R5_DEFAULT_THRESHOLD)}
-          style={{ ...S.pillBtn, fontSize: 10, padding: "3px 8px" }}
+          style={{ ...S.pillBtn, fontSize: 11, padding: "2px 8px" }}
         >
           Reset
         </button>
       </div>
-      <div style={{ padding: 8 }}>
+      <div>
         {r5.shortlist.length === 0 ? (
-          <div style={{ padding: "8px 10px", color: "#475569", fontSize: 11, fontStyle: "italic" }}>
+          <div style={{ padding: "8px 12px", color: T.text3, fontSize: 12, fontStyle: "italic" }}>
             No R5-exposed players meet the threshold.
           </div>
         ) : (
@@ -45,10 +42,11 @@ export function Rule5RiskPanel({
             <CompactRowHeader />
             {r5.shortlist.map(p => {
               const countdown = p._r5?.r5Countdown;
+              // R5 countdown 0 → bad, >0 → warn (D.5).
               const tag = {
                 label: countdown === 0 ? "R5 NOW" : `R5 in ${countdown}y`,
-                bg: countdown === 0 ? "rgba(239,68,68,0.15)" : "rgba(249,115,22,0.15)",
-                color: countdown === 0 ? "#fca5a5" : "#fdba74",
+                bg: countdown === 0 ? T.badBg : T.warnBg,
+                color: countdown === 0 ? T.bad : T.warn,
               };
               return (
                 <CompactPlayerRow key={p._uid} player={p} onSelect={onSelectPlayer} tags={[tag]} />
@@ -57,24 +55,21 @@ export function Rule5RiskPanel({
           </>
         )}
         {r5.others.length > 0 && (
-          <div style={{ marginTop: 6 }}>
+          <div style={{ padding: "8px 12px 10px" }}>
             <button
               onClick={() => setShowOtherR5(!showOtherR5)}
-              style={{
-                ...S.pillBtn, fontSize: 10, padding: "3px 10px",
-                borderColor: "#334155", color: "#64748b",
-              }}
+              style={{ ...S.pillBtn, fontSize: 11, padding: "2px 9px", color: T.text2 }}
             >
               {showOtherR5 ? "Hide" : "Show"} other R5-eligible below threshold ({r5.others.length})
             </button>
             {showOtherR5 && (
-              <div style={{ marginTop: 4 }}>
+              <div style={{ marginTop: 8, border: `1px solid ${T.line2}`, borderRadius: T.radius, overflow: "hidden" }}>
                 <CompactRowHeader />
                 {r5.others.map(p => {
                   const countdown = p._r5?.r5Countdown;
                   const tag = {
                     label: countdown === 0 ? "R5 NOW" : `R5 in ${countdown}y`,
-                    bg: "rgba(100,116,139,0.15)", color: "#94a3b8",
+                    bg: T.panel3, color: T.text2,
                   };
                   return <CompactPlayerRow key={p._uid} player={p} onSelect={onSelectPlayer} tags={[tag]} />;
                 })}

@@ -4,7 +4,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Changed
+
+- **Dashboard visual redesign — "Night Scorecard" (graphite).** The whole SPA moves from the slate-900 / Tailwind / JetBrains Mono look to a dark-native design system: neutral graphite grounds, cream text tiers, one red-pencil accent, Archivo + Archivo Narrow (tabular numerals), 3px radius, no shadows/gradients/blur, scorecard boxes with header strips and filter toolbars, column-group rules on every board, light zebra, NEED-row tints, foot-strip pagination, level ladder chips, Savant-style FV tier pills, a red↔blue z-heat, and the full OOTP 20–80 spectrum re-derived for dark. `app/src/theme.js` is the single source of truth (`TOKENS`, encoding maps, helpers with a compatible API plus `posChip`/`levelChip`/`tierChip`/`zHeat`, the restyled `S`); `app/src/tokens.css` is generated from it; `app/docs/prototype.css` mirrors it for the prototype skill. Every view was migrated (sidebar + primitives, the nine boards, Org views + Positional Strength + Active Roster diamond, Player Profile modal and tabs, Roster Planner, Dev Analysis + Recharts on `TOKENS.CHART`). Outside `theme.js` no component holds a hex literal. The one breaking helper change is `FV_TIER_COLORS[tier]` → `{bg, text}`. No data access, accessor, sort/filter or dnd-kit logic changed. Plan, per-file inventory, contrast checks, screenshot harness and the approved mockup live in `app/docs/redesign/`.
 
 ## [0.3.0] — 2026-08-11
 

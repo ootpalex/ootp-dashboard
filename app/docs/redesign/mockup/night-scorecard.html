@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en" data-ground="graphite"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night Scorecard — Free Agent Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* =====================================================================
+   DIRECTION 6 — "NIGHT SCORECARD"
+   The Scorecard grammar (ruled boxes, column-group rules, one red pencil,
+   Archivo) rebuilt from a dark ground. One theme, two ground candidates:
+   data-ground="graphite" (neutral, zero blue cast) | "warm" (night paper).
+   ===================================================================== */
+
+/* ---------- tokens: GRAPHITE (default) ---------- */
+:root{
+  --bg:#141516;          /* the desk */
+  --bg-2:#111213;        /* deeper desk (scrim, unused in this screen) */
+  --panel:#1b1c1e;       /* the card stock */
+  --panel-2:#212225;     /* header strips, toolbars */
+  --panel-3:#27292c;     /* hover / pressed */
+  --text:#ebe6da;        /* cream ink */
+  --text-2:#b6b1a5;
+  --muted:#8c887f;
+  --disabled:#67635b;
+  --line:#303236;        /* light hairline */
+  --line-2:#44474c;      /* box rule */
+  --line-ink:#ebe6da;    /* the h1 rule, hover border = cream */
+  --accent:#e6655a;      /* red pencil */
+  --accent-hover:#ee7b70;
+  --accent-text:#141516; /* = bg: ink on the pencil */
+  --accent-bg:#352727;   /* NEED row hover  (pencil 14% over panel) */
+  --accent-bg-2:#2a2223; /* NEED row tint   (pencil 8% over panel) */
+  --good:#47a46e; --bad:#e6655a; --warn:#c9a23a;
+  --focus:#82a7e0;
+
+  /* 20–80 grade ramp (text on dark): ends brightest, 80 brightest of all, 45 dimmest */
+  --g20:#f98b80; --g30:#e08e52; --g40:#b38f34; --g45:#8d953e; --g50:#47a46e;
+  --g55:#3ea891; --g60:#49aac4; --g70:#80acf0; --g80:#bccdff;
+  /* tier pill ink */
+  --tier-text:#141516;
+  /* z-heat endpoints (mixed toward from the panel) */
+  --zneg:#e86c5f; --zpos:#6193de; --zmid:var(--panel);
+  /* positions */
+  --p-C:#b8a2f2; --p-1B:#f09485; --p-2B:#dfb04c; --p-3B:#b9c45c; --p-SS:#6ecf95;
+  --p-LF:#5fcbc1; --p-CF:#6fb6f0; --p-RF:#98abf5; --p-DH:#a9a59c; --p-SP:#ebe6da; --p-RP:#cfae92;
+  /* levels ladder: MLB brightest → R darkest */
+  --l-MLB:#ebe6da; --l-AAA:#bdb8ad; --l-AA:#8d8a82; --l-Ap:#5f5d57; --l-A:#45443f; --l-R:#323130; --l-INT:#dfb04c;
+  --l-text-dark:#141516;
+  /* proneness */
+  --pr-iron:#bccdff; --pr-dur:#3ea891; --pr-norm:#b6b1a5; --pr-frag:#e08e52; --pr-wreck:#f98b80;
+
+  --r:3px;
+  --sp:8px;
+  --ui:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --narrow:"Archivo Narrow", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  color-scheme:dark;
+}
+
+/* ---------- tokens: WARM ("night paper", warm grey — not sepia) ---------- */
+:root[data-ground="warm"]{
+  --bg:#181716;
+  --bg-2:#141312;
+  --panel:#201e1c;
+  --panel-2:#272421;
+  --panel-3:#2d2a26;
+  --text:#ece7db;
+  --text-2:#b9b3a6;
+  --muted:#918c83;
+  --disabled:#69655d;
+  --line:#373430;
+  --line-2:#4c4843;
+  --line-ink:#ece7db;
+  --accent:#e6655a;
+  --accent-hover:#ee7b70;
+  --accent-text:#181716;
+  --accent-bg:#392824;
+  --accent-bg-2:#2e2421;
+  --good:#47a46e; --bad:#e6655a; --warn:#c9a23a;
+  --focus:#82a7e0;
+
+  --g20:#f98b80; --g30:#e08e52; --g40:#b38f34; --g45:#8d953e; --g50:#47a46e;
+  --g55:#3ea891; --g60:#49aac4; --g70:#80acf0; --g80:#bccdff;
+  --tier-text:#181716;
+  --zneg:#e86c5f; --zpos:#6193de; --zmid:var(--panel);
+
+  --p-C:#b8a2f2; --p-1B:#f09485; --p-2B:#dfb04c; --p-3B:#b9c45c; --p-SS:#6ecf95;
+  --p-LF:#5fcbc1; --p-CF:#6fb6f0; --p-RF:#98abf5; --p-DH:#aba69b; --p-SP:#ece7db; --p-RP:#cfae92;
+
+  --l-MLB:#ece7db; --l-AAA:#bfb9ad; --l-AA:#8f8a80; --l-Ap:#615d56; --l-A:#47443f; --l-R:#343230; --l-INT:#dfb04c;
+  --l-text-dark:#181716;
+  --pr-iron:#bccdff; --pr-dur:#3ea891; --pr-norm:#b9b3a6; --pr-frag:#e08e52; --pr-wreck:#f98b80;
+}
+
+/* ---------- base ---------- */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--ui);
+  font-size:13px;
+  line-height:1.4;
+  -webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+}
+h1,h2,h3,p,ul{margin:0}
+ul{padding:0;list-style:none}
+button,input{font:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums}
+.dim{color:var(--disabled)}
+
+.app{display:flex;min-height:100vh}
+
+/* ---------- sidebar (paper panel) ---------- */
+.nav{
+  width:200px;flex:0 0 200px;
+  background:var(--panel);
+  border-right:1px solid var(--line-2);
+  position:sticky;top:0;height:100vh;
+  display:flex;flex-direction:column;
+  padding:14px 0 0;
+}
+.brand{
+  font-family:var(--ui);font-weight:800;font-size:22px;letter-spacing:-0.04em;
+  padding:2px 16px 10px;
+  display:flex;align-items:baseline;gap:8px;
+}
+.brand::after{
+  content:"GM Dashboard";
+  font-family:var(--narrow);font-weight:500;font-size:12px;letter-spacing:0;
+  color:var(--muted);
+}
+.nav-controls{
+  margin:0 12px 10px;
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  background:var(--panel-2);
+  padding:8px 10px 9px;
+  display:grid;grid-template-columns:1fr;gap:3px;
+}
+.nav-controls label{
+  font-family:var(--narrow);font-size:11px;font-weight:600;color:var(--muted);
+  margin-top:4px;
+}
+.nav-controls label:first-child{margin-top:0}
+.nav-controls .select,.nav-controls .input{
+  font-size:12.5px;font-weight:600;color:var(--text);
+  padding:3px 0 4px;border-bottom:1px solid var(--line-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  cursor:pointer;
+}
+.nav-controls .input{font-weight:500;font-variant-numeric:tabular-nums}
+.nav-controls .select:hover{color:var(--accent)}
+
+.pages{padding:4px 0 0;flex:1;font-family:var(--narrow);display:flex;flex-direction:column}
+.pages li{
+  position:relative;
+  font-size:14px;font-weight:500;
+  color:var(--text-2);
+  padding:6px 16px 6px 30px;
+  cursor:pointer;
+  border-left:2px solid transparent;
+}
+.pages li:hover{color:var(--text);background:var(--panel-2)}
+.pages li.active{
+  color:var(--text);font-weight:700;
+}
+.pages li.active::before{
+  /* the red pencil tick */
+  content:"";position:absolute;left:13px;top:9px;width:5px;height:10px;
+  border-right:2.5px solid var(--accent);border-bottom:2.5px solid var(--accent);
+  transform:rotate(40deg);
+}
+.pages li.settings{
+  margin-top:auto;border-top:1px solid var(--line);padding-top:10px;padding-bottom:14px;
+  color:var(--muted);font-size:13px;
+}
+.pages li.settings::before{content:none}
+
+/* ---------- content ---------- */
+.content{flex:1;min-width:0;padding:18px 24px 48px 24px}
+
+.page-head{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+  padding:6px 0 14px;margin-bottom:16px;
+  border-bottom:2px solid var(--line-ink);
+}
+.page-head h1{
+  font-weight:800;font-size:28px;letter-spacing:-0.035em;line-height:1.05;
+}
+.page-sub{
+  color:var(--text-2);font-size:13px;margin-top:6px;
+}
+.page-sub b{color:var(--text);font-weight:600}
+.head-actions{display:flex;gap:8px;align-items:center;padding-bottom:2px}
+
+/* buttons */
+.btn{
+  font-family:var(--narrow);font-weight:600;font-size:13px;
+  border-radius:var(--r);padding:6px 12px;line-height:1.2;
+  border:1px solid var(--line-2);background:var(--panel);color:var(--text);
+  cursor:pointer;
+}
+.btn:hover{background:var(--panel-2);border-color:var(--line-ink)}
+.btn:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn:disabled{color:var(--disabled);border-color:var(--line);background:var(--panel);cursor:default}
+
+/* ground switch — MOCKUP REVIEW CONTROL, not product UI (fixed top right) */
+.ground-switch{
+  position:fixed;top:8px;right:16px;z-index:50;
+  display:inline-flex;align-items:center;gap:2px;
+  font-family:var(--narrow);font-size:11px;font-weight:500;letter-spacing:0.02em;
+  color:var(--muted);
+  border:1px dashed var(--line-2);background:var(--bg);
+  border-radius:2px;padding:2px 6px 2px 7px;
+  opacity:.85;
+}
+.ground-switch:hover{opacity:1}
+.ground-switch .lbl{margin-right:4px}
+.ground-switch .sep{margin:0 3px;color:var(--disabled)}
+.ground-switch button{
+  appearance:none;border:0;background:transparent;padding:1px 2px;margin:0;
+  font:inherit;color:var(--muted);cursor:pointer;border-bottom:1px solid transparent;
+}
+.ground-switch button:hover{color:var(--text)}
+.ground-switch button:focus-visible{outline:1px solid var(--focus);outline-offset:1px}
+.ground-switch button.on{color:var(--text);font-weight:700;border-bottom-color:var(--text)}
+
+/* ---------- scorecard boxes ---------- */
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line-2);
+  border-radius:var(--r);
+  margin-bottom:16px;
+  overflow:hidden;
+}
+.panel > h2{
+  font-family:var(--narrow);font-weight:700;font-size:13.5px;letter-spacing:0.01em;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:7px 12px;
+  background:var(--panel-2);
+  border-bottom:1px solid var(--line-2);
+  min-height:34px;
+}
+.panel > h2 .count{font-weight:500;color:var(--muted);margin-left:-2px}
+.panel > h2 .h2-right{margin-left:auto;font-family:var(--narrow);font-weight:500;font-size:12px;color:var(--muted)}
+.panel-sub{color:var(--text-2);font-size:12.5px;padding:10px 12px 0}
+.panel-foot{
+  font-family:var(--narrow);font-size:12px;color:var(--muted);
+  padding:7px 12px 8px;border-top:1px solid var(--line);
+}
+
+.top-row{display:grid;grid-template-columns:minmax(340px,1fr) minmax(0,2fr);gap:16px}
+
+/* ---------- tables ---------- */
+table{border-collapse:separate;border-spacing:0;width:100%}
+thead th{
+  position:sticky;top:0;z-index:2;
+  font-family:var(--narrow);font-size:12px;font-weight:600;color:var(--text-2);
+  text-align:left;white-space:nowrap;
+  background:var(--panel-2);
+  border-bottom:1px solid var(--line-2);
+  padding:6px 6px;
+  user-select:none;cursor:pointer;
+}
+thead th:hover{color:var(--text)}
+thead th.sorted{
+  color:var(--text);
+  box-shadow:inset 0 -2px 0 var(--accent);  /* red pencil underline */
+}
+tbody td{
+  padding:0 6px;height:29px;
+  border-bottom:1px solid var(--line);
+  white-space:nowrap;
+  font-size:12.5px;
+}
+tbody tr:nth-child(even) td{background:color-mix(in oklab, var(--panel-2) 55%, var(--panel))}
+tbody tr:hover td{background:var(--panel-3)}
+tbody tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right}
+td.name{font-weight:600;color:var(--text)}
+td.name:hover{color:var(--accent);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;cursor:pointer}
+td.check{color:var(--good);font-weight:700;text-align:center}
+
+/* numeric column alignment, by table */
+.board th:nth-child(1),.board th:nth-child(3),.board th:nth-child(6),.board th:nth-child(7),.board th:nth-child(8),.board th:nth-child(9),.board th:nth-child(10),.board th:nth-child(12){text-align:right}
+.dense th:nth-child(2),.dense th:nth-child(n+8):nth-child(-n+19),.dense th:nth-child(23),.dense th:nth-child(24){text-align:right}
+.dense td:nth-child(21),.dense td:nth-child(22),.dense th:nth-child(21),.dense th:nth-child(22){text-align:center}
+.needs th:nth-child(3),.needs th:nth-child(4){text-align:right}
+.specimen th:nth-child(5){text-align:right}
+
+/* column-group rules — scorecard boxes.
+   board:  identity(1–5) | value(6–8) | development(9–10) | health(11) | contract(12)
+   dense:  identity(1–7) | value(8–13) | development(14) | performance(15–19) | health(20) | roster+contract(21–24)
+   needs:  pos(1) | now(2) | score+rank(3–4)
+   specimen: identity(1–3) | value(4–5) | strength(6) */
+.board th:nth-child(6),.board td:nth-child(6),
+.board th:nth-child(9),.board td:nth-child(9),
+.board th:nth-child(11),.board td:nth-child(11),
+.board th:nth-child(12),.board td:nth-child(12),
+.dense th:nth-child(8),.dense td:nth-child(8),
+.dense th:nth-child(14),.dense td:nth-child(14),
+.dense th:nth-child(15),.dense td:nth-child(15),
+.dense th:nth-child(20),.dense td:nth-child(20),
+.dense th:nth-child(21),.dense td:nth-child(21),
+.needs th:nth-child(2),.needs td:nth-child(2),
+.needs th:nth-child(3),.needs td:nth-child(3),
+.specimen th:nth-child(4),.specimen td:nth-child(4),
+.specimen th:nth-child(6),.specimen td:nth-child(6){border-left:1px solid var(--line-2)}
+
+/* first/last cells get the box padding */
+tbody td:first-child,thead th:first-child{padding-left:12px}
+tbody td:last-child,thead th:last-child{padding-right:12px}
+
+/* ---------- needs table ---------- */
+.needs{table-layout:fixed}
+.needs th:nth-child(1){width:64px}
+.needs th:nth-child(2){width:auto}
+.needs th:nth-child(3){width:64px}
+.needs th:nth-child(4){width:64px}
+.needs td:nth-child(1){font-weight:700}
+.needs td.num[data-z]{font-weight:600}
+/* centre-zero bar */
+td.zbar{position:relative;padding:0 8px}
+td.zbar::before{
+  /* centre line + the ±2.5 edge ticks (bars max out at 48% of the cell either side of centre) */
+  content:"";position:absolute;left:2%;right:2%;top:9px;bottom:9px;
+  border-left:1px solid var(--line);border-right:1px solid var(--line);
+  background:linear-gradient(var(--line-2),var(--line-2)) center/1px 100% no-repeat;
+}
+td.zbar::after{
+  content:"";position:absolute;top:50%;height:11px;transform:translateY(-50%);
+  background:var(--zc);
+  left:50%;width:calc(var(--mix) * 0.48);
+}
+td.zbar[data-z^="-"]::after{left:auto;right:50%}
+
+/* ---------- toggles (switches) ---------- */
+.panel-smart{display:flex;flex-direction:column}
+.toggles{flex:1;display:flex;flex-direction:column}
+.toggles .toggle{flex:1;align-items:center}
+.toggle{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:8px 12px;cursor:pointer;
+}
+.toggles .toggle + .toggle{border-top:1px solid var(--line)}
+.toggle:hover{background:var(--panel-2)}
+.toggle b{display:block;font-weight:600;font-size:13px;color:var(--text-2)}
+.toggle small{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.toggle.on b{color:var(--text)}
+.switch{
+  /* off = a sunken well in the desk colour; on = the red pencil */
+  flex:0 0 auto;position:relative;width:30px;height:17px;margin-top:2px;
+  border:1px solid var(--line-2);border-radius:9px;background:var(--bg);
+}
+.switch::after{
+  content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;
+  background:var(--muted);transition:left .12s ease;
+}
+.toggle.on .switch{background:var(--accent);border-color:var(--accent)}
+.toggle.on .switch::after{left:15px;background:var(--accent-text)}
+.toggle:focus-within .switch,.toggle:hover .switch{box-shadow:0 0 0 2px color-mix(in oklab,var(--focus) 28%,transparent)}
+
+/* ---------- board toolbar (inside the header strip) ---------- */
+.toolbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:8px 12px;background:var(--panel-2);border-bottom:1px solid var(--line-2);
+}
+.toolbar .select,.toolbar .input{
+  font-size:12.5px;border:1px solid var(--line-2);border-radius:var(--r);
+  color:var(--text);padding:5px 8px;line-height:1.2;height:28px;
+}
+.toolbar .select{background:var(--panel);font-family:var(--narrow);font-weight:600;font-size:13px;padding-right:10px;cursor:pointer;min-width:140px}
+.toolbar .select:hover{border-color:var(--line-ink)}
+.toolbar .input{background:var(--bg);width:120px}   /* text fields are wells on the dark strip */
+.toolbar .input::placeholder{color:var(--muted)}
+.toolbar .input:hover{border-color:var(--text-2)}
+.toolbar .input:focus{outline:none;border-color:var(--focus);box-shadow:0 0 0 2px color-mix(in oklab,var(--focus) 26%,transparent)}
+.toolbar .search{width:190px;padding-left:26px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238c887f' stroke-width='2.2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.5-3.5'/></svg>");
+  background-repeat:no-repeat;background-size:13px;background-position:8px center}
+.toolbar .range{display:flex;align-items:center;gap:5px}
+.toolbar .range label{font-family:var(--narrow);font-weight:600;font-size:12.5px;color:var(--text-2);margin-right:2px}
+.toolbar .range .input{width:54px;text-align:right}
+.toolbar .range span{color:var(--muted)}
+.toolbar .toggle.inline{padding:0 0 0 6px;margin-left:auto;align-items:center}
+.toolbar .toggle.inline:hover{background:transparent}
+.toolbar .toggle.inline b{font-size:12.5px}
+.toolbar .toggle.inline small{font-size:11px;margin-top:0}
+.toolbar .toggle.inline .switch{margin-top:0}
+
+/* board */
+.board td.name{min-width:130px}
+.board tbody tr[data-need] td{background:var(--accent-bg-2)}
+.board tbody tr[data-need]:nth-child(even) td{background:color-mix(in oklab,var(--accent-bg-2) 80%,var(--panel-2))}
+.board tbody tr[data-need]:hover td{background:var(--accent-bg)}
+i.need{
+  font-style:normal;font-family:var(--narrow);font-weight:700;font-size:11px;letter-spacing:0.03em;
+  color:var(--accent);border:1px solid var(--accent);border-radius:2px;
+  padding:0 3px;line-height:13px;display:inline-block;vertical-align:1px;margin-left:3px;
+}
+
+/* pagination */
+.pagination{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 12px;border-top:1px solid var(--line-2);background:var(--panel-2);
+  font-family:var(--narrow);font-size:12.5px;color:var(--text-2);
+}
+.pagination span:first-child{margin-right:auto}
+.pagination button{
+  font-family:var(--narrow);font-weight:600;font-size:12.5px;
+  border:1px solid var(--line-2);background:var(--panel);color:var(--text);
+  border-radius:var(--r);padding:4px 10px;cursor:pointer;
+}
+.pagination button:hover{border-color:var(--line-ink);background:var(--panel)}
+.pagination button:first-of-type{color:var(--disabled);border-color:var(--line);cursor:default}
+.pagination button:first-of-type:hover{border-color:var(--line)}
+
+/* ---------- semantic encodings ---------- */
+/* 20–80 grade ramp as stat text */
+[data-grade]{font-variant-numeric:tabular-nums}
+[data-grade="20"]{color:var(--g20);font-weight:700}
+[data-grade="30"]{color:var(--g30);font-weight:700}
+[data-grade="40"]{color:var(--g40);font-weight:500}
+[data-grade="45"]{color:var(--g45);font-weight:500}
+[data-grade="50"]{color:var(--g50);font-weight:500}
+[data-grade="55"]{color:var(--g55);font-weight:500}
+[data-grade="60"]{color:var(--g60);font-weight:600}
+[data-grade="70"]{color:var(--g70);font-weight:700}
+[data-grade="80"]{color:var(--g80);font-weight:800}
+
+/* position text in table cells */
+td[data-pos]{font-family:var(--narrow);font-weight:700;font-size:13px}
+td[data-pos="C"]{color:var(--p-C)} td[data-pos="1B"]{color:var(--p-1B)} td[data-pos="2B"]{color:var(--p-2B)}
+td[data-pos="3B"]{color:var(--p-3B)} td[data-pos="SS"]{color:var(--p-SS)} td[data-pos="LF"]{color:var(--p-LF)}
+td[data-pos="CF"]{color:var(--p-CF)} td[data-pos="RF"]{color:var(--p-RF)} td[data-pos="DH"]{color:var(--p-DH)}
+td[data-pos="SP"]{color:var(--p-SP)} td[data-pos="RP"]{color:var(--p-RP)}
+
+/* chips */
+.badge{
+  display:inline-block;font-family:var(--narrow);font-weight:700;font-size:12px;line-height:17px;
+  padding:0 6px;border-radius:var(--r);border:1px solid currentColor;
+  min-width:26px;text-align:center;
+}
+.badge[data-pos]{background:color-mix(in oklab,currentColor 10%,var(--panel))}
+.badge[data-pos="C"]{color:var(--p-C)} .badge[data-pos="1B"]{color:var(--p-1B)} .badge[data-pos="2B"]{color:var(--p-2B)}
+.badge[data-pos="3B"]{color:var(--p-3B)} .badge[data-pos="SS"]{color:var(--p-SS)} .badge[data-pos="LF"]{color:var(--p-LF)}
+.badge[data-pos="CF"]{color:var(--p-CF)} .badge[data-pos="RF"]{color:var(--p-RF)} .badge[data-pos="DH"]{color:var(--p-DH)}
+.badge[data-pos="SP"]{color:var(--p-SP)} .badge[data-pos="RP"]{color:var(--p-RP)}
+
+/* levels: filled luminance ladder (MLB brightest → R darkest), line-2 ring so R stays visible, INT outlined dashed */
+.badge[data-lvl]{border-color:var(--line-2);color:var(--text)}
+.badge[data-lvl="MLB"]{background:var(--l-MLB);color:var(--l-text-dark)}
+.badge[data-lvl="AAA"]{background:var(--l-AAA);color:var(--l-text-dark)}
+.badge[data-lvl="AA"]{background:var(--l-AA);color:var(--l-text-dark)}
+.badge[data-lvl="A+"]{background:var(--l-Ap)}
+.badge[data-lvl="A"]{background:var(--l-A)}
+.badge[data-lvl="R"]{background:var(--l-R)}
+.badge[data-lvl="INT"]{background:transparent;color:var(--l-INT);border:1px dashed var(--l-INT)}
+
+/* FV tier chips — filled, Savant-style, ink text */
+.tier{
+  display:inline-block;font-family:var(--narrow);font-weight:700;font-size:12px;line-height:18px;
+  min-width:30px;padding:0 6px;border-radius:10px;text-align:center;color:var(--tier-text);
+}
+.tier[data-tier="80"]{background:var(--g80)}
+.tier[data-tier="70"]{background:var(--g70)}
+.tier[data-tier="65"]{background:color-mix(in oklab,var(--g70) 50%,var(--g60))}
+.tier[data-tier="60"]{background:var(--g60)}
+.tier[data-tier="55"]{background:var(--g55)}
+.tier[data-tier="50"]{background:var(--g50)}
+.tier[data-tier="45+"]{background:var(--g45)}
+.tier[data-tier="45"]{background:var(--g40)}
+.tier[data-tier="40+"]{background:color-mix(in oklab,var(--g40) 45%,var(--g30))}
+.tier[data-tier="40"]{background:var(--g30)}
+.tier[data-tier="35+"]{background:var(--g20)}
+
+/* z-heat: filled cells red(weak) ↔ blue(strong); saturation = |z| / 2.5, mixed from the PANEL of the active ground.
+   Text stays cream through 72% and flips to ink (= bg) at ≥80% — on a dark ground the 64% fill is still too dark for ink. */
+[data-z]{--zc:var(--zpos);--mix:0%;--zt:var(--text)}
+[data-z^="-"]{--zc:var(--zneg)}
+[data-z="0"]{--mix:0%}
+[data-z="-0.1"]{--mix:5%}
+[data-z="0.2"]{--mix:8%}
+[data-z="-0.4"]{--mix:16%}
+[data-z="0.5"],[data-z="-0.5"]{--mix:20%}
+[data-z="-0.7"]{--mix:28%}
+[data-z="0.8"]{--mix:32%}
+[data-z="1"],[data-z="-1"]{--mix:40%}
+[data-z="1.1"],[data-z="-1.1"]{--mix:44%}
+[data-z="1.6"]{--mix:64%}
+[data-z="1.8"],[data-z="-1.8"]{--mix:72%}
+[data-z="2"],[data-z="-2"]{--mix:80%;--zt:var(--bg)}
+[data-z="2.5"],[data-z="-2.5"]{--mix:100%;--zt:var(--bg)}
+.zcell,td.num[data-z]{
+  background:color-mix(in oklab,var(--zc) var(--mix),var(--zmid)) !important;
+  color:var(--zt);font-variant-numeric:tabular-nums;
+}
+td.num[data-z]{font-weight:600}
+.zcell{font-weight:600;text-align:right}
+span.zcell{display:inline-block;min-width:54px;padding:3px 8px;border:1px solid var(--line);border-radius:var(--r);text-align:center}
+.specimen td.zcell{text-align:right}
+
+/* injury proneness */
+[data-prone="Iron Man"]{color:var(--pr-iron);font-weight:700}
+[data-prone="Durable"]{color:var(--pr-dur);font-weight:600}
+[data-prone="Normal"]{color:var(--pr-norm)}
+[data-prone="Fragile"]{color:var(--pr-frag);font-weight:600}
+[data-prone="Wrecked"]{color:var(--pr-wreck);font-weight:700}
+
+/* dev percentile */
+[data-dev]{color:var(--text-2)}
+[data-dev="71"]{color:var(--g70);font-weight:700}
+[data-dev="64"],[data-dev="58"],[data-dev="55"]{color:var(--g55);font-weight:600}
+[data-dev="52"],[data-dev="49"],[data-dev="47"]{color:var(--text-2)}
+[data-dev="44"],[data-dev="38"]{color:var(--g40);font-weight:500}
+[data-dev="33"]{color:var(--g30);font-weight:700}
+
+/* ---------- specimen / encodings ---------- */
+.panel-detail .specimen{margin-top:10px;table-layout:fixed}
+.panel-detail .specimen th:nth-child(1){width:28%}
+.panel-detail .specimen thead th{position:static}
+.panel-detail .specimen td{height:40px;font-size:14px}
+.panel-detail .specimen td.name{font-size:15px}
+.panel-detail .specimen .badge,.panel-detail .specimen .tier{font-size:13px;line-height:20px}
+.panel-detail .specimen td.zcell{font-size:14px}
+.encodings{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:0;
+  border-top:1px solid var(--line-2);
+}
+.enc{padding:12px 12px 14px;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+.enc:nth-child(2n){border-right:0}
+.enc:nth-child(n+5){border-bottom:0}
+.enc h3{
+  font-family:var(--narrow);font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;
+}
+.swatches{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:13px}
+.swatches .num{padding:2px 4px}
+.swatches [data-prone]{padding:2px 4px}
+
+/* dense */
+.dense td,.dense th{padding-left:5px;padding-right:5px;font-size:12px}
+.dense td:first-child,.dense th:first-child{padding-left:12px}
+.dense td:last-child,.dense th:last-child{padding-right:12px}
+.dense td.name{font-size:12.5px}
+.dense td[data-pos]{font-size:12.5px}
+.panel-density .panel-sub,.panel-detail .panel-sub{padding-bottom:10px}
+.panel-density table{border-top:1px solid var(--line)}
+
+@media print{
+  .ground-switch,.nav{display:none}
+  .content{padding:0}
+}
+</style>
+</head>
+<body>
+<div class="ground-switch" role="group" aria-label="Mockup ground (review control)">
+  <span class="lbl">Ground:</span>
+  <button type="button" data-g="graphite" class="on" onclick="setGround('graphite')">Graphite</button>
+  <span class="sep">·</span>
+  <button type="button" data-g="warm" onclick="setGround('warm')">Warm</button>
+</div>
+
+<div class="app">
+
+<!-- ============ NAV / CHROME ============ -->
+<nav class="nav" aria-label="Main navigation">
+  <div class="brand">SSB</div>
+  <div class="nav-controls">
+    <label>League</label><div class="select">Spreadsheet Baseball ▾</div>
+    <label>My Team</label><div class="select">Atlanta Braves ▾</div>
+    <label>Game Date</label><div class="input">2043-10-08</div>
+  </div>
+  <ul class="pages">
+    <li data-page="org">My Organization</li>
+    <li data-page="players">All Players</li>
+    <li data-page="fa" class="active">Free Agent Finder</li>
+    <li data-page="waivers">Waiver Wire</li>
+    <li data-page="draft">Draft Board</li>
+    <li data-page="iafa">IAFA Board</li>
+    <li data-page="dev">Dev Analysis</li>
+    <li data-page="scout">Scout View</li>
+    <li data-page="compare">Player Compare</li>
+    <li data-page="r5">Rule 5 Board</li>
+    <li data-page="prospects">Prospects</li>
+    <li data-page="roster">Roster Planner</li>
+    <li data-page="settings" class="settings">Settings</li>
+  </ul>
+</nav>
+
+<main class="content">
+<header class="page-head">
+  <div>
+    <h1>Free Agent Finder</h1>
+    <div class="page-sub">Unsigned players available to sign · pool <b>1,545</b> · <b>Atlanta Braves</b> · 2043-10-08</div>
+  </div>
+  <div class="head-actions">
+    <button class="btn" type="button">Export CSV</button>
+    <button class="btn primary" type="button">Save view</button>
+  </div>
+</header>
+
+<!-- ============ TOP ROW: NEEDS + SMART RANK ============ -->
+<div class="top-row">
+<section class="panel panel-needs">
+  <h2>Team Positional Needs <span class="h2-right">z vs league · 2043</span></h2>
+  <table class="needs">
+    <thead><tr><th>POS</th><th>Now</th><th>Score</th><th>Rank</th></tr></thead>
+    <tbody>
+      <tr><td data-pos="C">C</td>   <td class="zbar" data-z="-1.8"></td><td class="num" data-z="-1.8">0.6</td><td class="num" data-z="-1.8">27th</td></tr>
+      <tr><td data-pos="SS">SS</td> <td class="zbar" data-z="-1.1"></td><td class="num" data-z="-1.1">1.4</td><td class="num" data-z="-1.1">23rd</td></tr>
+      <tr><td data-pos="LF">LF</td> <td class="zbar" data-z="-0.7"></td><td class="num" data-z="-0.7">1.9</td><td class="num" data-z="-0.7">20th</td></tr>
+      <tr><td data-pos="RP">RP</td> <td class="zbar" data-z="-0.4"></td><td class="num" data-z="-0.4">2.2</td><td class="num" data-z="-0.4">18th</td></tr>
+      <tr><td data-pos="2B">2B</td> <td class="zbar" data-z="-0.1"></td><td class="num" data-z="-0.1">2.6</td><td class="num" data-z="-0.1">15th</td></tr>
+      <tr><td data-pos="3B">3B</td> <td class="zbar" data-z="0.2"></td> <td class="num" data-z="0.2">2.9</td> <td class="num" data-z="0.2">13th</td></tr>
+      <tr><td data-pos="CF">CF</td> <td class="zbar" data-z="0.5"></td> <td class="num" data-z="0.5">3.3</td> <td class="num" data-z="0.5">10th</td></tr>
+      <tr><td data-pos="1B">1B</td> <td class="zbar" data-z="0.8"></td> <td class="num" data-z="0.8">3.6</td> <td class="num" data-z="0.8">8th</td></tr>
+      <tr><td data-pos="RF">RF</td> <td class="zbar" data-z="1.1"></td> <td class="num" data-z="1.1">3.9</td> <td class="num" data-z="1.1">6th</td></tr>
+      <tr><td data-pos="SP">SP</td> <td class="zbar" data-z="1.6"></td> <td class="num" data-z="1.6">4.4</td> <td class="num" data-z="1.6">3rd</td></tr>
+    </tbody>
+  </table>
+  <div class="panel-foot">Sorted weakest to strongest. 4 positions below league average.</div>
+</section>
+
+<section class="panel panel-smart">
+  <h2>Smart Rank Adjustments <span class="h2-right">2 of 4 on</span></h2>
+  <ul class="toggles">
+    <li class="toggle on"><span class="switch"></span><div><b>Future Value</b><small>Use FV (cur + age-weighted gap) instead of raw potential</small></div></li>
+    <li class="toggle on"><span class="switch"></span><div><b>Org Positional Need</b><small>Boost players at your org's weak positions</small></div></li>
+    <li class="toggle"><span class="switch"></span><div><b>Injury Proneness</b><small>Bonus for Iron Man / Durable, penalty for Fragile / Wrecked</small></div></li>
+    <li class="toggle"><span class="switch"></span><div><b>Intangibles</b><small>Bonus for elite 20-80 intangible grades, penalty for poor ones</small></div></li>
+  </ul>
+</section>
+</div>
+
+<!-- ============ FA BOARD ============ -->
+<section class="panel panel-board">
+  <h2>Free Agent Board <span class="count">(1,545)</span><span class="h2-right">Sorted by Smart, descending</span></h2>
+  <div class="toolbar">
+    <div class="select pos-filter">All Positions ▾</div>
+    <input class="input search" placeholder="Search name..." />
+    <div class="range"><label>Age</label><input class="input" placeholder="min"/><span>–</span><input class="input" placeholder="max"/></div>
+    <div class="range"><label>Pro Yrs</label><input class="input" placeholder="min"/><span>–</span><input class="input" placeholder="max"/></div>
+    <div class="toggle inline"><span class="switch"></span><div><b>Gap fills only</b><small>Only positions below league avg</small></div></div>
+  </div>
+  <table class="board">
+    <thead><tr>
+      <th class="sorted desc">Smart ▼</th><th>Name</th><th>Age</th><th>POS</th><th>Best</th><th>FV</th><th>WAR</th><th>WAR P</th><th>Dev%</th><th>Pro Yrs</th><th>Prone</th><th>Salary</th>
+    </tr></thead>
+    <tbody>
+      <tr data-need="1"><td class="num" data-grade="60">3.75</td><td class="name">Chris Rae</td><td class="num">25.4</td><td data-pos="LF" data-need="1">LF <i class="need">NEED</i></td><td data-pos="LF">LF</td><td class="num" data-grade="60">3.41</td><td class="num" data-grade="60">3.06</td><td class="num" data-grade="60">3.49</td><td class="num" data-dev="58">58th</td><td class="num">7</td><td data-prone="Normal">Normal</td><td class="num">$720,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="60">3.62</td><td class="name">Ernie Johnson</td><td class="num">28.3</td><td data-pos="C" data-need="1">C <i class="need">NEED</i></td><td data-pos="C">C</td><td class="num" data-grade="55">2.95</td><td class="num" data-grade="55">2.89</td><td class="num" data-grade="55">2.97</td><td class="num" data-dev="71">71st</td><td class="num">11</td><td data-prone="Normal">Normal</td><td class="num">$950,000</td></tr>
+      <tr><td class="num" data-grade="60">3.62</td><td class="name">Bobby Pierce</td><td class="num">26.1</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td class="num" data-grade="60">3.62</td><td class="num" data-grade="60">3.40</td><td class="num" data-grade="60">3.70</td><td class="num" data-dev="64">64th</td><td class="num">8</td><td data-prone="Normal">Normal</td><td class="num">$1,200,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="60">3.24</td><td class="name">Andres Vazquez</td><td class="num">31.6</td><td data-pos="C" data-need="1">C <i class="need">NEED</i></td><td data-pos="C">C</td><td class="num" data-grade="55">2.63</td><td class="num" data-grade="55">2.64</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">12</td><td data-prone="Iron Man">Iron Man</td><td class="num">$1,500,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="60">3.17</td><td class="name">Raul Medina</td><td class="num">29.4</td><td data-pos="C" data-need="1">C <i class="need">NEED</i></td><td data-pos="C">C</td><td class="num" data-grade="55">2.58</td><td class="num" data-grade="55">2.59</td><td class="num" data-grade="55">2.58</td><td class="num" data-dev="49">49th</td><td class="num">11</td><td data-prone="Normal">Normal</td><td class="num">$1,100,000</td></tr>
+      <tr><td class="num" data-grade="60">3.10</td><td class="name">Alvaro Grajales</td><td class="num">29.0</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td class="num" data-grade="60">3.10</td><td class="num" data-grade="55">2.70</td><td class="num" data-grade="60">3.52</td><td class="num" data-dev="55">55th</td><td class="num">11</td><td data-prone="Fragile">Fragile</td><td class="num">$850,000</td></tr>
+      <tr><td class="num" data-grade="60">3.01</td><td class="name">Edgar Pozas</td><td class="num">33.2</td><td data-pos="CF">CF</td><td data-pos="LF">LF</td><td class="num" data-grade="60">3.01</td><td class="num" data-grade="60">3.03</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">12</td><td data-prone="Durable">Durable</td><td class="num">$2,400,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="55">2.86</td><td class="name">Nate Dukes</td><td class="num">30.1</td><td data-pos="SS" data-need="1">SS <i class="need">NEED</i></td><td data-pos="SS">SS</td><td class="num" data-grade="55">2.39</td><td class="num" data-grade="55">2.38</td><td class="num" data-grade="55">2.41</td><td class="num" data-dev="38">38th</td><td class="num">9</td><td data-prone="Normal">Normal</td><td class="num">$980,000</td></tr>
+      <tr><td class="num" data-grade="55">2.74</td><td class="name">Tim Stabb</td><td class="num">25.9</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td class="num" data-grade="55">2.74</td><td class="num" data-grade="55">2.59</td><td class="num" data-grade="55">2.88</td><td class="num" data-dev="47">47th</td><td class="num">7</td><td data-prone="Fragile">Fragile</td><td class="num">$720,000</td></tr>
+      <tr><td class="num" data-grade="55">2.47</td><td class="name">Sam Goodnight</td><td class="num">27.2</td><td data-pos="SP">SP</td><td data-pos="SP">SP</td><td class="num" data-grade="55">2.47</td><td class="num" data-grade="55">2.17</td><td class="num" data-grade="55">2.55</td><td class="num" data-dev="52">52nd</td><td class="num">9</td><td data-prone="Fragile">Fragile</td><td class="num">$1,400,000</td></tr>
+      <tr><td class="num" data-grade="55">2.39</td><td class="name">Joe Spoden</td><td class="num">28.5</td><td data-pos="SP">SP</td><td data-pos="SP">SP</td><td class="num" data-grade="55">2.39</td><td class="num" data-grade="55">2.12</td><td class="num" data-grade="55">2.57</td><td class="num" data-dev="44">44th</td><td class="num">10</td><td data-prone="Normal">Normal</td><td class="num">$1,050,000</td></tr>
+      <tr data-need="1"><td class="num" data-grade="55">2.15</td><td class="name">Juan Rojas</td><td class="num">39.3</td><td data-pos="RP" data-need="1">RP <i class="need">NEED</i></td><td data-pos="RP">RP</td><td class="num" data-grade="50">1.95</td><td class="num" data-grade="50">1.95</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">21</td><td data-prone="Fragile">Fragile</td><td class="num">$720,000</td></tr>
+    </tbody>
+  </table>
+  <div class="pagination"><span>Showing 1–12 of 1,545</span><button>‹ Prev</button><span>Page 1 of 129</span><button>Next ›</button></div>
+</section>
+
+<!-- ============ ROW-LEVEL DETAIL (specimen) ============ -->
+<section class="panel panel-detail">
+  <h2>Row-level detail</h2>
+  <p class="panel-sub">One table row enlarged, plus the semantic encodings rendered in this direction's palette.</p>
+
+  <table class="specimen">
+    <thead><tr><th>Name</th><th>POS</th><th>Lvl</th><th>FV</th><th>WAR</th><th>Strength z</th></tr></thead>
+    <tbody><tr>
+      <td class="name">Bobby Pierce</td>
+      <td><span class="badge" data-pos="CF">CF</span></td>
+      <td><span class="badge" data-lvl="AAA">AAA</span></td>
+      <td><span class="tier" data-tier="55">55</span></td>
+      <td class="num" data-grade="60">3.40</td>
+      <td class="zcell" data-z="-1.8">−1.8</td>
+    </tr></tbody>
+  </table>
+
+  <div class="encodings">
+    <div class="enc"><h3>20–80 grade ramp (stat text)</h3>
+      <div class="swatches">
+        <span class="num" data-grade="20">20 · −2.10</span><span class="num" data-grade="30">30 · −0.85</span><span class="num" data-grade="40">40 · 0.30</span><span class="num" data-grade="50">50 · 1.09</span><span class="num" data-grade="60">60 · 3.45</span><span class="num" data-grade="70">70 · 5.81</span><span class="num" data-grade="80">80 · 8.17</span>
+      </div></div>
+    <div class="enc"><h3>Position colors</h3>
+      <div class="swatches">
+        <span class="badge" data-pos="C">C</span><span class="badge" data-pos="1B">1B</span><span class="badge" data-pos="2B">2B</span><span class="badge" data-pos="3B">3B</span><span class="badge" data-pos="SS">SS</span><span class="badge" data-pos="LF">LF</span><span class="badge" data-pos="CF">CF</span><span class="badge" data-pos="RF">RF</span><span class="badge" data-pos="DH">DH</span><span class="badge" data-pos="SP">SP</span><span class="badge" data-pos="RP">RP</span>
+      </div></div>
+    <div class="enc"><h3>Level colors</h3>
+      <div class="swatches">
+        <span class="badge" data-lvl="MLB">MLB</span><span class="badge" data-lvl="AAA">AAA</span><span class="badge" data-lvl="AA">AA</span><span class="badge" data-lvl="A+">A+</span><span class="badge" data-lvl="A">A</span><span class="badge" data-lvl="R">R</span><span class="badge" data-lvl="INT">INT</span>
+      </div></div>
+    <div class="enc"><h3>FV tier badges</h3>
+      <div class="swatches">
+        <span class="tier" data-tier="80">80</span><span class="tier" data-tier="70">70</span><span class="tier" data-tier="65">65</span><span class="tier" data-tier="60">60</span><span class="tier" data-tier="55">55</span><span class="tier" data-tier="50">50</span><span class="tier" data-tier="45+">45+</span><span class="tier" data-tier="45">45</span><span class="tier" data-tier="40+">40+</span><span class="tier" data-tier="40">40</span><span class="tier" data-tier="35+">35+</span>
+      </div></div>
+    <div class="enc"><h3>z-score heat cells (Positional Strength)</h3>
+      <div class="swatches">
+        <span class="zcell" data-z="-2.5">−2.5</span><span class="zcell" data-z="-2">−2.0</span><span class="zcell" data-z="-1">−1.0</span><span class="zcell" data-z="-0.5">−0.5</span><span class="zcell" data-z="0">0.0</span><span class="zcell" data-z="0.5">+0.5</span><span class="zcell" data-z="1">+1.0</span><span class="zcell" data-z="2">+2.0</span><span class="zcell" data-z="2.5">+2.5</span>
+      </div></div>
+    <div class="enc"><h3>Injury proneness</h3>
+      <div class="swatches">
+        <span data-prone="Iron Man">Iron Man</span><span data-prone="Durable">Durable</span><span data-prone="Normal">Normal</span><span data-prone="Fragile">Fragile</span><span data-prone="Wrecked">Wrecked</span>
+      </div></div>
+  </div>
+</section>
+
+<!-- ============ DENSITY PROOF ============ -->
+<section class="panel panel-density">
+  <h2>Density proof — All Players columns at 1440px</h2>
+  <p class="panel-sub">24 columns must fit with no horizontal scroll at 1440px viewport width.</p>
+  <table class="dense">
+    <thead><tr><th>Name</th><th>Age</th><th>POS</th><th>Best</th><th>Org</th><th>Lvl</th><th>B/T</th><th>OVR</th><th>POT</th><th>FV</th><th>WAR</th><th>WAR P</th><th>Floor</th><th>Dev%</th><th>OBP</th><th>wOBA</th><th>BsR</th><th>DEF</th><th>INTG</th><th>Prone</th><th>40M</th><th>R5</th><th>Opt</th><th>Salary</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Bobby Pierce</td><td class="num">26.1</td><td data-pos="CF">CF</td><td data-pos="CF">CF</td><td>FA</td><td>—</td><td>L/R</td><td class="num">44</td><td class="num">44</td><td class="num" data-grade="60">3.62</td><td class="num" data-grade="60">3.40</td><td class="num" data-grade="60">3.70</td><td class="num" data-grade="55">2.10</td><td class="num" data-dev="64">64th</td><td class="num">.312</td><td class="num">.307</td><td class="num" data-grade="55">1.7</td><td class="num" data-grade="60">+4.2</td><td class="num" data-grade="55">55</td><td data-prone="Normal">Normal</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$1,200,000</td></tr>
+      <tr><td class="name">Chris Rae</td><td class="num">25.4</td><td data-pos="LF">LF</td><td data-pos="LF">LF</td><td>FA</td><td>—</td><td>R/R</td><td class="num">39</td><td class="num">39</td><td class="num" data-grade="60">3.41</td><td class="num" data-grade="60">3.06</td><td class="num" data-grade="60">3.49</td><td class="num" data-grade="55">1.80</td><td class="num" data-dev="58">58th</td><td class="num">.306</td><td class="num">.290</td><td class="num" data-grade="70">4.0</td><td class="num" data-grade="50">+1.1</td><td class="num" data-grade="45">45</td><td data-prone="Normal">Normal</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$720,000</td></tr>
+      <tr><td class="name">Ernie Johnson</td><td class="num">28.3</td><td data-pos="C">C</td><td data-pos="C">C</td><td>FA</td><td>—</td><td>R/R</td><td class="num">40</td><td class="num">40</td><td class="num" data-grade="55">2.95</td><td class="num" data-grade="55">2.89</td><td class="num" data-grade="55">2.97</td><td class="num" data-grade="55">2.20</td><td class="num" data-dev="71">71st</td><td class="num">.291</td><td class="num">.280</td><td class="num" data-grade="40">−1.3</td><td class="num" data-grade="70">+6.8</td><td class="num" data-grade="50">50</td><td data-prone="Normal">Normal</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$950,000</td></tr>
+      <tr><td class="name">Edgar Pozas</td><td class="num">33.2</td><td data-pos="CF">CF</td><td data-pos="LF">LF</td><td>FA</td><td>—</td><td>L/L</td><td class="num">43</td><td class="num">43</td><td class="num" data-grade="60">3.01</td><td class="num" data-grade="60">3.03</td><td class="num dim">—</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">.299</td><td class="num">.290</td><td class="num" data-grade="55">2.0</td><td class="num" data-grade="40">−2.4</td><td class="num" data-grade="60">60</td><td data-prone="Durable">Durable</td><td>—</td><td>—</td><td class="num">0</td><td class="num">$2,400,000</td></tr>
+      <tr><td class="name">Javy Abeyta</td><td class="num">23.2</td><td data-pos="SS">SS</td><td data-pos="SS">SS</td><td>ATL</td><td><span class="badge" data-lvl="AA">AA</span></td><td>R/R</td><td class="num">31</td><td class="num">52</td><td class="num" data-grade="50">1.85</td><td class="num" data-grade="40">−1.20</td><td class="num" data-grade="55">2.90</td><td class="num" data-grade="45">0.40</td><td class="num" data-dev="33">33rd</td><td class="num">.241</td><td class="num">.230</td><td class="num" data-grade="50">0.8</td><td class="num" data-grade="70">+7.1</td><td class="num" data-grade="50">50</td><td data-prone="Normal">Normal</td><td>—</td><td class="check">✓</td><td class="num">3</td><td class="num">$180,000</td></tr>
+      <tr><td class="name">Jaisten Adkins</td><td class="num">34.5</td><td data-pos="3B">3B</td><td data-pos="1B">1B</td><td>NYM</td><td><span class="badge" data-lvl="MLB">MLB</span></td><td>R/R</td><td class="num">41</td><td class="num">41</td><td class="num" data-grade="45">0.49</td><td class="num" data-grade="45">0.49</td><td class="num dim">—</td><td class="num dim">—</td><td class="num dim">—</td><td class="num">.280</td><td class="num">.270</td><td class="num" data-grade="40">−2.1</td><td class="num" data-grade="40">−3.0</td><td class="num" data-grade="30">35</td><td data-prone="Wrecked">Wrecked</td><td class="check">✓</td><td>—</td><td class="num">0</td><td class="num">$3,200,000</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</div>
+<script>
+  // mockup review control: flips data-ground on <html>; nothing is persisted
+  function setGround(g){
+    document.documentElement.setAttribute('data-ground',g);
+    document.querySelectorAll('.ground-switch button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-g')===g)});
+  }
+</script>
+</body></html>

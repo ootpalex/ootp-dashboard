@@ -1,20 +1,23 @@
 import { memo } from "react";
-import { gradeToColor } from "../../theme.js";
+import { TOKENS as T } from "../../theme.js";
+import { pctColor } from "./_shared.js";
 
-// Map a 0-100 percentile to a 20-80 OOTP scouting grade so the dot's color
-// matches the rest of the dashboard. 50th = green, 0/100 = red/blue extremes.
-// `inverted` upstream of this is already applied by leaguePercentile —
-// we always color "high percentile = good" here. The `inverted` prop on
-// the bar only drives the ↓ arrow label.
-function pctToGrade(pct) {
-  return 20 + Math.max(0, Math.min(100, pct)) * 0.6;
-}
+// Savant-style percentile pill (B.9): the current value is a filled pill whose
+// width = percentile and whose fill follows the 20–80 ramp (pctToGrade), with
+// the percentile printed in ink inside it when the pill is wide enough; the
+// potential value is a 1px dashed outline pill to its own percentile, drawn
+// underneath. `inverted` upstream is already applied by leaguePercentile — we
+// always colour "high percentile = good" here; the prop only drives the ↓ tag.
 
 function fmtVal(v, decimals = 1) {
   if (v == null || isNaN(v)) return "—";
   if (Math.abs(v) >= 100) return v.toFixed(0);
   return v.toFixed(decimals);
 }
+
+const ROW_H = 18;
+const PILL_H = 14;
+const PILL_R = T.radiusPill;
 
 function PercentileBar({
   label,
@@ -25,10 +28,8 @@ function PercentileBar({
   inverted = false,
   valueFmt = (v) => fmtVal(v, 1),
 }) {
-  const TRACK_COLOR = "#1e293b";
-  const TRACK_HEIGHT = 6;
-
-  const dotColor = (pct) => pct == null ? "#475569" : gradeToColor(pctToGrade(pct));
+  const clamp = (p) => Math.max(0, Math.min(100, p));
+  const showInk = current != null && current >= 14;
 
   return (
     <div style={{
@@ -36,93 +37,92 @@ function PercentileBar({
       gridTemplateColumns: "112px 1fr 96px",
       alignItems: "center",
       gap: 10,
-      padding: "5px 0",
+      padding: "4px 0",
     }}>
       {/* Label */}
-      <div style={{
-        fontSize: 11,
-        color: "#cbd5e1",
-        fontWeight: 600,
-        letterSpacing: 0.3,
-      }}>
-        {label}{inverted ? <span style={{ color: "#64748b", marginLeft: 4, fontSize: 9 }}>↓</span> : null}
+      <div style={{ fontFamily: T.fonts.narrow, fontSize: 12.5, color: T.text, fontWeight: 600, whiteSpace: "nowrap" }}>
+        {label}{inverted ? <span style={{ color: T.text3, marginLeft: 4, fontSize: 11 }}>↓</span> : null}
       </div>
 
-      {/* Track + dots */}
-      <div style={{ position: "relative", height: 16 }}>
+      {/* Track + pills */}
+      <div style={{ position: "relative", height: ROW_H }}>
         {/* Track */}
         <div style={{
           position: "absolute",
-          top: (16 - TRACK_HEIGHT) / 2,
+          top: (ROW_H - PILL_H) / 2,
           left: 0, right: 0,
-          height: TRACK_HEIGHT,
-          background: TRACK_COLOR,
-          borderRadius: TRACK_HEIGHT / 2,
+          height: PILL_H,
+          background: T.panel3,
+          borderRadius: PILL_R,
         }} />
-        {/* 50th-percentile mid-line */}
-        <div style={{
-          position: "absolute",
-          top: 1,
-          left: "50%",
-          width: 1,
-          height: 14,
-          background: "#334155",
-        }} />
+        {/* 50th-percentile tick */}
+        <div style={{ position: "absolute", top: 0, left: "50%", width: 1, height: ROW_H, background: T.line2 }} />
 
-        {/* Potential dot — drawn first so current dot sits on top when overlapping */}
+        {/* Potential — dashed outline pill underneath */}
         {potential != null && (
           <div title={`Potential: ${potential}th${potentialValue != null ? ` (${valueFmt(potentialValue)})` : ""}`}
                style={{
                  position: "absolute",
-                 top: 1,
-                 left: `calc(${Math.max(0, Math.min(100, potential))}% - 7px)`,
-                 width: 14, height: 14,
-                 borderRadius: "50%",
-                 background: "transparent",
-                 border: `2px dashed ${dotColor(potential)}`,
+                 top: (ROW_H - PILL_H) / 2,
+                 left: 0,
+                 width: `${clamp(potential)}%`,
+                 minWidth: 6,
+                 height: PILL_H,
+                 borderRadius: PILL_R,
+                 border: `1px dashed ${pctColor(potential)}`,
                  boxSizing: "border-box",
+                 zIndex: 0,
                }} />
         )}
 
-        {/* Current dot */}
+        {/* Current — filled pill, ink percentile inside when wide enough */}
         {current != null && (
           <div title={`Current: ${current}th${currentValue != null ? ` (${valueFmt(currentValue)})` : ""}`}
                style={{
                  position: "absolute",
-                 top: 2,
-                 left: `calc(${Math.max(0, Math.min(100, current))}% - 6px)`,
-                 width: 12, height: 12,
-                 borderRadius: "50%",
-                 background: dotColor(current),
-                 boxShadow: `0 0 0 2px rgba(15,23,42,0.95)`,
+                 top: (ROW_H - PILL_H) / 2,
+                 left: 0,
+                 width: `${clamp(current)}%`,
+                 minWidth: 6,
+                 height: PILL_H,
+                 borderRadius: PILL_R,
+                 background: pctColor(current),
                  boxSizing: "border-box",
-               }} />
+                 zIndex: 1,
+                 display: "flex",
+                 alignItems: "center",
+                 justifyContent: "flex-end",
+                 padding: "0 6px",
+                 fontFamily: T.fonts.narrow,
+                 fontSize: 11,
+                 fontWeight: 700,
+                 lineHeight: 1,
+                 color: T.bg,
+                 overflow: "hidden",
+               }}>
+            {showInk ? current : ""}
+          </div>
         )}
       </div>
 
       {/* Value labels */}
-      <div style={{
-        fontSize: 11,
-        color: "#94a3b8",
-        textAlign: "right",
-        fontVariantNumeric: "tabular-nums",
-      }}>
+      <div style={{ fontSize: 11.5, color: T.text2, textAlign: "right", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>
         {current != null ? (
           <>
-            <span style={{ color: dotColor(current), fontWeight: 700 }}>{current}</span>
-            <span style={{ color: "#475569", margin: "0 4px" }}>·</span>
+            <span style={{ color: pctColor(current), fontWeight: 700 }}>{current}</span>
+            <span style={{ color: T.text3, margin: "0 4px" }}>·</span>
             <span>{currentValue != null ? valueFmt(currentValue) : "—"}</span>
             {potential != null && (
-              <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
-                pot <span style={{ color: dotColor(potential), fontWeight: 700 }}>{potential}</span>
+              <div style={{ fontSize: 10.5, color: T.text3, marginTop: 1 }}>
+                pot <span style={{ color: pctColor(potential), fontWeight: 700 }}>{potential}</span>
                 {potentialValue != null && (
-                  <span style={{ color: "#64748b", marginLeft: 3 }}>· {valueFmt(potentialValue)}</span>
+                  <span style={{ color: T.text3, marginLeft: 3 }}>· {valueFmt(potentialValue)}</span>
                 )}
               </div>
             )}
           </>
         ) : (
-          <span style={{ color: "#475569" }}>—</span>
+          <span style={{ color: T.textDisabled }}>—</span>
         )}
       </div>
     </div>

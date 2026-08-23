@@ -40,7 +40,7 @@ mandate, multi-league storage, CSV-presence page visibility, styling) stay in
    - **Positional Strength Comparison**: two side-by-side `PositionalStrengthTable`s (scouted team + your team), both sorted by *your* team's weakest position so rows align row-for-row.
    - Trade opportunity callout: positions where they're strong and you're weak (z-gap ≥ 1.0).
    - Trade targets table: their players at your weak positions with positive Smart Rank, sorted by `_rank` desc. Column header reads "Smart" when any toggle is on, "Fit" otherwise — mirrors Draft's "Smart" / "WAR P" pattern.
-   - Full roster browser with level/type filters, sortable; weak-pos rows highlighted green.
+   - Full roster browser with level/type filters, sortable; trade-fit rows (players at positions where your team is below league average) tinted with the `good` token.
 9. **Player Compare** — Side-by-side comparison of 2-5 players:
    - Type-ahead search bar to find and add players (hitters or pitchers)
    - Selected players shown as removable chips
