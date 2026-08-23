@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { posColor, levelColor, proneColor, gradeToColor, devPctColor, warStyle } from "../../theme.js";
+import { TOKENS as T, S, posChip, levelChip, proneColor, gradeToColor, devPctColor, warStyle, mixOklab } from "../../theme.js";
 import { fmtAge, fmt, num, parseCSVBoolean, orgLabel } from "../../utils/helpers.js";
 import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, isEligible } from "../../utils/accessors.js";
 import { HITTER_POS } from "../../utils/constants.js";
@@ -12,7 +12,7 @@ import FieldingTab from "./FieldingTab.jsx";
 import BaserunningTab from "./BaserunningTab.jsx";
 import PitchingTab from "./PitchingTab.jsx";
 import ContractTab from "./ContractTab.jsx";
-import { buildHitterPeerPools, buildPitcherPeerPools, resolvePosAdj } from "./_shared.js";
+import { buildHitterPeerPools, buildPitcherPeerPools, resolvePosAdj, TILE, TILE_LABEL, chipCss } from "./_shared.js";
 
 const HITTER_TABS = [
   { id: "batting", label: "Batting" },
@@ -25,27 +25,21 @@ const PITCHER_TABS = [
   { id: "contract", label: "Contract" },
 ];
 
-const tileBox = {
-  background: "rgba(15,23,42,0.6)",
-  border: "1px solid #1e293b",
-  borderRadius: 6,
-  padding: "8px 10px",
-  display: "flex",
-  flexDirection: "column",
-  gap: 3,
-  minHeight: 48,
-  justifyContent: "center",
-};
-const tileLabel = { fontSize: 9, color: "#475569", letterSpacing: 1, textTransform: "uppercase" };
-const tileVal = { fontSize: 15, fontWeight: 700, color: "#e2e8f0", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+// Header stat tiles — 8px-grid tiles on panel2 / line / r3 (B.8).
+const tileBox = { ...TILE, minHeight: 48, justifyContent: "center" };
+const tileLabel = TILE_LABEL;
+const tileVal = { fontSize: 15, fontWeight: 700, color: T.text, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums" };
+
+// Outlined status chip with a ~10% fill of its hue over the panel (D.6).
+const statusChip = (hue) => ({ ...S.badge, color: hue, border: `1px solid ${hue}`, background: mixOklab(hue, 0.10, T.panel) });
 
 function Tile({ label, value, valueColor, sub, subColor }) {
   return (
     <div style={tileBox}>
       <span style={tileLabel}>{label}</span>
-      <span style={{ ...tileVal, color: valueColor || "#e2e8f0" }}>
+      <span style={{ ...tileVal, color: valueColor || T.text }}>
         {value ?? "—"}
-        {sub != null && <span style={{ fontSize: 11, fontWeight: 500, color: subColor || "#64748b", marginLeft: 4 }}>{sub}</span>}
+        {sub != null && <span style={{ fontSize: 11, fontWeight: 500, color: subColor || T.text3, marginLeft: 4 }}>{sub}</span>}
       </span>
     </div>
   );
@@ -57,7 +51,6 @@ function HeaderTiles({ player }) {
   const pot = num(meta.pot ?? player.POT);
   const fv = player._fv;
   const devPct = !player._ageMatured && player._devPct != null ? player._devPct : null;
-  const lev = meta.lev ?? player.Lev;
   const prone = meta.prone ?? player.Prone;
   const bats = meta.bats ?? player.B ?? "?";
   const throws = meta.throws ?? player.T ?? "?";
@@ -69,7 +62,7 @@ function HeaderTiles({ player }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "grid", gridTemplateColumns: cols, gap: 6 }}>
         <Tile label="Age" value={fmtAge(player._age)} />
-        <Tile label="Level" value={lev || "—"} valueColor={lev ? levelColor(lev) : undefined} />
+        <Tile label="Org" value={orgLabel(player) || "—"} valueColor={T.text2} />
         <Tile label="B / T" value={`${bats} / ${throws}`} />
         <Tile label="Prone" value={prone || "—"} valueColor={prone ? proneColor(prone) : undefined} />
       </div>
@@ -243,12 +236,12 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
 
   const isInjured = (player.meta?.inj != null ? player.meta.inj === "Yes" : parseCSVBoolean(player.INJ));
   const badges = [];
-  if (player.meta?.on40 ?? parseCSVBoolean(player.ON40)) badges.push({ label: "40-Man", color: "#60a5fa" });
-  if (player.meta?.r5 ?? parseCSVBoolean(player.R5)) badges.push({ label: "R5", color: "#f87171" });
-  if (isInjured) badges.push({ label: `INJ${player.Left ? " " + player.Left : ""}`, color: "#fbbf24" });
+  if (player.meta?.on40 ?? parseCSVBoolean(player.ON40)) badges.push({ label: "40-Man", color: T.accent });
+  if (player.meta?.r5 ?? parseCSVBoolean(player.R5)) badges.push({ label: "R5", color: T.bad });
+  if (isInjured) badges.push({ label: `INJ${player.Left ? " " + player.Left : ""}`, color: T.warn });
   const _modalOrg = player.meta?.org ?? player.ORG;
   const _modalManual = player.meta?.source ?? player.meta?.manual ?? player.Manual;
-  if (_modalOrg === "-" && _modalManual) badges.push({ label: _modalManual.toLowerCase().includes("draft") ? "Draft" : _modalManual, color: "#a78bfa" });
+  if (_modalOrg === "-" && _modalManual) badges.push({ label: _modalManual.toLowerCase().includes("draft") ? "Draft" : _modalManual, color: T.CHART.series5 });
 
   // Game year for ContractTab. Falls back to current real year if no game date.
   const gameYear = useMemo(() => {
@@ -259,53 +252,46 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
     return new Date().getFullYear();
   }, [gameDate]);
 
+  const headerPos = (player._bestPos || player.meta?.pos || player.POS || "");
+  const headerLev = player.meta?.lev ?? player.Lev;
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+    <div style={{ position: "fixed", inset: 0, background: T.scrim, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
          onClick={onClose}>
-      <div style={{ width: 800, maxHeight: "90vh", overflowY: "auto", background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, boxShadow: "0 24px 48px rgba(0,0,0,0.7)", fontFamily: "inherit", position: "relative" }}
+      <div role="dialog" aria-modal="true" aria-label={player.meta?.name ?? player.Name}
+           style={{ ...S.box, width: 960, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto", fontFamily: "inherit", position: "relative" }}
            onClick={e => e.stopPropagation()}>
 
-        {/* Close-button bar — gives the ✕ its own zone so it can't overlap the
-            title row or the SP/RP toggle. */}
-        <div style={{ height: 36, borderBottom: "1px solid #1e293b", position: "relative", background: "rgba(15,23,42,0.85)" }}>
-          <button onClick={onClose} aria-label="Close" style={{ position: "absolute", top: 6, right: 10, background: "none", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", cursor: "pointer", fontSize: 15, padding: "4px 10px", fontFamily: "inherit" }}>✕</button>
+        {/* Header strip — name · POS chip · level chip · badges left, ✕ right */}
+        <div style={{ ...S.boxHead, padding: "8px 12px 8px 16px", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+            <span style={{ fontFamily: T.fonts.ui, fontSize: 20, fontWeight: 800, color: T.text, lineHeight: 1.1 }}>{player.meta?.name ?? player.Name}</span>
+            <span style={{ ...S.badge, ...chipCss(posChip(headerPos.replace("*", ""))) }}>{headerPos || "—"}</span>
+            {headerLev && headerLev !== "-" && <span style={{ ...S.badge, ...chipCss(levelChip(headerLev)) }}>{headerLev}</span>}
+            <TwoWayBadge player={player} />
+            {badges.map((b, i) => (
+              <span key={i} style={statusChip(b.color)}>{b.label}</span>
+            ))}
+          </div>
+          <button onClick={onClose} aria-label="Close"
+                  style={{ ...S.btn, padding: "3px 9px", fontSize: 14, lineHeight: 1.2, color: T.text2, flexShrink: 0 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = T.lineInk; e.currentTarget.style.color = T.text; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = T.line2; e.currentTarget.style.color = T.text2; }}>✕</button>
         </div>
 
-        {/* 2-column header: player info on the left, percentile bars on the right */}
+        {/* 2-column header body: stat tiles on the left, percentile pills on the right */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "minmax(280px, 1fr) minmax(420px, 1.55fr)",
+          gridTemplateColumns: "minmax(300px, 1fr) minmax(440px, 1.55fr)",
           gap: 20,
-          padding: "16px 20px 16px",
-          borderBottom: "1px solid #1e293b",
-          background: "rgba(15,23,42,0.8)",
+          padding: "12px 16px 14px",
+          borderBottom: `1px solid ${T.line2}`,
+          background: T.panel,
         }}>
-          {/* Left column — player info */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* Title row: position badge + name + 2-way badge */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: posColor((player._bestPos || player.meta?.pos || player.POS || "").replace("*", "")), letterSpacing: 2, border: "1px solid currentColor", borderRadius: 4, padding: "3px 7px" }}>
-                {player._bestPos || player.meta?.pos || player.POS}
-              </span>
-              <span style={{ fontSize: 20, fontWeight: 800, color: "#e2e8f0", lineHeight: 1.1 }}>{player.meta?.name ?? player.Name}</span>
-              <TwoWayBadge player={player} />
-            </div>
+          {/* Left column — tile grid (4 × 2) */}
+          <HeaderTiles player={player} />
 
-            {/* Org line + status badges */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1" }}>{orgLabel(player)}</span>
-              {badges.map((b, i) => (
-                <span key={i} style={{ fontSize: 10, fontWeight: 700, color: b.color, border: `1px solid ${b.color}44`, background: `${b.color}15`, borderRadius: 4, padding: "2px 6px" }}>
-                  {b.label}
-                </span>
-              ))}
-            </div>
-
-            {/* Tile grid — 4 columns × 2 rows */}
-            <HeaderTiles player={player} />
-          </div>
-
-          {/* Right column — percentile bars + SP/RP toggle */}
+          {/* Right column — percentile pills + SP/RP toggle */}
           <div>
             <PercentileHeader
               player={player}
@@ -327,15 +313,15 @@ export default function PlayerProfileModal({ player, onClose, data, curveSetting
           curveSettings={curveSettings}
         />
 
-        {/* Tab strip */}
-        <div style={{ borderBottom: "1px solid #1e293b", padding: "10px 18px 10px", background: "rgba(15,23,42,0.4)" }}>
-          <TabGroup label="Player profile sections" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {/* Tab strip — a panel2 strip carrying the tab pills */}
+        <div style={{ borderBottom: `1px solid ${T.line2}`, padding: "6px 16px", background: T.panel2 }}>
+          <TabGroup label="Player profile sections" style={{ background: "transparent", border: "none", padding: 0, gap: 6, flexWrap: "wrap" }}>
             {tabs.map((t) => (
               <PillBtn
                 key={t.id}
                 active={activeTab === t.id}
                 onClick={() => setActiveTab(t.id)}
-                style={{ padding: "5px 14px", fontSize: 11 }}
+                style={{ padding: "4px 14px" }}
               >
                 {t.label}
               </PillBtn>

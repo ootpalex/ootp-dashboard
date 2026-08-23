@@ -1,11 +1,7 @@
 import { memo } from "react";
-import { gradeToColor } from "../../theme.js";
+import { TOKENS as T } from "../../theme.js";
 import { num, fmt } from "../../utils/helpers.js";
-
-const tS = { background: "rgba(15,23,42,0.6)", borderRadius: 6, border: "1px solid #1e293b", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
-const tL = { fontSize: 9, color: "#475569", letterSpacing: 1, textTransform: "uppercase" };
-const sectionLabel = { fontSize: 9, color: "#475569", marginBottom: 6, letterSpacing: 1 };
-const scoutColor = (v) => { const n = num(v); return n != null ? gradeToColor(n) : "#475569"; };
+import { TAB_BODY, TILE as tS, TILE_LABEL as tL, SECTION_LABEL as sectionLabel, SPLIT_LABEL, POT_LABEL, POT_VALUE, scoutColor } from "./_shared.js";
 
 function GradeTile({ label, val, pot, hidePotential }) {
   const valN = num(val), potN = num(pot);
@@ -26,8 +22,8 @@ function GradeTile({ label, val, pot, hidePotential }) {
 function PotChip({ value, valueFmt }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ color: "#4ade80aa", fontSize: 10, fontWeight: 600, letterSpacing: 0.5 }}>POT </span>
-      <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 14 }}>{valueFmt(value)}</span>
+      <span style={POT_LABEL}>POT </span>
+      <span style={POT_VALUE}>{valueFmt(value)}</span>
     </span>
   );
 }
@@ -43,10 +39,10 @@ function BsrValueTile({ label, vR, vL, wtd, pot, hidePotential }) {
         gap: 14,
         alignItems: "baseline",
       }}>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "baseline", fontSize: 14, color: "#cbd5e1" }}>
-          {vL != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>vL </span><span style={{ color: "#cbd5e1", fontSize: 14 }}>{fmt(vL, 1)}</span></span>)}
-          {vR != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>vR </span><span style={{ color: "#cbd5e1", fontSize: 14 }}>{fmt(vR, 1)}</span></span>)}
-          {wtd != null && (<span><span style={{ color: "#64748b", fontSize: 10 }}>wtd </span><span style={{ color: "#cbd5e1", fontSize: 14, fontWeight: 700 }}>{fmt(wtd, 1)}</span></span>)}
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "baseline", fontSize: 14, color: T.text, fontVariantNumeric: "tabular-nums" }}>
+          {vL != null && (<span><span style={SPLIT_LABEL}>vL </span><span style={{ color: T.text, fontSize: 14 }}>{fmt(vL, 1)}</span></span>)}
+          {vR != null && (<span><span style={SPLIT_LABEL}>vR </span><span style={{ color: T.text, fontSize: 14 }}>{fmt(vR, 1)}</span></span>)}
+          {wtd != null && (<span><span style={SPLIT_LABEL}>wtd </span><span style={{ color: T.text, fontSize: 14, fontWeight: 700 }}>{fmt(wtd, 1)}</span></span>)}
         </div>
         {showPot && <PotChip value={pot} valueFmt={(v) => fmt(v, 1)} />}
       </div>
@@ -62,10 +58,10 @@ function BaserunningTab({ player }) {
   const matured = !!player._matured;
 
   return (
-    <div style={{ padding: "12px 18px" }}>
+    <div style={TAB_BODY}>
       {/* Section 1 — OOTP scouting grades (top) */}
       <div style={{ marginBottom: 14 }}>
-        <div style={sectionLabel}>OOTP SCOUTING GRADES</div>
+        <div style={sectionLabel}>OOTP scouting grades</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           <GradeTile label="Speed" hidePotential={matured}
             val={player.ratings?.spe ?? player.SPE}
@@ -81,7 +77,7 @@ function BaserunningTab({ player }) {
 
       {/* Section 2 — Model projections (bottom) */}
       <div>
-        <div style={sectionLabel}>MODEL PROJECTIONS</div>
+        <div style={sectionLabel}>Model projections</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
           <BsrValueTile label="BSR (runs)" hidePotential={matured}
             vR={num(brvR?.bsr)} vL={num(brvL?.bsr)} wtd={num(brwtd?.bsr)}
@@ -100,7 +96,7 @@ function BaserunningTab({ player }) {
               gap: 14,
               alignItems: "baseline",
             }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "#cbd5e1" }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
                 {num(player.baserunning?.sbPct) != null ? `${(num(player.baserunning.sbPct) * 100).toFixed(1)}%` : "—"}
               </span>
               {!matured && num(proBR?.sbPct) != null && num(proBR.sbPct) !== num(player.baserunning?.sbPct) && (

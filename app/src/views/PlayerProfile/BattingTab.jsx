@@ -1,13 +1,8 @@
 import { memo } from "react";
-import { gradeToColor } from "../../theme.js";
+import { TOKENS as T } from "../../theme.js";
 import { num, fmt } from "../../utils/helpers.js";
 import { getBatR } from "../../utils/accessors.js";
-
-const tS = { background: "rgba(15,23,42,0.6)", borderRadius: 6, border: "1px solid #1e293b", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
-const tL = { fontSize: 9, color: "#475569", letterSpacing: 1, textTransform: "uppercase" };
-const sectionLabel = { fontSize: 9, color: "#475569", marginBottom: 6, letterSpacing: 1 };
-const scoutColor = (v) => { const n = num(v); return n != null ? gradeToColor(n) : "#475569"; };
-const scoutColorInv = (v) => { const n = num(v); return n != null ? gradeToColor(100 - n) : "#475569"; };
+import { TAB_BODY, TILE as tS, TILE_LABEL as tL, SECTION_LABEL as sectionLabel, FAMILY_BLOCK, FAMILY_TITLE, SPLIT_LABEL, POT_LABEL, POT_VALUE, SEP_COLOR, scoutColor, scoutColorInv } from "./_shared.js";
 
 // Estimate plate appearances from a split's projected events. Uses OBP
 // (which is exported on every split, vR/vL/wtd, and on prospect.batting) to
@@ -62,7 +57,7 @@ function GradeTile({ label, vR, vL, pot, inverted, hidePotential }) {
       <span style={tL}>{label}</span>
       <span style={{ fontSize: 13, fontWeight: 700 }}>
         <span style={{ color: clr(vLn) }}>{vLn ?? "—"}</span>
-        <span style={{ color: "#475569" }}> / </span>
+        <span style={{ color: SEP_COLOR }}> / </span>
         <span style={{ color: clr(vRn) }}>{vRn ?? "—"}</span>
         {!hidePotential && potN != null && (
           <span style={{ fontSize: 10, color: clr(potN), marginLeft: 4 }}>→ {potN}</span>
@@ -77,8 +72,8 @@ function GradeTile({ label, vR, vL, pot, inverted, hidePotential }) {
 function Slot({ label, value, valueFmt }) {
   if (value == null) return <span />;
   return (
-    <span style={{ fontSize: 14, color: "#cbd5e1", whiteSpace: "nowrap" }}>
-      <span style={{ color: "#64748b", fontSize: 10 }}>{label} </span>
+    <span style={{ fontSize: 14, color: T.text, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+      <span style={SPLIT_LABEL}>{label} </span>
       <span style={{ fontWeight: 700 }}>{valueFmt(value)}</span>
     </span>
   );
@@ -87,8 +82,8 @@ function PotSlot({ value, valueFmt }) {
   if (value == null) return <span />;
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ color: "#4ade80aa", fontSize: 10, fontWeight: 600, letterSpacing: 0.5 }}>POT </span>
-      <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 14 }}>{valueFmt(value)}</span>
+      <span style={POT_LABEL}>POT </span>
+      <span style={POT_VALUE}>{valueFmt(value)}</span>
     </span>
   );
 }
@@ -123,7 +118,7 @@ function FamilyBlock({ title, vR, vL, pot, matured, children, stackTitle, center
   const gradeRow = (
     <span style={{ fontSize: 15, fontWeight: 700 }}>
       <span style={{ color: scoutColor(vLn) }}>{vLn ?? "—"}</span>
-      <span style={{ color: "#475569" }}> / </span>
+      <span style={{ color: SEP_COLOR }}> / </span>
       <span style={{ color: scoutColor(vRn) }}>{vRn ?? "—"}</span>
       {!matured && potN != null && (
         <span style={{ fontSize: 12, color: scoutColor(potN), marginLeft: 6 }}>→ {potN}</span>
@@ -131,17 +126,12 @@ function FamilyBlock({ title, vR, vL, pot, matured, children, stackTitle, center
     </span>
   );
   const titleSpan = (
-    <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: 1.4, textTransform: "uppercase" }}>
+    <span style={FAMILY_TITLE}>
       {title}
     </span>
   );
   return (
-    <div style={{
-      background: "rgba(15,23,42,0.4)",
-      border: "1px solid #1e293b",
-      borderRadius: 8,
-      padding: "10px 12px",
-    }}>
+    <div style={FAMILY_BLOCK}>
       {stackTitle ? (
         <div style={{
           display: "flex",
@@ -193,10 +183,10 @@ function BattingTab({ player }) {
   const paP = estimatePA(proB);
 
   return (
-    <div style={{ padding: "12px 18px" }}>
+    <div style={TAB_BODY}>
       {/* Section 1 — OOTP scouting grades (top), Contact as parent of Avoid K + BABIP */}
       <div style={{ marginBottom: 14 }}>
-        <div style={sectionLabel}>OOTP SCOUTING GRADES{matured ? "" : " (vL / vR → Potential)"}</div>
+        <div style={sectionLabel}>OOTP scouting grades{matured ? "" : " (vL / vR → potential)"}</div>
 
         {/* CONTACT — full-width parent containing Avoid K + BABIP */}
         <FamilyBlock
@@ -239,7 +229,7 @@ function BattingTab({ player }) {
 
       {/* Section 2 — Model projections (bottom) */}
       <div>
-        <div style={sectionLabel}>MODEL PROJECTIONS</div>
+        <div style={sectionLabel}>Model projections</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
           {/* BatR — single tile shows vL / vR / wtd / pot in the 4-quarter grid. */}
           <ProjTile label="BatR"

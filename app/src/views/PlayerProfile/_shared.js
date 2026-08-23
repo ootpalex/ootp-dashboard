@@ -4,6 +4,7 @@
 // - value-component getters that centralize the BatR / BSR / RunsP / WAR reads
 // - fmtSalary: re-exported from utils/helpers.js for tab use
 import { num } from "../../utils/helpers.js";
+import { TOKENS as T, gradeToColor } from "../../theme.js";
 import {
   getMaxWar,
   getMaxWarP,
@@ -19,6 +20,34 @@ import {
 import { POS_DEF_ADJ } from "../../utils/constants.js";
 
 export { fmtSalary } from "../../utils/helpers.js";
+
+// ─── Tab-body styles (Night Scorecard) — the one copy of the tile / label /
+// section-caption trio every profile tab used to duplicate. Tiles sit on
+// panel2 with a `line` rule and the 3px radius; labels are 12px Archivo Narrow
+// text3 in sentence case; "POT" values wear goodSoft / good.
+export const TAB_BODY = { padding: "12px 16px" };
+export const TILE = { background: T.panel2, border: `1px solid ${T.line}`, borderRadius: T.radius, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
+export const TILE_LABEL = { fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 600, color: T.text3, lineHeight: 1.2 };
+export const TILE_VALUE = { fontSize: 13, fontWeight: 700, color: T.text, fontVariantNumeric: "tabular-nums" };
+export const SECTION_LABEL = { fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 600, color: T.text3, marginBottom: 6 };
+export const SUB_LABEL = { fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 4 };
+// Family block (Contact / Stuff / Movement …): a panel box with a `line` rule.
+export const FAMILY_BLOCK = { background: T.panel, border: `1px solid ${T.line}`, borderRadius: T.radius, padding: "10px 12px" };
+export const FAMILY_TITLE = { fontFamily: T.fonts.narrow, fontSize: 12.5, fontWeight: 700, color: T.text2 };
+// Split labels (vL / vR / wtd) and the "POT" tag.
+export const SPLIT_LABEL = { fontFamily: T.fonts.narrow, fontSize: 11, fontWeight: 600, color: T.text3 };
+export const POT_LABEL = { fontFamily: T.fonts.narrow, fontSize: 11, fontWeight: 700, color: T.goodSoft };
+export const POT_VALUE = { color: T.good, fontWeight: 700, fontSize: 14, fontVariantNumeric: "tabular-nums" };
+export const SEP_COLOR = T.text3;          // " / " and "→" separators between splits
+export const NULL_COLOR = T.textDisabled;  // "—" / missing values only (D.15)
+// 20–80 scouting grade → ramp colour; null → textDisabled.
+export const scoutColor = (v) => { const n = num(v); return n != null ? gradeToColor(n) : T.textDisabled; };
+export const scoutColorInv = (v) => { const n = num(v); return n != null ? gradeToColor(100 - n) : T.textDisabled; };
+// Map 0-100 percentile → 20-80 grade so percentile fills share the dashboard ramp.
+export const pctToGrade = (pct) => 20 + Math.max(0, Math.min(100, pct)) * 0.6;
+export const pctColor = (pct) => pct == null ? T.textDisabled : gradeToColor(pctToGrade(pct));
+// levelChip / posChip / tierChip return theme keys — map them to CSS.
+export const chipCss = (c) => ({ background: c.bg, color: c.text, border: `1px ${c.borderStyle || "solid"} ${c.border}` });
 
 // Ascending-sorted pool, nulls already stripped. Returns 0–100 integer percentile,
 // or null if value or pool is missing. Mid-rank handles ties.

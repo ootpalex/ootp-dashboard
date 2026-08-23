@@ -1,11 +1,7 @@
 import { memo } from "react";
-import { gradeToColor, posColor, warStyle } from "../../theme.js";
+import { TOKENS as T, posColor, warStyle } from "../../theme.js";
 import { num, fmt } from "../../utils/helpers.js";
-
-const tS = { background: "rgba(15,23,42,0.6)", borderRadius: 6, border: "1px solid #1e293b", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 3 };
-const tL = { fontSize: 9, color: "#475569", letterSpacing: 1, textTransform: "uppercase" };
-const sectionLabel = { fontSize: 9, color: "#475569", marginBottom: 6, letterSpacing: 1 };
-const scoutColor = (v) => { const n = num(v); return n != null ? gradeToColor(n) : "#475569"; };
+import { TAB_BODY, TILE as tS, TILE_LABEL as tL, SECTION_LABEL as sectionLabel, FAMILY_BLOCK, FAMILY_TITLE, SPLIT_LABEL, POT_LABEL, POT_VALUE, SEP_COLOR, NULL_COLOR, scoutColor } from "./_shared.js";
 
 // Grade tile — inner sub-rating (vL/vR/Pot triple). vL renders first (left-side
 // matches the "L" prefix) for readability.
@@ -16,7 +12,7 @@ function GradeTile({ label, vR, vL, pot, hidePotential }) {
       <span style={tL}>{label}</span>
       <span style={{ fontSize: 13, fontWeight: 700 }}>
         <span style={{ color: scoutColor(vLn) }}>{vLn ?? "—"}</span>
-        <span style={{ color: "#475569" }}> / </span>
+        <span style={{ color: SEP_COLOR }}> / </span>
         <span style={{ color: scoutColor(vRn) }}>{vRn ?? "—"}</span>
         {!hidePotential && potN != null && (
           <span style={{ fontSize: 10, color: scoutColor(potN), marginLeft: 4 }}>→ {potN}</span>
@@ -30,7 +26,7 @@ function ValueTile({ label, value }) {
   return (
     <div style={tS}>
       <span style={tL}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{value}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{value}</span>
     </div>
   );
 }
@@ -40,8 +36,8 @@ function ValueTile({ label, value }) {
 function PotChip({ value, valueFmt }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ color: "#4ade80aa", fontSize: 10, fontWeight: 600, letterSpacing: 0.5 }}>POT </span>
-      <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 14 }}>{valueFmt(value)}</span>
+      <span style={POT_LABEL}>POT </span>
+      <span style={POT_VALUE}>{valueFmt(value)}</span>
     </span>
   );
 }
@@ -50,8 +46,8 @@ function PotChip({ value, valueFmt }) {
 function Slot({ label, value, valueFmt }) {
   if (value == null) return <span />;
   return (
-    <span style={{ fontSize: 14, color: "#cbd5e1", whiteSpace: "nowrap" }}>
-      <span style={{ color: "#64748b", fontSize: 10 }}>{label} </span>
+    <span style={{ fontSize: 14, color: T.text, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+      <span style={SPLIT_LABEL}>{label} </span>
       <span style={{ fontWeight: 700 }}>{valueFmt(value)}</span>
     </span>
   );
@@ -60,8 +56,8 @@ function PotSlot({ value, valueFmt }) {
   if (value == null) return <span />;
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ color: "#4ade80aa", fontSize: 10, fontWeight: 600, letterSpacing: 0.5 }}>POT </span>
-      <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 14 }}>{valueFmt(value)}</span>
+      <span style={POT_LABEL}>POT </span>
+      <span style={POT_VALUE}>{valueFmt(value)}</span>
     </span>
   );
 }
@@ -96,7 +92,7 @@ function FamilyBlock({ title, vR, vL, pot, matured, children, stackTitle, center
   const gradeRow = (
     <span style={{ fontSize: 15, fontWeight: 700 }}>
       <span style={{ color: scoutColor(vLn) }}>{vLn ?? "—"}</span>
-      <span style={{ color: "#475569" }}> / </span>
+      <span style={{ color: SEP_COLOR }}> / </span>
       <span style={{ color: scoutColor(vRn) }}>{vRn ?? "—"}</span>
       {!matured && potN != null && (
         <span style={{ fontSize: 12, color: scoutColor(potN), marginLeft: 6 }}>→ {potN}</span>
@@ -104,17 +100,12 @@ function FamilyBlock({ title, vR, vL, pot, matured, children, stackTitle, center
     </span>
   );
   const titleSpan = (
-    <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: 1.4, textTransform: "uppercase" }}>
+    <span style={FAMILY_TITLE}>
       {title}
     </span>
   );
   return (
-    <div style={{
-      background: "rgba(15,23,42,0.4)",
-      border: "1px solid #1e293b",
-      borderRadius: 8,
-      padding: "10px 12px",
-    }}>
+    <div style={FAMILY_BLOCK}>
       {stackTitle ? (
         <div style={{
           display: "flex",
@@ -165,7 +156,7 @@ function PitchingTab({ player, role }) {
 
   const veloDisplay = player.meta?.velo
     ? (player.meta?.vt && player.meta.vt !== player.meta.velo
-        ? <>{player.meta.velo}<span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 4 }}>→ {player.meta.vt}</span></>
+        ? <>{player.meta.velo}<span style={{ fontSize: 11, color: T.text2, marginLeft: 4 }}>→ {player.meta.vt}</span></>
         : player.meta.velo)
     : "—";
 
@@ -173,16 +164,16 @@ function PitchingTab({ player, role }) {
   const stmDisplay = stmRaw != null ? Math.round(stmRaw) : "—";
 
   return (
-    <div style={{ padding: "12px 18px" }}>
+    <div style={TAB_BODY}>
       {/* Role caption */}
-      <div style={{ marginBottom: 8, fontSize: 10, color: "#64748b" }}>
-        Showing as <span style={{ color: posColor(role.toUpperCase()), fontWeight: 700 }}>{role === "sp" ? "STARTER" : "RELIEVER"}</span>
+      <div style={{ marginBottom: 8, fontFamily: T.fonts.narrow, fontSize: 12, color: T.text3 }}>
+        Showing as <span style={{ color: posColor(role.toUpperCase()), fontWeight: 700 }}>{role === "sp" ? "starter" : "reliever"}</span>
         <span style={{ marginLeft: 6 }}>(toggle in header to switch)</span>
       </div>
 
       {/* Section 1 — Model projections */}
       <div style={{ marginBottom: 14 }}>
-        <div style={sectionLabel}>MODEL PROJECTIONS</div>
+        <div style={sectionLabel}>Model projections</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
           <div style={tS}>
             <span style={tL}>WAR (wtd)</span>
@@ -211,7 +202,7 @@ function PitchingTab({ player, role }) {
               gap: 14,
               alignItems: "baseline",
             }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "#cbd5e1" }}>{fmtPct(num(sbPct))}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{fmtPct(num(sbPct))}</span>
               {!matured && num(sbPctPot) != null && num(sbPctPot) !== num(sbPct) && (
                 <PotChip value={num(sbPctPot)} valueFmt={fmtPct} />
               )}
@@ -222,7 +213,7 @@ function PitchingTab({ player, role }) {
 
       {/* Section 2 — OOTP scouting grades, nested by skill family */}
       <div>
-        <div style={sectionLabel}>OOTP SCOUTING GRADES{matured ? "" : " (vL / vR → Potential)"}</div>
+        <div style={sectionLabel}>OOTP scouting grades{matured ? "" : " (vL / vR → potential)"}</div>
 
         {/* STUFF — full-width parent containing Velocity + the pitch arsenal */}
         <FamilyBlock
@@ -240,7 +231,7 @@ function PitchingTab({ player, role }) {
               gap: 4,
             }}>
               {arsenal.length === 0 ? (
-                <div style={{ ...tS, justifyContent: "center", color: "#475569", fontSize: 11 }}>
+                <div style={{ ...tS, justifyContent: "center", color: NULL_COLOR, fontSize: 11 }}>
                   No pitch arsenal data
                 </div>
               ) : arsenal.map((p) => (
@@ -295,20 +286,17 @@ function PitchingTab({ player, role }) {
 
           {/* Stamina — standalone, not a family. Centered like Control. */}
           <div style={{
-            background: "rgba(15,23,42,0.4)",
-            border: "1px solid #1e293b",
-            borderRadius: 8,
-            padding: "10px 12px",
+            ...FAMILY_BLOCK,
             display: "flex",
             flexDirection: "column",
             gap: 4,
             alignItems: "center",
             textAlign: "center",
           }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: 1.4, textTransform: "uppercase" }}>
+            <span style={FAMILY_TITLE}>
               Stamina
             </span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0" }}>{stmDisplay}</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{stmDisplay}</span>
           </div>
         </div>
       </div>

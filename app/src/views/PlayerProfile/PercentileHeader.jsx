@@ -6,6 +6,7 @@ import {
   getPitcherValueComponents,
 } from "./_shared.js";
 import { PillBtn, TabGroup } from "../../components/shared.jsx";
+import { TOKENS as T } from "../../theme.js";
 
 // Map a percentile pool entry to {current, potential} percentile pair.
 // `inverted` flips both. `hidePotential` skips the potential dot regardless
@@ -135,18 +136,18 @@ function PitcherBars({ player, peerPools }) {
 function PercentileHeader({ player, isHitter, isSPEligible, peerPools, role, onRoleChange }) {
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div style={{ fontSize: 9, color: "#475569", letterSpacing: 1.2 }}>
-          PERCENTILE RANK · vs MLB {isHitter ? "HITTERS" : (role === "sp" ? "STARTERS" : "RELIEVERS")}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, minHeight: 24 }}>
+        <div style={{ fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 600, color: T.text3 }}>
+          Percentile rank · vs MLB {isHitter ? "hitters" : (role === "sp" ? "starters" : "relievers")}
         </div>
         {!isHitter && isSPEligible && (
-          <TabGroup label="Pitcher role" style={{ display: "flex", gap: 4 }}>
+          <TabGroup label="Pitcher role" style={{ padding: 2, gap: 2 }}>
             <PillBtn active={role === "sp"} onClick={() => onRoleChange("sp")} ariaLabel="Show as starter"
-                     style={{ padding: "2px 10px", fontSize: 10 }}>
+                     style={{ padding: "2px 10px", fontSize: 12 }}>
               SP
             </PillBtn>
             <PillBtn active={role === "rp"} onClick={() => onRoleChange("rp")} ariaLabel="Show as reliever"
-                     style={{ padding: "2px 10px", fontSize: 10 }}>
+                     style={{ padding: "2px 10px", fontSize: 12 }}>
               RP
             </PillBtn>
           </TabGroup>
