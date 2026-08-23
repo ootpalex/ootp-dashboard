@@ -103,14 +103,23 @@ export function Section({ title, children, actions, count, state, toolbar, foote
   );
 }
 
-export function SortHeader({ label, width, sortCol, sortDir, colKey, onClick }) {
+// Column-group rule (Scorecard grammar): returns the 1px left rule style for column i when it
+// starts a new `group` (cols[i].group !== cols[i-1].group). Spread into the <th> (via SortHeader's
+// `rule` prop) and into every <td> of that column. Columns without a `group` never get a rule.
+export function colRule(cols, i) {
+  if (!cols || i <= 0) return null;
+  const g = cols[i]?.group, prev = cols[i - 1]?.group;
+  return g != null && g !== prev ? S.groupRule : null;
+}
+
+export function SortHeader({ label, width, sortCol, sortDir, colKey, onClick, rule, align }) {
   const active = sortCol === colKey;
   const ariaSort = active ? (sortDir === "asc" ? "ascending" : "descending") : "none";
   return (
     <th onClick={onClick} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }} tabIndex={0} role="columnheader" aria-sort={ariaSort} aria-label={`Sort by ${label}${active ? (sortDir === "asc" ? ", ascending" : ", descending") : ""}`}
       onMouseEnter={(e) => { e.currentTarget.style.color = T.text; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = active ? T.text : T.text2; }}
-      style={{ ...S.th, ...(active ? S.thSorted : {}), width, minWidth: width, cursor: "pointer", userSelect: "none" }}>
+      style={{ ...S.th, ...(active ? S.thSorted : {}), ...(rule || {}), ...(align ? { textAlign: align } : {}), width, minWidth: width, cursor: "pointer", userSelect: "none" }}>
       <span>{label}</span>{active && <span style={{ marginLeft: 3, fontSize: 10 }} aria-hidden="true">{sortDir === "asc" ? "▲" : "▼"}</span>}
     </th>
   );
