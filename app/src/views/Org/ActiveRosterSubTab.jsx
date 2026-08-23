@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { posColor, proneColor, warStyle } from "../../theme.js";
+import { TOKENS as T, posColor, proneColor, PRONE, warStyle, mixOklab } from "../../theme.js";
 import { fmt, fmtAge, parseCSVBoolean } from "../../utils/helpers.js";
 import { getMaxWar } from "../../utils/accessors.js";
 import { ACTIVE_ROSTER_DEPTH } from "../../utils/constants.js";
@@ -23,6 +23,11 @@ const POS_COORDS = {
 };
 const FIELD_POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];
 
+// Diamond fills (inventory §B.10): grass = goodBg; dirt / mound = the RP tan (CHART.series6)
+// mixed over panel at 8% / 25% in OKLab — derived from theme, not literals.
+const DIRT = mixOklab(T.CHART.series6, 0.08, T.panel);
+const MOUND = mixOklab(T.CHART.series6, 0.25, T.panel);
+
 function isInjuredCheck(p) {
   return (p?.meta?.inj != null ? p.meta.inj === "Yes" : parseCSVBoolean(p?.INJ));
 }
@@ -42,28 +47,27 @@ function PlayerCard({ p, label, onSelectPlayer }) {
       style={{
         width: 140,
         padding: "5px 8px 6px",
-        borderRadius: 6,
-        background: empty ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.92)",
-        border: empty ? "1px dashed #334155" : "1px solid #334155",
+        borderRadius: T.radius,
+        background: empty ? T.bg : T.panel,
+        border: empty ? `1px dashed ${T.line2}` : `1px solid ${T.line2}`,
         cursor: empty ? "default" : "pointer",
         textAlign: "left",
-        boxShadow: empty ? "none" : "0 2px 8px rgba(0,0,0,0.45)",
         userSelect: "none",
         transition: "border-color 0.1s",
         boxSizing: "border-box",
       }}
-      onMouseEnter={(e) => { if (!empty) e.currentTarget.style.borderColor = "#3b82f6"; }}
-      onMouseLeave={(e) => { if (!empty) e.currentTarget.style.borderColor = "#334155"; }}
+      onMouseEnter={(e) => { if (!empty) e.currentTarget.style.borderColor = T.text; }}
+      onMouseLeave={(e) => { if (!empty) e.currentTarget.style.borderColor = T.line2; }}
     >
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
-        <span style={{ color: posColor(label), fontSize: 9, fontWeight: 800, letterSpacing: 1 }}>{label}</span>
-        {p && <span style={{ ...warStyle(war), fontSize: 11, fontWeight: 800 }}>{fmt(war)}</span>}
+        <span style={{ color: posColor(label), fontFamily: T.fonts.narrow, fontSize: 11, fontWeight: 700 }}>{label}</span>
+        {p && <span style={{ ...warStyle(war), fontSize: 11, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{fmt(war)}</span>}
       </div>
       {empty ? (
-        <div style={{ fontSize: 11, color: "#475569", fontStyle: "italic", marginTop: 2 }}>—</div>
+        <div style={{ fontSize: 11, color: T.textDisabled, marginTop: 2 }}>—</div>
       ) : (
         <div style={{
-          color: injured ? "#fbbf24" : "#e2e8f0",
+          color: injured ? T.warn : T.text,
           fontSize: 11,
           fontWeight: 600,
           lineHeight: 1.25,
@@ -72,13 +76,13 @@ function PlayerCard({ p, label, onSelectPlayer }) {
         }}>
           {p.meta?.name ?? p.Name}
           <TwoWayBadge player={p} />
-          {injured && <span style={{ color: "#f87171", marginLeft: 4, fontSize: 8 }}>INJ</span>}
+          {injured && <span style={{ color: T.bad, marginLeft: 4, fontSize: 9, fontFamily: T.fonts.narrow, fontWeight: 700 }}>INJ</span>}
         </div>
       )}
       {p && (
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 3, fontSize: 9, color: "#64748b" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 3, fontSize: 10, color: T.text3 }}>
           <span>{fmtAge(p._age)}</span>
-          {prone && <span style={{ color: proneColor(prone), fontWeight: 600 }}>{prone}</span>}
+          {prone && <span style={{ color: proneColor(prone), fontWeight: PRONE[prone]?.weight ?? 600 }}>{prone}</span>}
         </div>
       )}
     </div>
@@ -100,20 +104,20 @@ function FieldDiagram({ byPos, onSelectPlayer }) {
             straight line as home→3B bag (slope 1) and home→1B bag (slope -1),
             so the OF boundary continues smoothly from the infield baselines
             with no kink at the bags. */}
-        <path d="M 50 76 L 2 28 Q 50 -24 98 28 Z" fill="rgba(34,197,94,0.05)" stroke="#1e293b" strokeWidth="0.25" />
+        <path d="M 50 76 L 2 28 Q 50 -24 98 28 Z" fill={T.goodBg} stroke={T.line} strokeWidth="0.25" />
         {/* Infield dirt diamond */}
-        <path d="M 50 76 L 28 54 L 50 32 L 72 54 Z" fill="rgba(166,128,89,0.07)" stroke="#1e293b" strokeWidth="0.22" />
+        <path d="M 50 76 L 28 54 L 50 32 L 72 54 Z" fill={DIRT} stroke={T.line} strokeWidth="0.22" />
         {/* Infield grass (inner cutout) */}
-        <path d="M 50 70 L 34 54 L 50 38 L 66 54 Z" fill="rgba(34,197,94,0.03)" stroke="none" />
+        <path d="M 50 70 L 34 54 L 50 38 L 66 54 Z" fill={T.goodBg} stroke="none" />
         {/* Base markers */}
-        <rect x="49" y="75" width="2" height="2" fill="#94a3b8" />
-        <rect x="71" y="53" width="2" height="2" fill="#94a3b8" />
-        <rect x="49" y="31" width="2" height="2" fill="#94a3b8" />
-        <rect x="27" y="53" width="2" height="2" fill="#94a3b8" />
+        <rect x="49" y="75" width="2" height="2" fill={T.text2} />
+        <rect x="71" y="53" width="2" height="2" fill={T.text2} />
+        <rect x="49" y="31" width="2" height="2" fill={T.text2} />
+        <rect x="27" y="53" width="2" height="2" fill={T.text2} />
         {/* Pitcher's mound */}
-        <circle cx="50" cy="54" r="2.4" fill="rgba(166,128,89,0.22)" stroke="#475569" strokeWidth="0.18" />
+        <circle cx="50" cy="54" r="2.4" fill={MOUND} stroke={T.line2} strokeWidth="0.18" />
         {/* Home plate */}
-        <polygon points="48.5,76 51.5,76 51.5,77.3 50,78.3 48.5,77.3" fill="#cbd5e1" />
+        <polygon points="48.5,76 51.5,76 51.5,77.3 50,78.3 48.5,77.3" fill={T.text} />
       </svg>
       {FIELD_POSITIONS.map((pos) => {
         const c = POS_COORDS[pos];
@@ -171,16 +175,14 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
   const bench = unassigned;
   const filledStarters = Object.values(byPos).filter(Boolean).length;
 
-  const sectionLabel = { fontSize: 9, color: "#64748b", letterSpacing: 1, fontWeight: 800, textTransform: "uppercase", marginBottom: 6 };
+  // Group labels: 12px Archivo Narrow sentence case (mockup sub-captions).
+  const sectionLabel = { fontFamily: T.fonts.narrow, fontSize: 12, fontWeight: 600, color: T.text2, marginBottom: 6 };
 
   return (
     <Section
       title="Active Roster"
-      actions={
-        <span style={{ fontSize: 11, color: "#64748b" }}>
-          {filledStarters}/9 starters · {sp.length}/5 SP · {rp.length}/8 RP · {bench.length} bench
-        </span>
-      }
+      state={`${filledStarters}/9 starters · ${sp.length}/5 SP · ${rp.length}/8 RP · ${bench.length} bench`}
+      footer={<>Total: {mlbHitters.length + mlbPitchers.length} MLB-level players ({mlbHitters.length} position, {mlbPitchers.length} pitchers)</>}
     >
       <div style={{
         display: "grid",
@@ -210,7 +212,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
 
         {/* Center: Field Diagram */}
         <div>
-          <div style={{ ...sectionLabel, textAlign: "center" }}>Starting Lineup</div>
+          <div style={{ ...sectionLabel, textAlign: "center" }}>Starting lineup</div>
           <FieldDiagram byPos={byPos} onSelectPlayer={onSelectPlayer} />
         </div>
 
@@ -219,7 +221,7 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
           <div style={sectionLabel}>Bench ({bench.length})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {bench.length === 0 ? (
-              <div style={{ fontSize: 11, color: "#475569", fontStyle: "italic", padding: "8px 0" }}>
+              <div style={{ fontSize: 12, color: T.text3, padding: "8px 0" }}>
                 No unassigned players
               </div>
             ) : (
@@ -234,10 +236,6 @@ export default function ActiveRosterSubTab({ data, team, onSelectPlayer }) {
             )}
           </div>
         </div>
-      </div>
-
-      <div style={{ fontSize: 11, color: "#475569", marginTop: 12 }}>
-        Total: {mlbHitters.length + mlbPitchers.length} MLB-level players ({mlbHitters.length} position, {mlbPitchers.length} pitchers)
       </div>
     </Section>
   );

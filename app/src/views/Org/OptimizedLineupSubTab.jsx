@@ -1,10 +1,32 @@
 import { useMemo } from "react";
-import { S, posColor, warStyle } from "../../theme.js";
+import { S, TOKENS as T, posColor, warStyle } from "../../theme.js";
 import { fmt, num, parseCSVBoolean } from "../../utils/helpers.js";
 import { optimizeDefensivePositions, assignPlayersToPositions } from "../../utils/positioning.js";
-import { Section, TwoWayBadge } from "../../components/shared.jsx";
+import { Section, TwoWayBadge, colRule } from "../../components/shared.jsx";
 
 const LINEUP_DEPTH = { C: 1, "1B": 1, "2B": 1, "3B": 1, SS: 1, LF: 1, CF: 1, RF: 1, DH: 1 };
+
+// Scorecard board grammar (same local helper block as the batch-2 boards): column-group left rules via
+// colRule, numeric columns right-aligned, first/last cells carry the 12px box padding.
+const edgePad = (cols, i, v) => (i === 0 ? { padding: `${v} 6px ${v} 12px` } : i === cols.length - 1 ? { padding: `${v} 12px ${v} 6px` } : {});
+const thStyle = (cols, i) => ({ ...S.th, ...(colRule(cols, i) || {}), ...(cols[i].align ? { textAlign: cols[i].align } : {}), ...edgePad(cols, i, "6px"), width: cols[i].w, minWidth: cols[i].w });
+const tdStyle = (cols, i) => ({ ...S.td, ...(colRule(cols, i) || {}), ...(cols[i].align ? { textAlign: cols[i].align } : {}), ...edgePad(cols, i, "0") });
+const posCell = { fontFamily: T.fonts.narrow, fontWeight: 600, fontSize: 13 };
+
+// Lineup columns (inventory §B.3 item 11): # | Name POS Best B/T | WAR DEF | OBP wOBA.
+const LINEUP_COLS = [
+  { key: "slot", label: "#", w: 30, group: "slot", align: "right" },
+  { key: "name", label: "Name", w: 170, group: "identity" },
+  { key: "pos", label: "POS", w: 48, group: "identity" },
+  { key: "best", label: "Best", w: 48, group: "identity" },
+  { key: "bt", label: "B/T", w: 50, group: "identity" },
+  { key: "war", label: "WAR", w: 65, group: "value", align: "right" },
+  { key: "def", label: "DEF", w: 60, group: "value", align: "right" },
+  { key: "obp", label: "OBP", w: 60, group: "batting", align: "right" },
+  { key: "woba", label: "wOBA", w: 60, group: "batting", align: "right" },
+];
+const ci = Object.fromEntries(LINEUP_COLS.map((c, i) => [c.key, i]));
+const td = (key) => tdStyle(LINEUP_COLS, ci[key]);
 
 function buildPlatoonLineup(hitters, hand) {
   const { assigned } = assignPlayersToPositions(hitters, [], LINEUP_DEPTH, "current", hand);
@@ -45,46 +67,38 @@ export default function OptimizedLineupSubTab({ data, team, onSelectPlayer }) {
   const vsRHP = useMemo(() => buildPlatoonLineup(mlbHitters, "vR"), [mlbHitters]);
   const vsLHP = useMemo(() => buildPlatoonLineup(mlbHitters, "vL"), [mlbHitters]);
 
-  const renderLineup = (lineup, hand, label) => (
-    <Section title={label}>
-      <div style={S.tableWrap}>
-        <table style={S.table}>
-          <thead><tr>
-            <th style={{ ...S.th, width: 30 }}>#</th>
-            <th style={{ ...S.th, width: 170 }}>Name</th>
-            <th style={{ ...S.th, width: 48 }}>POS</th>
-            <th style={{ ...S.th, width: 48 }}>Best</th>
-            <th style={{ ...S.th, width: 50 }}>B/T</th>
-            <th style={{ ...S.th, width: 65 }}>WAR</th>
-            <th style={{ ...S.th, width: 60 }}>DEF</th>
-            <th style={{ ...S.th, width: 60 }}>OBP</th>
-            <th style={{ ...S.th, width: 60 }}>wOBA</th>
-          </tr></thead>
-          <tbody>
-            {lineup.map((p, i) => {
-              const war = p._assignedVal;
-              const defR = p._defRunsP;
-              return (
-                <tr key={p.ID} style={{ background: i % 2 === 0 ? "transparent" : "rgba(15,23,42,0.3)" }}>
-                  <td style={{ ...S.td, color: "#475569", fontWeight: 700 }}>{i + 1}</td>
-                  <td style={{ ...S.td, fontWeight: 600, color: "#e2e8f0", minWidth: 170, cursor: "pointer" }}
-                      onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
-                  <td style={{ ...S.td, color: posColor(p._assignedPos) }}>{p._assignedPos}</td>
-                  <td style={{ ...S.td, color: posColor(p._bestPos?.replace("*", "")) }}>{p._bestPos || "—"}</td>
-                  <td style={S.td}>{`${p.meta?.bats ?? p.B ?? ""}/${p.meta?.throws ?? p.T ?? ""}`}</td>
-                  <td style={{ ...S.td, ...warStyle(war) }}>{fmt(war)}</td>
-                  <td style={{ ...S.td, ...warStyle(defR) }}>{p._assignedPos === "DH" ? "—" : fmt(defR)}</td>
-                  <td style={{ ...S.td, color: p._obp != null ? "#e2e8f0" : "#475569" }}>{p._obp != null ? p._obp.toFixed(3) : "—"}</td>
-                  <td style={{ ...S.td, color: p._woba != null ? "#e2e8f0" : "#475569" }}>{p._woba != null ? p._woba.toFixed(3) : "—"}</td>
-                </tr>
-              );
-            })}
-            {lineup.length === 0 && <tr><td colSpan={9} style={{ ...S.td, textAlign: "center", color: "#475569" }}>No lineup data</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <div style={{ fontSize: 10, color: "#475569", marginTop: 6 }}>
-        Leadoff: highest OBP. Slots 2-9: sorted by wOBA descending.
+  const renderLineup = (lineup, hand, label, sub) => (
+    <Section title={label} state={sub} footer="Leadoff: highest OBP. Slots 2-9: sorted by wOBA descending.">
+      {/* Table runs edge to edge inside the box body (the box border is the rule). */}
+      <div style={{ margin: "-12px -12px -13px" }}>
+        <div style={{ ...S.tableWrap, border: "none", borderRadius: 0 }}>
+          <table style={S.table}>
+            <thead><tr>
+              {LINEUP_COLS.map(({ key, label: lbl }, i) => <th key={key} style={thStyle(LINEUP_COLS, i)}>{lbl}</th>)}
+            </tr></thead>
+            <tbody>
+              {lineup.map((p, i) => {
+                const war = p._assignedVal;
+                const defR = p._defRunsP;
+                return (
+                  <tr key={p.ID} style={i % 2 === 1 ? S.zebraRow : undefined}>
+                    <td style={{ ...td("slot"), color: T.text3, fontWeight: 700 }}>{i + 1}</td>
+                    <td style={{ ...td("name"), ...S.tdName, minWidth: 170, cursor: "pointer" }}
+                        onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></td>
+                    <td style={{ ...td("pos"), ...posCell, color: posColor(p._assignedPos) }}>{p._assignedPos}</td>
+                    <td style={{ ...td("best"), ...posCell, color: p._bestPos ? posColor(p._bestPos?.replace("*", "")) : T.textDisabled }}>{p._bestPos || "—"}</td>
+                    <td style={{ ...td("bt"), color: T.text2 }}>{`${p.meta?.bats ?? p.B ?? ""}/${p.meta?.throws ?? p.T ?? ""}`}</td>
+                    <td style={{ ...td("war"), ...warStyle(war) }}>{fmt(war)}</td>
+                    <td style={{ ...td("def"), ...(p._assignedPos === "DH" ? { color: T.textDisabled } : warStyle(defR)) }}>{p._assignedPos === "DH" ? "—" : fmt(defR)}</td>
+                    <td style={{ ...td("obp"), color: p._obp != null ? T.text : T.textDisabled }}>{p._obp != null ? p._obp.toFixed(3) : "—"}</td>
+                    <td style={{ ...td("woba"), color: p._woba != null ? T.text : T.textDisabled }}>{p._woba != null ? p._woba.toFixed(3) : "—"}</td>
+                  </tr>
+                );
+              })}
+              {lineup.length === 0 && <tr><td colSpan={LINEUP_COLS.length} style={{ ...S.td, textAlign: "center", color: T.text3, padding: "16px 12px" }}>No lineup data</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
     </Section>
   );
@@ -95,16 +109,16 @@ export default function OptimizedLineupSubTab({ data, team, onSelectPlayer }) {
   }, [vsRHP, vsLHP]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ fontSize: 12, color: "#94a3b8" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 12.5, color: T.text2 }}>
         {diffCount > 0
           ? <>{diffCount} player{diffCount > 1 ? "s" : ""} differ between platoon lineups. Positions assigned via defensive spectrum cascade using split WAR values.</>
           : <>Same 9 starters in both lineups. Position values and batting order may differ.</>
         }
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))", gap: 20 }}>
-        {renderLineup(vsRHP, "vR", "vs RHP (Lineup vs Right-Handed Pitchers)")}
-        {renderLineup(vsLHP, "vL", "vs LHP (Lineup vs Left-Handed Pitchers)")}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))", gap: 16 }}>
+        {renderLineup(vsRHP, "vR", "vs RHP", "Lineup vs right-handed pitchers")}
+        {renderLineup(vsLHP, "vL", "vs LHP", "Lineup vs left-handed pitchers")}
       </div>
     </div>
   );

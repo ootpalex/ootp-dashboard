@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { S, posColor, levelColor, warStyle, zToColor } from "../../theme.js";
+import { S, TOKENS as T, posColor, levelColor, warStyle, zToColor } from "../../theme.js";
 import { fmt, fmtAge, parseCSVBoolean, rankSuffix } from "../../utils/helpers.js";
 import { getWar, getSpWar, getRpWar } from "../../utils/accessors.js";
 import { ALL_DISPLAY_POS, DEF_SPECTRUM, ACTIVE_ROSTER_DEPTH } from "../../utils/constants.js";
@@ -103,8 +103,9 @@ export default function FortyManSubTab({ data, team, strength, onSelectPlayer })
   const totalTeams = data.teams.length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <Section title="40-Man Depth Chart">
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Section title="40-Man Depth Chart" state="z vs league · now"
+        footer={<>Total 40-man: {fortyManHitters.length + fortyManPitchers.length} players ({fortyManHitters.length} position, {fortyManPitchers.length} pitchers)</>}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
           {ALL_DISPLAY_POS.map((pos) => {
             const players = depthChart.chart[pos] || [];
@@ -112,44 +113,46 @@ export default function FortyManSubTab({ data, team, strength, onSelectPlayer })
             const rank = teamRanks[pos];
             const colors = zToColor(z);
             return (
-              <div key={pos} style={{ background: "rgba(15,23,42,0.4)", border: "1px solid #1e293b", borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ background: colors.bg, borderBottom: `1px solid ${colors.border}`, padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: posColor(pos) }}>{pos}</span>
+              // Position card = scorecard box; the header strip carries the z-heat fill (mockup `.zcell`).
+              <div key={pos} style={{ ...S.box, display: "flex", flexDirection: "column" }}>
+                <div style={{ ...S.boxHead, background: colors.bg, padding: "6px 10px", minHeight: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: posColor(pos) }}>{pos}</span>
                   {z != null && (
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: colors.value }}>
-                        {rankSuffix(rank)}<span style={{ color: "#475569", fontWeight: 400 }}>/{totalTeams}</span>
+                    <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: colors.value }}>
+                        {rankSuffix(rank)}<span style={{ color: colors.label, fontWeight: 500 }}>/{totalTeams}</span>
                       </div>
-                      <div style={{ fontSize: 9, color: colors.label }}>z: {fmt(z, 2)}</div>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: colors.label }}>z {fmt(z, 2)}</div>
                     </div>
                   )}
                 </div>
-                <div style={{ padding: "4px 0" }}>
+                <div style={{ padding: "4px 0", flex: 1 }}>
                   {players.length === 0 && (
-                    <div style={{ padding: "8px 10px", color: "#334155", fontSize: 11, fontStyle: "italic" }}>No players</div>
+                    <div style={{ padding: "8px 10px", color: T.textDisabled, fontSize: 11 }}>No players</div>
                   )}
                   {players.map((p, i) => {
                     const war = p._assignedVal;
                     const isStarter = depthChart.starterUids.has(p._uid || p.ID);
                     return (
-                      <div key={p.ID} style={{ padding: "4px 10px", borderBottom: i < players.length - 1 ? "1px solid #0f172a" : "none", display: "flex", justifyContent: "space-between", alignItems: "center", background: isStarter ? "rgba(59,130,246,0.06)" : "transparent" }}>
+                      <div key={p.ID} style={{ padding: "4px 10px", borderBottom: i < players.length - 1 ? `1px solid ${T.line}` : "none", display: "flex", justifyContent: "space-between", alignItems: "center", background: isStarter ? T.accentBg2 : "transparent" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 10, color: "#475569", fontWeight: 700, width: 16 }}>{i + 1}.</span>
+                          <span style={{ fontSize: 10, color: T.text3, fontWeight: 700, width: 16, fontVariantNumeric: "tabular-nums" }}>{i + 1}.</span>
                           <div>
-                            <div style={{ fontSize: 11, fontWeight: isStarter ? 700 : 500, color: isStarter ? "#e2e8f0" : "#94a3b8", cursor: "pointer" }} onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></div>
-                            <div style={{ fontSize: 10, color: "#475569", display: "flex", gap: 6 }}>
-                              <span style={{ color: levelColor(p.meta?.lev ?? p.Lev) }}>{p.meta?.lev ?? p.Lev}</span>
-                              <span>Age {fmtAge(p._age)}</span>
-                              {p._bestPos && <span style={{ color: posColor(p._bestPos.replace("*", "")) }}>Best: {p._bestPos}</span>}
+                            <div style={{ fontSize: 11, fontWeight: isStarter ? 700 : 500, color: isStarter ? T.text : T.text2, cursor: "pointer" }} onClick={() => onSelectPlayer?.(p)}>{p.meta?.name ?? p.Name}<TwoWayBadge player={p} /></div>
+                            {/* Meta row in Archivo Narrow so "MLB · Age · Best" fits a 140px card on one line. */}
+                            <div style={{ fontFamily: T.fonts.narrow, fontSize: 10.5, color: T.text3, display: "flex", flexWrap: "wrap", gap: "0 6px" }}>
+                              <span style={{ color: levelColor(p.meta?.lev ?? p.Lev), whiteSpace: "nowrap" }}>{p.meta?.lev ?? p.Lev}</span>
+                              <span style={{ whiteSpace: "nowrap" }}>Age {fmtAge(p._age)}</span>
+                              {p._bestPos && <span style={{ color: posColor(p._bestPos.replace("*", "")), whiteSpace: "nowrap" }}>Best: {p._bestPos}</span>}
                             </div>
                           </div>
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 700, ...warStyle(war) }}>{fmt(war)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, ...warStyle(war), fontVariantNumeric: "tabular-nums" }}>{fmt(war)}</span>
                       </div>
                     );
                   })}
                 </div>
-                <div style={{ background: "rgba(15,23,42,0.6)", padding: "2px 10px", fontSize: 10, color: "#334155", textAlign: "center" }}>
+                <div style={{ ...S.boxFoot, padding: "3px 10px 4px", textAlign: "center" }}>
                   {players.length} player{players.length !== 1 ? "s" : ""}
                 </div>
               </div>
@@ -157,10 +160,6 @@ export default function FortyManSubTab({ data, team, strength, onSelectPlayer })
           })}
         </div>
       </Section>
-
-      <div style={{ fontSize: 12, color: "#475569" }}>
-        Total 40-man: {fortyManHitters.length + fortyManPitchers.length} players ({fortyManHitters.length} position, {fortyManPitchers.length} pitchers)
-      </div>
     </div>
   );
 }
