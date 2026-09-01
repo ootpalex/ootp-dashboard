@@ -2,7 +2,7 @@
 // symbols continue to work via this single entry point.
 
 export { fetchContracts, resolveContractYear } from "./contracts.js";
-export { detectSeasonDay, detectLimbo, detectArbSigned, detectGameDate, projectSuperTwo } from "./service.js";
+export { detectSeasonDay, detectLimbo, detectArbSigned, detectContractYear, detectGameDate, projectSuperTwo } from "./service.js";
 export {
   parseContractStatus,
   calcR5Projection,

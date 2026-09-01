@@ -39,7 +39,10 @@ from src.pitchers import (
 )
 from src.players import load_players
 from src.settings import PipelineSettings
-from src.contract_projection import build_player_projection, project_super_two, DAYS_PER_SEASON
+from src.contract_projection import (
+    build_player_projection, project_super_two, detect_season_day, detect_limbo,
+    detect_contract_year,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1163,6 +1166,7 @@ def _build_hitter_dict(
     game_year: int | None = None,
     super_two_ids: set | None = None,
     salary_report_entry: dict | None = None,
+    contract_year: int | None = None,
 ) -> dict:
     """Build one hitter's nested dict.
 
@@ -1191,7 +1195,9 @@ def _build_hitter_dict(
     if sp_contract is not None:
         d["contract"] = sp_contract
     if game_year is not None:
-        d["_projection"] = build_player_projection(d, game_year, super_two_ids, salary_report_entry)
+        d["_projection"] = build_player_projection(
+            d, game_year, super_two_ids, salary_report_entry, contract_year=contract_year
+        )
     return _strip_none(d)
 
 
@@ -1403,6 +1409,7 @@ def _build_pitcher_dict(
     game_year: int | None = None,
     super_two_ids: set | None = None,
     salary_report_entry: dict | None = None,
+    contract_year: int | None = None,
 ) -> dict:
     """Build one pitcher's nested dict.
 
@@ -1434,7 +1441,9 @@ def _build_pitcher_dict(
     if sp_contract is not None:
         d["contract"] = sp_contract
     if game_year is not None:
-        d["_projection"] = build_player_projection(d, game_year, super_two_ids, salary_report_entry)
+        d["_projection"] = build_player_projection(
+            d, game_year, super_two_ids, salary_report_entry, contract_year=contract_year
+        )
     return _strip_none(d)
 
 
@@ -1743,8 +1752,7 @@ def build_dashboard(
 
     # 8. Build nested dicts for each player
     print("Building JSON output...")
-    if contracts:
-        from src.statsplus import contract_to_json
+    from src.statsplus import contract_to_json
 
     # Game-date derived projection inputs. Prefer the live StatsPlus date
     # over the CSV's "Sct" column (which lags the actual in-game date).
@@ -1755,7 +1763,6 @@ def build_dashboard(
         import datetime as _dt
         game_dt = datetime.combine(_dt.date.today(), datetime.min.time())
     game_year = game_dt.year
-    season_day = game_dt.timetuple().tm_yday % DAYS_PER_SEASON
 
     # Lightweight player-projection seeds for super-two (need MLD, act, ic, lev,
     # org for the free-agent guard, and StatsPlus mlb_service_days_this_year for
@@ -1778,7 +1785,21 @@ def build_dashboard(
                 "mlb_service_days_this_year": extra.get("mlb_service_days_this_year"),
             },
         })
-    super_two_ids, super_two_cutoff = project_super_two(proj_seed, season_day)
+    # Season day comes from the modal MLD remainder, not the calendar: OOTP's
+    # 172 league days span ~180 calendar days, so day-of-year arithmetic drifts
+    # through the season and wraps into nonsense after it (Dec 14 → "day 4").
+    season_day = detect_season_day(proj_seed)
+    limbo = detect_limbo(proj_seed, season_day)
+
+    # Which calendar year the league's contracts are in force for. Rolls to
+    # game_year + 1 during the offseason once arbitration is settled and free
+    # agency opens, while the calendar date still reads game_year.
+    contract_year = detect_contract_year(
+        [contract_to_json(raw) for raw in contracts.values()] if contracts else [],
+        game_year,
+    )
+
+    super_two_ids, super_two_cutoff = project_super_two(proj_seed, season_day, limbo)
 
     # salary_reports is a flat {playerId: entry} dict spanning every team's salary
     # report, so look up by pid directly without filtering by user team.
@@ -1844,7 +1865,7 @@ def build_dashboard(
             floor_waa=floor_waa_map,
             sp_contract=sp_contract, demand=h_dem_map,
             game_year=game_year, super_two_ids=super_two_ids,
-            salary_report_entry=sr_entry,
+            salary_report_entry=sr_entry, contract_year=contract_year,
         )
         if sr_entry:
             d["_salaryReport"] = sr_entry
@@ -1865,7 +1886,7 @@ def build_dashboard(
             floor_stats=floor_pitcher_stats_map,
             sp_contract=sp_contract, demand=p_dem_map,
             game_year=game_year, super_two_ids=super_two_ids,
-            salary_report_entry=sr_entry,
+            salary_report_entry=sr_entry, contract_year=contract_year,
         )
         if sr_entry:
             d["_salaryReport"] = sr_entry
@@ -1964,6 +1985,8 @@ def build_dashboard(
         "meta_projection": {
             "gameYear": game_year,
             "seasonDay": season_day,
+            "limbo": limbo,
+            "contractYear": contract_year,
             "superTwoCutoffMLD": super_two_cutoff,
             "yearHorizon": 7,
         },

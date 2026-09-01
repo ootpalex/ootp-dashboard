@@ -10,7 +10,7 @@ import { calcFutureValue } from "../../utils/futureValue.js";
 import { isMatured } from "../../utils/dataProcessing.js";
 import {
   buildRosterProjection, analyzeCrunch, suggestActions,
-  detectGameDate,
+  detectGameDate, detectContractYear,
   buildDepthChart, filterR5Protect, R5_DEFAULT_THRESHOLD,
 } from "../../utils/rosterPlanning/index.js";
 import { fetchDraftDates } from "../../utils/salaryReport.js";
@@ -63,7 +63,7 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showMlfaSection, setShowMlfaSection] = useState(false);
   const [s2ModalOpen, setS2ModalOpen] = useState(false);
-  const [planYearOffset, setPlanYearOffset] = useState(0);
+  const [planYearOffsetRaw, setPlanYearOffset] = useState(null);
   const [r5Threshold, setR5Threshold] = useScopedLocalStorage(R5_THRESHOLD_KEY, R5_DEFAULT_THRESHOLD, {
     deserialize: (s) => { const v = parseFloat(s); return isFinite(v) ? v : R5_DEFAULT_THRESHOLD; },
   });
@@ -125,11 +125,29 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
     return allPlayers.filter(p => (p.meta?.org ?? p.ORG) === myTeam);
   }, [allPlayers, myTeam]);
 
+  // Which calendar year the roster's contracts are in force for. In-season this
+  // is gameYear; in the offseason — arbitration settled, free agency open — it
+  // rolls to gameYear + 1, and the completed season stops being a year worth
+  // planning. Service time, options used and MLY do not roll until Jan 1, so
+  // gameYear remains the frame for eligibility (R5, MLFA, super-two, options).
+  const contractYear = useMemo(() => {
+    const fromMeta = dashMeta?.metaProjection?.contractYear;
+    if (fromMeta === gameYear || fromMeta === gameYear + 1) return fromMeta;
+    return detectContractYear(allPlayers, gameYear);
+  }, [dashMeta, allPlayers, gameYear]);
+
+  // First offset still worth planning — 1 once the roster has rolled, so the
+  // completed season's tab disappears instead of sitting there as a dead year.
+  const minOffset = Math.max(0, contractYear - gameYear);
+  const planYearOffset = Math.min(
+    minOffset + YEAR_COUNT - 1,
+    Math.max(minOffset, planYearOffsetRaw ?? minOffset)
+  );
   const activePlanYear = gameYear + planYearOffset;
 
   const projection = useMemo(
-    () => buildRosterProjection(teamPlayers, gameYear, moves, allPlayers, contractsMap, activePlanYear, 3, salaryReportMap, draftDateMap),
-    [teamPlayers, gameYear, moves, allPlayers, contractsMap, activePlanYear, salaryReportMap, draftDateMap]
+    () => buildRosterProjection(teamPlayers, gameYear, moves, allPlayers, contractsMap, activePlanYear, minOffset + YEAR_COUNT - 1, salaryReportMap, draftDateMap),
+    [teamPlayers, gameYear, moves, allPlayers, contractsMap, activePlanYear, minOffset, salaryReportMap, draftDateMap]
   );
 
   // Expiring 40-man/MLB contracts for the active planning year — only the FIRST year a player becomes FA
@@ -233,8 +251,7 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
   // require a forced choice: promote to active or DFA / waive.
   const outOfOptionsDecisions = useMemo(() => {
     return enrichedWithFV.filter(ep =>
-      ep._options?.outOfOptions &&
-      !ep._options?.isLastOptionYear &&
+      ep._options?.noOptionsLeft &&
       ep.meta?.act !== true
     );
   }, [enrichedWithFV]);
@@ -427,7 +444,7 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
     } else if (targetBucket === "fortyMan" && sourceBucket === "active") {
       // Strict option mechanics: a player with no remaining options cannot be
       // demoted to the inactive 40-man — they must clear waivers (DFA) instead.
-      if (player._options?.outOfOptions) {
+      if (player._options?.noOptionsLeft) {
         // eslint-disable-next-line no-console
         console.info(`[RosterPlanner] Demote blocked for ${player.meta?.name}: out of options. Use DFA / Departing instead.`);
         return;
@@ -458,8 +475,8 @@ export default function RosterPlanner({ data, myTeam, curveSettings, leagueSetti
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <TabGroup label="Planning year">
             {Array.from({ length: YEAR_COUNT }, (_, i) => {
-              const yr = gameYear + i;
-              const offset = i;
+              const offset = minOffset + i;
+              const yr = gameYear + offset;
               return (
                 <PillBtn key={yr} active={planYearOffset === offset} onClick={() => setPlanYearOffset(offset)}>
                   {yr}

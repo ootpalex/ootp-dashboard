@@ -55,14 +55,98 @@ def _is_accruing(meta: dict) -> bool:
     return False
 
 
-def _project_eos_mld(player: dict, season_day: int) -> int:
+def detect_season_day(all_players: Iterable[dict]) -> int:
+    """League days into the current season, from the modal ``MLD % 172``.
+
+    Mirrors ``detectSeasonDay`` in app/src/utils/rosterPlanning/service.js. The
+    calendar date cannot give this: OOTP's 172 league days span ~180 calendar
+    days, so day-of-year arithmetic drifts during the season and is meaningless
+    outside it. Returns 0 at season start AND after the season ends.
+    """
+    counts: dict[int, int] = {}
+    for p in all_players:
+        mld = _meta(p).get("mld")
+        if mld is None:
+            continue
+        try:
+            m = int(mld)
+        except (TypeError, ValueError):
+            continue
+        if m <= 0:
+            continue
+        rem = m % DAYS_PER_SEASON
+        counts[rem] = counts.get(rem, 0) + 1
+    if not counts:
+        return 0
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def detect_limbo(all_players: Iterable[dict], season_day: int) -> bool:
+    """True in post-season limbo: the season is complete but the calendar year
+    has not rolled, so MLD already includes it while MLY has not caught up.
+
+    Mirrors ``detectLimbo`` in service.js. MLY (and options used) only roll on
+    Jan 1, so during limbo the service-time frame is still the old season's even
+    though the season itself is over.
+    """
+    if season_day != 0:
+        return False
+    for p in all_players:
+        meta = _meta(p)
+        mly = meta.get("mly")
+        if mly is None:
+            continue
+        try:
+            mld = int(meta.get("mld") or 0)
+            mly_i = int(mly)
+        except (TypeError, ValueError):
+            continue
+        if mld > 0 and mld // DAYS_PER_SEASON != mly_i:
+            return True
+    return False
+
+
+def detect_contract_year(contracts: Iterable[dict] | dict, game_year: int) -> int:
+    """The calendar year the league's contracts are currently in force for.
+
+    ``season_year + current_year`` is the year a contract's ``current_year``
+    index points at. OOTP advances that index during the offseason, so once
+    arbitration is settled and free agency opens it reads ``game_year + 1``
+    league-wide while the calendar date still says ``game_year``. That makes it
+    the signal for "the roster has rolled to next season".
+
+    Only ``game_year`` and ``game_year + 1`` are accepted; anything else means
+    the contract feed is missing or malformed, and we fall back to ``game_year``.
+    """
+    rows = contracts.values() if isinstance(contracts, dict) else contracts
+    counts: dict[int, int] = {}
+    for c in rows or ():
+        if not c:
+            continue
+        try:
+            sy = int(c.get("seasonYear") or 0)
+            cy = int(c.get("currentYear") or 0)
+        except (TypeError, ValueError):
+            continue
+        if sy < 1900:
+            continue
+        counts[sy + cy] = counts.get(sy + cy, 0) + 1
+    if not counts:
+        return game_year
+    best = max(counts.items(), key=lambda kv: kv[1])[0]
+    return best if best in (game_year, game_year + 1) else game_year
+
+
+def _project_eos_mld(player: dict, season_day: int, limbo: bool = False) -> int:
     meta = _meta(player)
     mld = meta.get("mld") or 0
-    remaining = DAYS_PER_SEASON - season_day
+    # In limbo the completed season is already inside MLD — adding a "rest of
+    # season" on top would double-count it.
+    remaining = 0 if limbo else DAYS_PER_SEASON - season_day
     return (mld or 0) + remaining if _is_accruing(meta) else (mld or 0)
 
 
-def _accrual_prior_year(player: dict, season_day: int) -> int | None:
+def _accrual_prior_year(player: dict, season_day: int, limbo: bool = False) -> int | None:
     """Days the player will accrue in the (current) year ending the cutoff.
     None when we lack StatsPlus data and cannot compute it."""
     meta = _meta(player)
@@ -72,13 +156,16 @@ def _accrual_prior_year(player: dict, season_day: int) -> int | None:
         if sp_days is None:
             return None
         return sp_days + (DAYS_PER_SEASON - season_day if accruing else 0)
-    # Pre-OpDay / limbo not distinguished here — Python pipeline only computes
-    # the next-year-eligible cutoff for the current season. Fall back to a full
-    # season if accruing, else 0.
+    if limbo:
+        # Season complete: this year's accrual is finished and already recorded.
+        return sp_days if sp_days is not None else 0
+    # Pre-Opening-Day: the whole upcoming season is still ahead.
     return DAYS_PER_SEASON if accruing else 0
 
 
-def project_super_two(all_players: Iterable[dict], season_day: int) -> tuple[set, int]:
+def project_super_two(
+    all_players: Iterable[dict], season_day: int, limbo: bool = False
+) -> tuple[set, int]:
     """Returns (super_two_id_set keyed by player id, cutoff MLD)."""
     two_class = []
     for p in all_players:
@@ -87,8 +174,8 @@ def project_super_two(all_players: Iterable[dict], season_day: int) -> tuple[set
         years, _ = _parse_mld(mld)
         if years != 2:
             continue
-        projected = _project_eos_mld(p, season_day)
-        accrual = _accrual_prior_year(p, season_day)
+        projected = _project_eos_mld(p, season_day, limbo)
+        accrual = _accrual_prior_year(p, season_day, limbo)
         if accrual is not None and accrual < 86:
             continue
         two_class.append((p, projected))
@@ -310,6 +397,30 @@ def resolve_contract_year(contract: dict | None, calendar_year: int) -> dict | N
     return None
 
 
+def _resolve_from_sp_contract(sp_contract: dict | None, target_year: int) -> dict | None:
+    """Per-year status straight from the StatsPlus contract feed, or None."""
+    if not sp_contract:
+        return None
+    resolved = resolve_contract_year(sp_contract, target_year)
+    if not resolved or resolved.get("salary", 0) <= 0:
+        return None
+    label = _fmt_salary(resolved["salary"]) or "Signed"
+    opt = resolved.get("optionType")
+    if opt:
+        status_label = (
+            "Club Opt" if opt == "club" else "Player Opt" if opt == "player" else "Vesting Opt"
+        )
+        return {
+            "status": "option", "label": label, "statusLabel": status_label,
+            "optionType": opt, "buyout": resolved.get("buyout", 0),
+            "salary": resolved["salary"], "guaranteed": True,
+        }
+    return {
+        "status": "signed", "label": label, "statusLabel": "Signed",
+        "salary": resolved["salary"], "guaranteed": True,
+    }
+
+
 def project_year_status(
     player: dict,
     year_offset: int,
@@ -318,9 +429,32 @@ def project_year_status(
     mlfa: dict | None,
     sp_contract: dict | None = None,
     salary_report_entry: dict | None = None,
+    contract_year: int | None = None,
 ) -> dict:
     target_year = game_year + year_offset
     meta = _meta(player)
+
+    # Once the contract frame has rolled past the calendar year (offseason:
+    # arbitration settled, free agency open), the StatsPlus salary report is
+    # still anchored to the completed season and reports next year as an
+    # unsigned *projection*. The contract feed carries the settled deal, so it
+    # wins for every year the roll has reached. Beyond the contract's span
+    # nothing resolves and we fall through to the report's projections.
+    rolled = contract_year is not None and contract_year > game_year
+    if rolled and target_year >= contract_year:
+        sr_type = None
+        if salary_report_entry:
+            years_map = salary_report_entry.get("years") or {}
+            yr_row = years_map.get(target_year) or years_map.get(str(target_year))
+            sr_type = (yr_row or {}).get("type")
+        # "milb"/"milc" encode roster LEVEL, which the contract feed cannot
+        # express — a 40-man player optioned to the minors still has a salary
+        # there. Only let the feed override the terms the roll actually
+        # settles: arbitration, free agency, options and signed years.
+        if sr_type not in ("milb", "milc"):
+            from_contract = _resolve_from_sp_contract(sp_contract, target_year)
+            if from_contract:
+                return from_contract
 
     if salary_report_entry:
         years_map = salary_report_entry.get("years") or {}
@@ -352,15 +486,9 @@ def project_year_status(
                 return {"status": "signed", "label": label, "statusLabel": "Retained", "salary": salary, "guaranteed": g}
             return {"status": "signed", "label": label, "statusLabel": "Signed", "salary": salary, "guaranteed": g}
 
-    if sp_contract:
-        resolved = resolve_contract_year(sp_contract, target_year)
-        if resolved and resolved.get("salary", 0) > 0:
-            label = _fmt_salary(resolved["salary"]) or "Signed"
-            opt = resolved.get("optionType")
-            if opt:
-                status_label = "Club Opt" if opt == "club" else "Player Opt" if opt == "player" else "Vesting Opt"
-                return {"status": "option", "label": label, "statusLabel": status_label, "optionType": opt, "buyout": resolved.get("buyout", 0), "salary": resolved["salary"]}
-            return {"status": "signed", "label": label, "statusLabel": "Signed", "salary": resolved["salary"]}
+    from_contract = _resolve_from_sp_contract(sp_contract, target_year)
+    if from_contract:
+        return from_contract
 
     ctype = contract_status["type"]
 
@@ -417,6 +545,7 @@ def build_player_projection(
     super_two_ids: set | None = None,
     salary_report_entry: dict | None = None,
     year_horizon: int = 7,
+    contract_year: int | None = None,
 ) -> dict:
     contract_status = parse_contract_status(player, game_year, super_two_ids)
     r5 = calc_r5_projection(player, game_year)
@@ -428,7 +557,8 @@ def build_player_projection(
     for offset in range(year_horizon):
         year = game_year + offset
         baseline[str(year)] = project_year_status(
-            player, offset, game_year, contract_status, mlfa, sp_contract, salary_report_entry
+            player, offset, game_year, contract_status, mlfa, sp_contract,
+            salary_report_entry, contract_year,
         )
 
     return {

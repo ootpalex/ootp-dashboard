@@ -3,7 +3,7 @@ import { getMaxWar, getMaxWarP, getSpWar, getRpWar, getSpWarP, getRpWarP, scaleR
 import { fmtSalary } from "../helpers.js";
 import { isSpEligible } from "./_shared.js";
 import { resolveContractYear } from "./contracts.js";
-import { detectSeasonDay, detectLimbo, detectArbSigned, projectSuperTwo } from "./service.js";
+import { detectSeasonDay, detectLimbo, detectArbSigned, detectContractYear, projectSuperTwo } from "./service.js";
 import { parseContractStatus, calcR5Projection, calcMLFA, getOptionsInfo } from "./eligibility.js";
 
 // Pitcher _war for roster planning uses the best-of-role value for downstream
@@ -65,13 +65,54 @@ function categorizeToBucket(ep) {
   return "fortyMan";
 }
 
-function projectYearStatus(ep, yearOffset, gameYear) {
+// Per-year status straight from the StatsPlus contract feed, or null.
+function fromSpContract(spContract, targetYear) {
+  if (!spContract) return null;
+  const resolved = resolveContractYear(spContract, targetYear);
+  if (!resolved || !(resolved.salary > 0)) return null;
+  const label = fmtSalary(resolved.salary) || "Signed";
+  if (resolved.optionType) {
+    const statusLabel = resolved.optionType === "club" ? "Club Opt"
+      : resolved.optionType === "player" ? "Player Opt" : "Vesting Opt";
+    return {
+      status: "option", label, statusLabel, optionType: resolved.optionType,
+      buyout: resolved.buyout, salary: resolved.salary, guaranteed: true,
+    };
+  }
+  return { status: "signed", label, statusLabel: "Signed", salary: resolved.salary, guaranteed: true };
+}
+
+function projectYearStatus(ep, yearOffset, gameYear, contractYear = null) {
   const contract = ep._contract;
   const targetYear = gameYear + yearOffset;
   const spContract = ep._spContract;
 
   if (ep._declinedOptionYear != null && targetYear >= ep._declinedOptionYear) {
     return { status: "fa", label: "FA", statusLabel: "FA" };
+  }
+
+  // Once the contract frame has rolled past the calendar year (offseason:
+  // arbitration settled, free agency open), the StatsPlus salary report is
+  // still anchored to the completed season and reports next year as an unsigned
+  // *projection*. The contract feed carries the settled deal, so it wins for
+  // every year the roll has reached. Beyond the contract's span nothing
+  // resolves and we fall through to the report's projections.
+  const rolled = contractYear != null && contractYear > gameYear;
+  if (rolled && targetYear >= contractYear) {
+    const srType = ep._salaryReport?.years?.[targetYear]?.type;
+    // "milb"/"milc" encode roster LEVEL, which the contract feed cannot express
+    // — a 40-man player optioned to the minors still has a salary there. Only
+    // let the feed override the terms the roll actually settles: arbitration,
+    // free agency, options and signed years.
+    if (srType !== "milb" && srType !== "milc") {
+      const fromContract = fromSpContract(spContract, targetYear);
+      if (fromContract) {
+        if (fromContract.status === "option" && ep._acceptedOptionYear === targetYear) {
+          return { ...fromContract, status: "signed", statusLabel: "Accepted" };
+        }
+        return fromContract;
+      }
+    }
   }
 
   if (ep._salaryReport) {
@@ -103,17 +144,8 @@ function projectYearStatus(ep, yearOffset, gameYear) {
     }
   }
 
-  if (spContract) {
-    const resolved = resolveContractYear(spContract, targetYear);
-    if (resolved && resolved.salary > 0) {
-      const label = fmtSalary(resolved.salary) || "Signed";
-      if (resolved.optionType) {
-        const statusLabel = resolved.optionType === "club" ? "Club Opt" : resolved.optionType === "player" ? "Player Opt" : "Vesting Opt";
-        return { status: "option", label, statusLabel, optionType: resolved.optionType, buyout: resolved.buyout, salary: resolved.salary };
-      }
-      return { status: "signed", label, statusLabel: "Signed", salary: resolved.salary };
-    }
-  }
+  const fromContract = fromSpContract(spContract, targetYear);
+  if (fromContract) return fromContract;
 
   if (contract.type !== "minors" && targetYear >= contract.faYear) return { status: "fa", label: "FA", statusLabel: "FA" };
 
@@ -180,6 +212,13 @@ export function buildRosterProjection(teamPlayers, gameYear, userMoves = {}, all
     p._projection && p._projection.baseline && Object.keys(p._projection.baseline).length > 0
   );
   const useFastPath = !hasMoves && allHaveBaseline;
+
+  // Which calendar year the contracts are in force for. During the season this
+  // equals gameYear; in the offseason, once arbitration is settled and free
+  // agency opens, it rolls to gameYear + 1 and the completed season stops being
+  // a planning year. Service time, options used and MLY do NOT roll until
+  // Jan 1, so gameYear stays the frame for every eligibility calculation.
+  const contractYear = detectContractYear(allPlayers || teamPlayers, gameYear);
 
   let superTwoIds = null;
   let superTwoInfo = null;
@@ -312,6 +351,12 @@ export function buildRosterProjection(teamPlayers, gameYear, userMoves = {}, all
     // the season they cross from 2-used to 3-used. The next year (NoOpt) means
     // any further demote requires waivers.
     opts.isLastOptionYear = burnedInDisplayYear && usedAtStartOfDisplay < 3 && opts.used >= 3;
+    // "No options left" is the decision-relevant flag: no option remains FOR the
+    // display year, so any demotion has to clear waivers. A player burning his
+    // third option this year still has one to burn — he is not out of options
+    // until next season. `outOfOptions` alone is true for both, because using
+    // the last option takes `remaining` to 0 within the same year.
+    opts.noOptionsLeft = opts.outOfOptions && !opts.isLastOptionYear;
     ep._options = opts;
   });
 
@@ -322,7 +367,7 @@ export function buildRosterProjection(teamPlayers, gameYear, userMoves = {}, all
   Object.values(buckets).forEach(arr => arr.sort(sortByVal));
 
   const years = {};
-  for (let offset = 0; offset <= 3; offset++) {
+  for (let offset = 0; offset <= yearRange; offset++) {
     const year = gameYear + offset;
     const yearData = {};
     if (useFastPath) {
@@ -330,10 +375,10 @@ export function buildRosterProjection(teamPlayers, gameYear, userMoves = {}, all
       active.forEach(ep => {
         const baseline = ep._projection?.baseline;
         const st = baseline ? (baseline[yKey] || baseline[year]) : null;
-        yearData[ep._uid] = st || projectYearStatus(ep, offset, gameYear);
+        yearData[ep._uid] = st || projectYearStatus(ep, offset, gameYear, contractYear);
       });
     } else {
-      active.forEach(ep => { yearData[ep._uid] = projectYearStatus(ep, offset, gameYear); });
+      active.forEach(ep => { yearData[ep._uid] = projectYearStatus(ep, offset, gameYear, contractYear); });
     }
     years[year] = yearData;
   }
@@ -371,7 +416,7 @@ export function buildRosterProjection(teamPlayers, gameYear, userMoves = {}, all
   ].filter(onFortyMan).length;
   // Active count: 26-man only — IL of any kind comes off the active count.
   const activeCount = buckets.active.filter(ep => onFortyMan(ep) && ep.meta?.act === true).length;
-  const outOfOptions = active.filter(ep => ep._options.outOfOptions).length;
+  const outOfOptions = active.filter(ep => ep._options.noOptionsLeft).length;
 
-  return { buckets, years, enriched: active, fortyManCount, activeCount, outOfOptions, gameYear, superTwoInfo };
+  return { buckets, years, enriched: active, fortyManCount, activeCount, outOfOptions, gameYear, contractYear, superTwoInfo };
 }

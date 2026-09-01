@@ -4,7 +4,11 @@ from src.contract_projection import (
     DAYS_PER_SEASON,
     _parse_mld,
     _project_eos_mld,
+    detect_contract_year,
+    detect_limbo,
+    detect_season_day,
     project_super_two,
+    project_year_status,
     parse_contract_status,
     resolve_contract_year,
     get_options_info,
@@ -248,3 +252,181 @@ def test_get_options_info_off40_never_outOfOptions():
     p = {"meta": {"opt": 3, "on40": False}}
     info = get_options_info(p)
     assert info["outOfOptions"] is False
+
+
+# ---------------------------------------------------------------------------
+# detect_season_day / detect_limbo — the season clock comes from MLD, not
+# the calendar. OOTP's 172 league days span ~180 calendar days.
+# ---------------------------------------------------------------------------
+
+
+def _p(mld, mly=None, **meta):
+    m = {"mld": mld}
+    if mly is not None:
+        m["mly"] = mly
+    m.update(meta)
+    return {"id": id(m), "meta": m}
+
+
+def test_detect_season_day_uses_modal_mld_remainder():
+    pool = [_p(DAYS_PER_SEASON * 3 + 40) for _ in range(10)]
+    pool += [_p(DAYS_PER_SEASON * 2 + 7) for _ in range(3)]
+    assert detect_season_day(pool) == 40
+
+
+def test_detect_season_day_zero_when_seasons_are_whole():
+    pool = [_p(DAYS_PER_SEASON * n) for n in (1, 2, 2, 3, 3, 3)]
+    assert detect_season_day(pool) == 0
+
+
+def test_detect_season_day_ignores_zero_and_missing_mld():
+    assert detect_season_day([_p(0), _p(None), {"meta": {}}]) == 0
+
+
+def test_detect_limbo_true_when_completed_season_not_yet_in_mly():
+    # 3 whole seasons of service but MLY still reads 2 — the season just ended
+    # and MLY has not rolled (it only rolls Jan 1).
+    pool = [_p(DAYS_PER_SEASON * 3, mly=2)]
+    assert detect_limbo(pool, 0) is True
+
+
+def test_detect_limbo_false_before_opening_day():
+    pool = [_p(DAYS_PER_SEASON * 3, mly=3)]
+    assert detect_limbo(pool, 0) is False
+
+
+def test_detect_limbo_false_mid_season():
+    pool = [_p(DAYS_PER_SEASON * 3 + 40, mly=3)]
+    assert detect_limbo(pool, 40) is False
+
+
+def test_detect_limbo_false_without_mly_data():
+    assert detect_limbo([_p(DAYS_PER_SEASON * 3)], 0) is False
+
+
+def test_project_eos_mld_limbo_does_not_re_add_completed_season():
+    p = {"meta": {"mld": DAYS_PER_SEASON * 2, "act": True, "lev": "MLB"}}
+    # Pre-Opening-Day: the whole upcoming season is still ahead.
+    assert _project_eos_mld(p, 0, False) == DAYS_PER_SEASON * 3
+    # Limbo: that season is already inside MLD — adding it again double-counts.
+    assert _project_eos_mld(p, 0, True) == DAYS_PER_SEASON * 2
+
+
+# ---------------------------------------------------------------------------
+# detect_contract_year — the offseason roll signal
+# ---------------------------------------------------------------------------
+
+
+def test_detect_contract_year_in_season_matches_game_year():
+    contracts = [{"seasonYear": 2041, "currentYear": 2, "years": 4}] * 5
+    assert detect_contract_year(contracts, 2043) == 2043
+
+
+def test_detect_contract_year_rolls_after_arbitration_and_free_agency():
+    # Settled one-year 2044 deals plus a long deal whose index has advanced.
+    contracts = [{"seasonYear": 2044, "currentYear": 0, "years": 1}] * 8
+    contracts += [{"seasonYear": 2039, "currentYear": 5, "years": 7}] * 2
+    assert detect_contract_year(contracts, 2043) == 2044
+
+
+def test_detect_contract_year_ignores_placeholder_contracts():
+    contracts = [{"seasonYear": 0, "currentYear": 0, "years": 1}] * 20
+    contracts += [{"seasonYear": 2044, "currentYear": 0, "years": 1}] * 3
+    assert detect_contract_year(contracts, 2043) == 2044
+
+
+def test_detect_contract_year_rejects_implausible_mode():
+    contracts = [{"seasonYear": 2050, "currentYear": 0, "years": 1}] * 9
+    assert detect_contract_year(contracts, 2043) == 2043
+
+
+def test_detect_contract_year_empty_falls_back_to_game_year():
+    assert detect_contract_year([], 2043) == 2043
+    assert detect_contract_year({}, 2043) == 2043
+
+
+def test_detect_contract_year_accepts_a_dict_of_contracts():
+    contracts = {"1": {"seasonYear": 2044, "currentYear": 0, "years": 1}}
+    assert detect_contract_year(contracts, 2043) == 2044
+
+
+# ---------------------------------------------------------------------------
+# project_year_status — once the frame has rolled, the settled contract beats
+# the salary report's stale projection.
+# ---------------------------------------------------------------------------
+
+
+_ARB_PLAYER = {
+    "id": 1,
+    "meta": {"yl": "1 (arbitr.)", "mld": DAYS_PER_SEASON * 5 + 123, "on40": True, "lev": "MLB"},
+}
+# StatsPlus salary report, still anchored to the completed 2043 season: it
+# reports 2044 as an unsigned arbitration *projection*.
+_STALE_REPORT = {
+    "years": {
+        "2043": {"salary": 4_400_000, "type": "signed", "guaranteed": True},
+        "2044": {"salary": 8_900_000, "type": "arb", "guaranteed": False},
+    }
+}
+# The contract feed carries the deal actually signed for 2044.
+_SETTLED_CONTRACT = {"seasonYear": 2044, "currentYear": 0, "years": 1, "salaries": [8_000_000]}
+
+
+def _status(offset, contract_year):
+    cs = parse_contract_status(_ARB_PLAYER, 2043)
+    return project_year_status(
+        _ARB_PLAYER, offset, 2043, cs, None,
+        _SETTLED_CONTRACT, _STALE_REPORT, contract_year,
+    )
+
+
+def test_year_status_in_season_keeps_salary_report_precedence():
+    # contract_year == game_year: nothing has rolled, behaviour is unchanged.
+    st = _status(1, 2043)
+    assert st["status"] == "arb"
+    assert st["salary"] == 8_900_000
+    assert st["guaranteed"] is False
+
+
+def test_year_status_after_roll_uses_the_settled_contract():
+    st = _status(1, 2044)
+    assert st["status"] == "signed"
+    assert st["salary"] == 8_000_000
+    assert st["guaranteed"] is True
+
+
+def test_year_status_after_roll_leaves_the_completed_season_alone():
+    # 2043 is below contract_year, so the report still supplies it.
+    st = _status(0, 2044)
+    assert st["salary"] == 4_400_000
+
+
+def test_year_status_after_roll_falls_back_past_the_contract_span():
+    # 2045 is beyond the one-year deal, so the report's projection is still used.
+    st = _status(2, 2044)
+    assert st["status"] == "fa"
+
+
+def test_year_status_after_roll_preserves_option_years_from_the_contract():
+    contract = {
+        "seasonYear": 2039, "currentYear": 5, "years": 7,
+        "salaries": [8, 14, 18, 26, 26, 24, 24],
+        "lastYearTeamOption": True, "lastYearOptionBuyout": 6,
+    }
+    player = {"id": 2, "meta": {"yl": "2", "mld": DAYS_PER_SEASON * 8, "on40": True, "lev": "MLB"}}
+    cs = parse_contract_status(player, 2043)
+    st = project_year_status(player, 2, 2043, cs, None, contract, None, 2044)
+    assert st["status"] == "option"
+    assert st["optionType"] == "club"
+
+
+def test_year_status_after_roll_never_overrides_minor_league_level():
+    # A 40-man player optioned to the minors still has a contract salary, but
+    # "MiLB" is a roster level the contract feed cannot express — the report wins.
+    report = {"years": {"2044": {"salary": 570_500, "type": "milb", "guaranteed": True}}}
+    contract = {"seasonYear": 2044, "currentYear": 0, "years": 1, "salaries": [570_500]}
+    player = {"id": 3, "meta": {"yl": "1 (auto.)", "mld": 30, "on40": True, "lev": "AAA"}}
+    cs = parse_contract_status(player, 2043)
+    st = project_year_status(player, 1, 2043, cs, None, contract, report, 2044)
+    assert st["status"] == "minors"
+    assert st["statusLabel"] == "MiLB"

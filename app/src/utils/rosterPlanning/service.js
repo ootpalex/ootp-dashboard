@@ -45,6 +45,38 @@ export function detectLimbo(allPlayers, seasonDay) {
 }
 
 /**
+ * Detect which calendar year the league's contracts are currently in force for.
+ *
+ * `seasonYear + currentYear` is the year a contract's `currentYear` index points
+ * at. OOTP advances that index during the offseason, so once arbitration is
+ * settled and free agency opens it reads `gameYear + 1` league-wide while the
+ * calendar date still says `gameYear`. That is the signal that the roster has
+ * rolled to next season — the year tab for the completed season can be dropped,
+ * and next year's salaries are settled facts rather than projections.
+ *
+ * Only `gameYear` and `gameYear + 1` are accepted; anything else means the
+ * contract feed is missing or malformed, and we fall back to `gameYear`.
+ */
+export function detectContractYear(allPlayers, gameYear) {
+  const counts = new Map();
+  for (const p of allPlayers) {
+    const c = p.contract || p._spContract;
+    if (!c) continue;
+    const sy = parseInt(c.seasonYear, 10);
+    const cy = parseInt(c.currentYear, 10) || 0;
+    if (!isFinite(sy) || sy < 1900) continue;
+    const yr = sy + cy;
+    counts.set(yr, (counts.get(yr) || 0) + 1);
+  }
+  if (counts.size === 0) return gameYear;
+  let best = gameYear, bestCount = 0;
+  for (const [yr, cnt] of counts) {
+    if (cnt > bestCount) { best = yr; bestCount = cnt; }
+  }
+  return (best === gameYear || best === gameYear + 1) ? best : gameYear;
+}
+
+/**
  * Detect whether arbitration contracts have been signed for the current
  * cycle's S2 class. Only meaningful in limbo: scan the 2.xxx-MLD bucket
  * for any player with an arb-qualifier `yl`. During in-season, prior-cycle

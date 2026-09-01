@@ -20,7 +20,7 @@ export function analyzeCrunch(projection, year) {
   }
 
   // Out-of-options: only flag inactive 40-man (the real roster squeeze)
-  const oooPlayers = (buckets.fortyMan || []).filter(ep => ep._options.outOfOptions);
+  const oooPlayers = (buckets.fortyMan || []).filter(ep => ep._options.noOptionsLeft);
   if (oooPlayers.length > 0) {
     warnings.push({
       type: "options", severity: "warning",
@@ -56,16 +56,21 @@ export function suggestActions(projection, curveSettings) {
   const fortyManAll = [...(buckets.active || []), ...(buckets.fortyMan || [])];
   const dfaCandidates = [...fortyManAll]
     .sort((a, b) => {
-      if (a._options.outOfOptions && !b._options.outOfOptions) return -1;
-      if (!a._options.outOfOptions && b._options.outOfOptions) return 1;
+      if (a._options.noOptionsLeft && !b._options.noOptionsLeft) return -1;
+      if (!a._options.noOptionsLeft && b._options.noOptionsLeft) return 1;
       return (a._fv ?? a._war ?? 0) - (b._fv ?? b._war ?? 0);
     })
     .slice(0, 5);
 
   dfaCandidates.forEach(ep => {
-    const reason = ep._options.outOfOptions
-      ? `Out of options, FV ${ep._fv != null ? ep._fv.toFixed(1) : "N/A"}`
-      : `Lowest FV on 40-man (${ep._fv != null ? ep._fv.toFixed(1) : "N/A"})`;
+    const fv = ep._fv != null ? ep._fv.toFixed(1) : "N/A";
+    // A last-option-year player is NOT out of options — he still has one to use
+    // this season — so he gets no "out of options" DFA push.
+    const reason = ep._options.noOptionsLeft
+      ? `Out of options, FV ${fv}`
+      : ep._options.isLastOptionYear
+        ? `Last option year, FV ${fv}`
+        : `Lowest FV on 40-man (${fv})`;
     suggestions.push({ type: "dfa", playerId: ep._uid, player: ep, reason, action: "dfa" });
   });
 
