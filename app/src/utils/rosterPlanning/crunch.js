@@ -54,18 +54,22 @@ export function suggestActions(projection, curveSettings) {
   const { buckets } = projection;
 
   const fortyManAll = [...(buckets.active || []), ...(buckets.fortyMan || [])];
+  // Both groups are worth surfacing: a player with no options left, and one
+  // about to burn his last. `outOfOptions` is the union (remaining hits 0 in
+  // the display year either way), so it drives the ordering; the reason string
+  // is what distinguishes them.
   const dfaCandidates = [...fortyManAll]
     .sort((a, b) => {
-      if (a._options.noOptionsLeft && !b._options.noOptionsLeft) return -1;
-      if (!a._options.noOptionsLeft && b._options.noOptionsLeft) return 1;
+      if (a._options.outOfOptions && !b._options.outOfOptions) return -1;
+      if (!a._options.outOfOptions && b._options.outOfOptions) return 1;
       return (a._fv ?? a._war ?? 0) - (b._fv ?? b._war ?? 0);
     })
     .slice(0, 5);
 
   dfaCandidates.forEach(ep => {
     const fv = ep._fv != null ? ep._fv.toFixed(1) : "N/A";
-    // A last-option-year player is NOT out of options — he still has one to use
-    // this season — so he gets no "out of options" DFA push.
+    // A last-option-year player still has an option to use this season — he is
+    // not out of options until next year, so he is labelled for what he is.
     const reason = ep._options.noOptionsLeft
       ? `Out of options, FV ${fv}`
       : ep._options.isLastOptionYear
