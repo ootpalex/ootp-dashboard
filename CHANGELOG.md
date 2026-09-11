@@ -4,7 +4,12 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **L/R split-profile search — find the players whose platoon lean reverses on one attribute.** OOTP rates every hitter and pitcher twice, vs LHP and vs RHP, and almost every player's grades all lean the same way because the platoon advantage driving the split is a single underlying trait. **All Players** gains an **All L/R Splits** filter that classifies each player's lean as uniformly vs-LHP, uniformly vs-RHP, `even` (every attribute tied), or **mixed** — better vs L at one attribute and better vs R at another. The filter row now always shows the breakdown for the current selection (`vL 35.6% · vR 36.4% · even 27.5% · mixed 0.5%`) plus, for the mixed players, which attribute is the one bucking the lean; selecting a category adds a **Splits** column reading e.g. `vL · EYE vR`. New `app/src/utils/splits.js`.
+  - Mixed players are rare and lopsided in *which* attribute reverses: on the shipped default league, **0.3% of hitters** and **0.6% of pitchers**, and among mixed hitters the reversed attribute is EYE about three-quarters of the time (100% of the AA/AAA/MLB ones) — a hitter who sees the ball better against his platoon-disadvantage hand while everything else leans the normal way.
+- **`model/tools/split_profile.py`** — the same breakdown league-wide from the command line: `python3 model/tools/split_profile.py [--league <slug>]`. Reports every league by default, split by hitters/pitchers, overall / AA+AAA+MLB / by handedness, with the mixed players named. Reads the raw scout CSVs; read-only.
+- **As-scouted rating snapshots (`ratings.scouted`).** The pipeline now snapshots the 22 vR/vL rating columns on load, before the AAA/AA and OSA blends overwrite them, and ships them alongside the blends. This is what makes the split search trustworthy: the blended ratings live on a de-quantized ~18–80 scale, so blending two grades that are *equal in-game* routinely lands them 1–2 points apart, which reads as a reverse platoon split that no one can see in OOTP — comparing blends calls 8.1% of pitchers mixed against 0.6% in the raw export. Rounding a blend back to its grade is not a fix either: audited by ID against the raw export it recovers the scouted grade for only 92.6% of hitter split ratings, because the AAA/AA relative blend can move a rating more than half a bucket. Snapshotting is exact (100% against the raw export for both sides) and costs ~2% of dashboard size. Older dashboards carry `scouted: null` and the frontend falls back to the blends behind a tie threshold — **rebuild with `main.py --force`** to make the search exact.
 
 ## [0.3.0] — 2026-08-11
 

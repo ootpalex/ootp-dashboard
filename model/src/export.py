@@ -37,7 +37,7 @@ from src.pitchers import (
     compute_starter_flag,
     compute_starter_potential,
 )
-from src.players import load_players
+from src.players import SCOUTED_SPLIT_COLUMNS, SCOUTED_SUFFIX, load_players
 from src.settings import PipelineSettings
 from src.contract_projection import build_player_projection, project_super_two, DAYS_PER_SEASON
 
@@ -692,6 +692,36 @@ _MAPPED_COLS: set[str] = {
     "Sign",
 }
 
+# The as-scouted vR/vL snapshots ride into `ratings.scouted` below, so they must
+# not also be dumped into every player's `extra` bag.
+_MAPPED_COLS.update(c + SCOUTED_SUFFIX for c in SCOUTED_SPLIT_COLUMNS)
+
+
+def _scouted_splits(row, keys: dict[str, str]) -> dict | None:
+    """Build the as-scouted (un-blended, quantized 20-80) vL/vR grades.
+
+    `keys` maps output key → source column base, e.g. {"eye": "EYE"}. Returns
+    None when the snapshot columns are absent (a dashboard built before the
+    snapshot landed, or an export whose header lacks those ratings), which is
+    the signal the frontend uses to fall back to the blended ratings.
+    """
+    out = {}
+    for split in ("vL", "vR"):
+        vals = {
+            key: _safe_int(_row_val(row, f"{col} {split}{SCOUTED_SUFFIX}"))
+            for key, col in keys.items()
+        }
+        if all(v is None for v in vals.values()):
+            return None
+        out[split] = vals
+    return out
+
+
+_HITTER_SCOUTED_KEYS = {"con": "CON", "ba": "BA", "gap": "GAP",
+                        "pow": "POW", "eye": "EYE", "k": "K"}
+_PITCHER_SCOUTED_KEYS = {"stu": "STU", "mov": "MOV", "pcon": "PCON",
+                         "hrr": "HRR", "pbabip": "PBABIP"}
+
 
 def _collect_extra(row) -> dict:
     """Collect all CSV columns not already in structured sub-dicts.
@@ -814,6 +844,9 @@ def _build_hitter_ratings(row) -> dict:
             "eye": _safe_int(_row_val(row, "EYE P")),
             "k": _safe_int(_row_val(row, "K P")),
         },
+        # As-scouted 20-80 grades, before the AAA/AA and OSA blends — the
+        # numbers OOTP itself shows, used for L/R split-profile comparisons.
+        "scouted": _scouted_splits(row, _HITTER_SCOUTED_KEYS),
         "spe": _safe_int(_row_val(row, "SPE")),
         "ste": _safe_int(_row_val(row, "STE")),
         "run": _safe_int(_row_val(row, "RUN")),
@@ -1281,6 +1314,9 @@ def _build_pitcher_ratings(row) -> dict:
             "hrr": _safe_int(_row_val(row, "HRR P")),
             "pbabip": _safe_int(_row_val(row, "PBABIP P")),
         },
+        # As-scouted 20-80 grades, before the AAA/AA and OSA blends — the
+        # numbers OOTP itself shows, used for L/R split-profile comparisons.
+        "scouted": _scouted_splits(row, _PITCHER_SCOUTED_KEYS),
         "hld": _safe_int(_row_val(row, "HLD")),
         "stm": _safe_int(_row_val(row, "STM")),
     }

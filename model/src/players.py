@@ -158,6 +158,39 @@ def _load_single_csv(path: Path) -> pd.DataFrame:
     return df
 
 
+# vR/vL rating columns whose AS-SCOUTED value is snapshotted before blending.
+# The AAA/AA relative blend and the OSA blend both overwrite these columns in
+# place with continuous values, which is right for projection but loses the
+# quantized 20-80 grade OOTP actually displays. The L/R split-profile search in
+# the app needs the displayed grade: a blend of two equal grades routinely lands
+# 1-2 points apart, which reads as a reverse platoon split that does not exist
+# in the game. Snapshotting costs 22 integer columns and no arithmetic.
+SCOUTED_SPLIT_COLUMNS = tuple(
+    f"{base} {split}"
+    for base in ("BA", "CON", "GAP", "POW", "EYE", "K",
+                 "STU", "MOV", "PCON", "HRR", "PBABIP")
+    for split in ("vL", "vR")
+)
+
+# Suffix marking a snapshotted as-scouted column ("EYE vL" → "EYE vL SCOUT").
+SCOUTED_SUFFIX = " SCOUT"
+
+
+def _snapshot_scouted_splits(df: pd.DataFrame) -> pd.DataFrame:
+    """Copy the as-scouted vR/vL rating columns aside under a SCOUT suffix.
+
+    Must run on the raw scout export, before either blend. The copies are not in
+    `_RATING_COLUMNS` and are absent from the AAA/AA and OSA frames, so neither
+    `blend_relative_ratings` nor `_blend_single_file` touches them downstream.
+    """
+    present = [c for c in SCOUTED_SPLIT_COLUMNS if c in df.columns]
+    if not present:
+        return df
+    snapshot = df[present].copy()
+    snapshot.columns = [c + SCOUTED_SUFFIX for c in present]
+    return pd.concat([df, snapshot], axis=1)
+
+
 def _detect_pitcher(pos_series: pd.Series) -> pd.Series:
     """Return boolean Series: True if POS is a pitcher position."""
     return pos_series.isin(_PITCHER_POSITIONS)
@@ -363,7 +396,7 @@ def load_players(
 
     frames = []
     for scout_path, osa_path in csv_pairs:
-        df = _load_single_csv(scout_path)
+        df = _snapshot_scouted_splits(_load_single_csv(scout_path))
         if source_tags:
             df["source"] = _source_tag(scout_path.name)
 
@@ -405,7 +438,7 @@ def load_players(
         api = load_api_draft_pool(statsplus_url, ratings_dir)
         if api is not None:
             api_scout, api_osa, year = api
-            df = api_scout.rename(columns=_COLUMN_RENAMES)
+            df = _snapshot_scouted_splits(api_scout.rename(columns=_COLUMN_RENAMES))
             if source_tags:
                 df["source"] = f"Draft {year}"
             if osa_blend and api_osa is not None:

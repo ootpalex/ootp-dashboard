@@ -22,6 +22,8 @@ Each player object has nested groups instead of flat columns:
 ```
 {
   meta: { name, pos, org, lev, bats, throws, prone, price, proy, mld, oy, opt, int, we, ad, dem, stm, velo, ovr, pot, on40, r5, manual, ... },
+  ratings: { vR: {...}, vL: {...}, potential: {...},
+             scouted: { vL: {...}, vR: {...} } | null },  // see "As-scouted grades" below
   batting: { vR: { obp, woba, batR, ... }, vL: { ... }, wtd: { ... } },
   baserunning: { vR: { bsr, ... }, vL: { ... }, wtd: { ... } },
   positions: { c: { eligible, waa: { vR, vL, wtd }, stats: { runsP, ... } }, "1b": { ... }, ... },
@@ -34,6 +36,24 @@ Each player object has nested groups instead of flat columns:
   ID, _uid, ...
 }
 ```
+
+### As-scouted grades (`ratings.scouted`) and the L/R split profile
+`ratings.vR` / `ratings.vL` are **blended** values — scout + OSA + AAA/AA — living on a
+de-quantized ~18–80 scale, which is right for projection but is NOT what OOTP displays.
+Blending two grades that are equal in-game routinely lands them 1–2 points apart, so any
+comparison of a player's vL rating against his vR rating must not use them: on the default
+league a bare `>` calls 8.1% of pitchers "mixed" platoon splits against 0.6% in the raw
+export. `ratings.scouted` carries the un-blended, quantized 20-80 grades for exactly this
+purpose (snapshotted in `model/src/players.py` before either blend), and is `null` on any
+dashboard built before that landed — rebuild the league with `main.py --force` to populate it.
+
+`utils/splits.js` is the only consumer today: `splitProfile(p)` classifies a player's
+per-attribute L/R lean as `vL` / `vR` / `mixed` / `even` (preferring `scouted`, falling back
+to the blends behind a 2-point tie threshold), with `passesSplitFilter` / `summarizeSplits` /
+`splitLabel` behind the **All Players → All L/R Splits** filter. A "mixed" player is better vs
+LHP at one attribute and better vs RHP at another — rare (~0.3% of hitters, ~0.6% of pitchers),
+because the platoon lean normally moves every attribute the same way. `model/tools/split_profile.py`
+reports the same breakdown league-wide straight off the raw CSVs.
 
 ### Accessor Helpers (nested JSON with CSV fallback)
 All data access should use these helpers — **never access flat column names directly**:
@@ -332,7 +352,7 @@ app/
     │   └── DevAnalysis/        # DevAnalysisView coordinator + DevScatterChart, GapDistributionChart, WaaPercentileChart (each React.memo'd), FVImpactTable, LiveProspectPreview, CurveTuningPanel, BandwidthControl
     ├── hooks/                  # useDebouncedValue, useLocalStorage (added Phase B)
     └── utils/
-        ├── accessors.js, helpers.js, constants.js, dataProcessing.js, futureValue.js, positioning.js, prospects.js, salaryReport.js, settings.js, strength.js
+        ├── accessors.js, helpers.js, constants.js, dataProcessing.js, futureValue.js, positioning.js, prospects.js, salaryReport.js, settings.js, splits.js, strength.js
         └── rosterPlanning/     # 7-file split (added Phase D): _shared, contracts, service, eligibility, projection, crunch, depth + index.js barrel
 ```
 

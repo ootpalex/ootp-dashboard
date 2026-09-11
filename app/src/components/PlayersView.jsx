@@ -6,6 +6,7 @@ import { resolveKey, genericSort, getMaxWar, getMaxWarP, pickFielderPos, passesP
 import { PER_PAGE_LARGE, PLAYERS_HIT_COLS, PLAYERS_PIT_COLS, PLAYERS_MIXED_COLS } from "../utils/constants.js";
 import { SortHeader, PositionFilter, LevelFilter, MultiSelectDropdown, NumericRangeFilter, TwoWayBadge, Pagination } from "./shared.jsx";
 import { useDebouncedValue } from "../hooks/useDebouncedValue.js";
+import { SPLIT_PROFILE_OPTIONS, passesSplitFilter, splitProfile, splitLabel, summarizeSplits } from "../utils/splits.js";
 
 const PITCHER_FILTER_KEYS = new Set(["Pitchers", "SP", "RP"]);
 const FIELD_FILTER_KEYS = new Set(["C", "1B", "2B", "3B", "SS", "INF", "LF", "CF", "RF", "OF"]);
@@ -20,6 +21,7 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
   const [proneFilter, setProneFilter] = useState([]);
   const [on40Filter, setOn40Filter] = useState([]);
   const [ageRange, setAgeRange] = useState({ min: "", max: "" });
+  const [splitFilter, setSplitFilter] = useState([]);
   const [sort, setSort] = useState({ col: "_fv", dir: "desc" });
   const [page, setPage] = useState(0);
   // Column set + source derived from position filter selection
@@ -70,7 +72,7 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
     return posValForRow(r)?.fv ?? r._fv;
   };
 
-  const filtered = useMemo(() => {
+  const preSplit = useMemo(() => {
     const _iafaTag = leagueSettings?.iafaTag || "IAFA";
     const mn = ageRange.min !== "" ? parseFloat(ageRange.min) : null;
     const mx = ageRange.max !== "" ? parseFloat(ageRange.max) : null;
@@ -103,8 +105,20 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
     return rows;
   }, [source, debouncedSearch, posFilter, orgFilter, levelFilter, faOnly, proneFilter, on40Filter, ageRange, sort, leagueSettings]);
 
+  // Split-profile tally over everything the other filters left, so the
+  // percentages answer "what share of THIS pool is mixed?" even while the
+  // split filter itself is narrowing the table to one category.
+  const splitSummary = useMemo(() => summarizeSplits(preSplit), [preSplit]);
+  const filtered = useMemo(
+    () => (splitFilter.length === 0 ? preSplit : preSplit.filter((r) => passesSplitFilter(r, splitFilter))),
+    [preSplit, splitFilter],
+  );
+
   const { paged, totalPages } = paginateRows(filtered, page, PER_PAGE_LARGE);
-  const cols = playerType === "hitters" ? PLAYERS_HIT_COLS : playerType === "pitchers" ? PLAYERS_PIT_COLS : PLAYERS_MIXED_COLS;
+  const baseCols = playerType === "hitters" ? PLAYERS_HIT_COLS : playerType === "pitchers" ? PLAYERS_PIT_COLS : PLAYERS_MIXED_COLS;
+  const cols = splitFilter.length > 0
+    ? [...baseCols, { key: "_splitProfile", label: "Splits", w: 150 }]
+    : baseCols;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -119,10 +133,31 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input type="text" placeholder="Search name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} style={S.searchInput} />
         <NumericRangeFilter label="Age" value={ageRange} onChange={(v) => { setAgeRange(v); setPage(0); }} step={1} />
+        <MultiSelectDropdown options={SPLIT_PROFILE_OPTIONS} value={splitFilter} onChange={(v) => { setSplitFilter(v); setPage(0); }} placeholder="All L/R Splits" ariaLabel="Filter by L/R split profile" minWidth={170} popoverMinWidth={220} />
       </div>
       <div style={{ fontSize: 11, color: "#64748b", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ color: "#94a3b8", fontWeight: 600 }}>{filtered.length.toLocaleString()} players</span>
-        {(posFilter.length > 0 || orgFilter.length > 0 || levelFilter.length > 0 || proneFilter.length > 0 || on40Filter.length > 0 || faOnly || search || ageRange.min !== "" || ageRange.max !== "") && (
+        {splitSummary.rated > 0 && (
+          <span title="Direction of each player's per-attribute L/R rating splits. Mixed = better vs LHP at one attribute and better vs RHP at another — rare, since the platoon lean normally moves every attribute the same way. Percentages are of the current selection, before the L/R Splits filter.">
+            L/R splits:{" "}
+            {[["vL", "vL", "#60a5fa"], ["vR", "vR", "#f472b6"], ["even", "even", "#64748b"], ["mixed", "mixed", "#fbbf24"]].map(([key, label, color]) => (
+              <span key={key} style={{ marginRight: 6 }}>
+                <span style={{ color }}>{label}</span>{" "}
+                {(100 * splitSummary[key] / splitSummary.rated).toFixed(1)}%
+                <span style={{ color: "#475569" }}> ({splitSummary[key].toLocaleString()})</span>
+              </span>
+            ))}
+          </span>
+        )}
+        {splitSummary.mixed > 0 && Object.keys(splitSummary.oddAttrs).length > 0 && (
+          <span title="Which attribute bucks the player's overall platoon lean, across the mixed players in this selection.">
+            reversed attribute:{" "}
+            {Object.entries(splitSummary.oddAttrs).sort((a, b) => b[1] - a[1]).map(([label, ct]) => (
+              <span key={label} style={{ marginRight: 6 }}><span style={{ color: "#fbbf24" }}>{label}</span>: {ct}</span>
+            ))}
+          </span>
+        )}
+        {(posFilter.length > 0 || orgFilter.length > 0 || levelFilter.length > 0 || proneFilter.length > 0 || on40Filter.length > 0 || splitFilter.length > 0 || faOnly || search || ageRange.min !== "" || ageRange.max !== "") && (
           <span>Best Pos breakdown: {(() => {
             const counts = {};
             filtered.forEach((r) => { const bp = (r._bestPos || "").replace("*", "") || "?"; counts[bp] = (counts[bp] || 0) + 1; });
@@ -144,6 +179,12 @@ export default function PlayersView({ data, curveSettings, leagueSettings, onSel
               if (posVal) {
                 if (key === "Max WAR wtd" || key === "Max WAR vR" || key === "Max WAR vL") val = posVal.war;
                 else if (key === "MAX WAR P") val = posVal.warP;
+              }
+              if (key === "_splitProfile") {
+                const profile = splitProfile(r);
+                style.color = profile?.tilt === "mixed" ? "#fbbf24" : "#94a3b8";
+                style.whiteSpace = "nowrap";
+                return <td key={key} style={style}>{splitLabel(profile)}</td>;
               }
               if (key === "Name") { style.fontWeight = 600; style.color = "#e2e8f0"; style.minWidth = 170; style.cursor = "pointer"; return <td key={key} style={style} onClick={() => onSelectPlayer?.(r)}>{val}<TwoWayBadge player={r} /></td>; }
               else if (key === "_fv") { const fvVal = fvForRow(r); Object.assign(style, warStyle(fvVal)); val = fmt(fvVal); }

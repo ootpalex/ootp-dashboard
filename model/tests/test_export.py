@@ -19,8 +19,10 @@ from src.export import (
     _build_fielding_ratings,
     _build_pitcher_ratings,
     _build_pitch_grades,
+    _collect_extra,
     build_dashboard,
 )
+from src.players import SCOUTED_SUFFIX
 from src.settings import PipelineSettings
 
 from tests.conftest import PLAYERS_DIR, BALLPARKS_CSV
@@ -267,6 +269,61 @@ class TestDictBuilders:
         assert result["potential"]["stu"] == 70
         assert result["hld"] == 50
         assert result["stm"] == 65
+
+    def test_hitter_ratings_carry_as_scouted_grades(self):
+        """`scouted` reports the un-blended snapshot, not the live blend."""
+        row = pd.Series({
+            "BA vR": 55, "GAP vR": 50, "POW vR": 45, "EYE vR": 60, "K vR": 55,
+            "CON vR": 52,
+            "BA vL": 60, "GAP vL": 45, "POW vL": 50, "EYE vL": 55, "K vL": 50,
+            "CON vL": 47,
+            # Snapshots sit one grade off the blended values above.
+            "BA vR" + SCOUTED_SUFFIX: 55, "GAP vR" + SCOUTED_SUFFIX: 50,
+            "POW vR" + SCOUTED_SUFFIX: 45, "EYE vR" + SCOUTED_SUFFIX: 65,
+            "K vR" + SCOUTED_SUFFIX: 55, "CON vR" + SCOUTED_SUFFIX: 50,
+            "BA vL" + SCOUTED_SUFFIX: 60, "GAP vL" + SCOUTED_SUFFIX: 45,
+            "POW vL" + SCOUTED_SUFFIX: 50, "EYE vL" + SCOUTED_SUFFIX: 55,
+            "K vL" + SCOUTED_SUFFIX: 50, "CON vL" + SCOUTED_SUFFIX: 45,
+        })
+        result = _build_hitter_ratings(row)
+        assert result["scouted"]["vR"]["eye"] == 65   # snapshot, not the 60 blend
+        assert result["scouted"]["vL"]["con"] == 45   # snapshot, not the 47 blend
+        assert result["vR"]["eye"] == 60              # live blend untouched
+
+    def test_pitcher_ratings_carry_as_scouted_grades(self):
+        row = pd.Series({
+            "STU vR": 60, "MOV vR": 55, "PCON vR": 55, "HRR vR": 50, "PBABIP vR": 55,
+            "STU vL": 55, "MOV vL": 50, "PCON vL": 50, "HRR vL": 45, "PBABIP vL": 50,
+            "STU vR" + SCOUTED_SUFFIX: 60, "MOV vR" + SCOUTED_SUFFIX: 55,
+            "PCON vR" + SCOUTED_SUFFIX: 55, "HRR vR" + SCOUTED_SUFFIX: 50,
+            "PBABIP vR" + SCOUTED_SUFFIX: 60,
+            "STU vL" + SCOUTED_SUFFIX: 55, "MOV vL" + SCOUTED_SUFFIX: 50,
+            "PCON vL" + SCOUTED_SUFFIX: 50, "HRR vL" + SCOUTED_SUFFIX: 45,
+            "PBABIP vL" + SCOUTED_SUFFIX: 50,
+        })
+        result = _build_pitcher_ratings(row)
+        assert result["scouted"]["vR"]["pbabip"] == 60
+        assert result["vR"]["pbabip"] == 55
+
+    def test_scouted_is_none_without_snapshot_columns(self):
+        """A dashboard built from an export with no snapshot gets `scouted: None`,
+        which is the frontend's signal to fall back to the blended ratings."""
+        hitter = _build_hitter_ratings(pd.Series({"BA vR": 55, "BA vL": 60}))
+        pitcher = _build_pitcher_ratings(pd.Series({"STU vR": 60, "STU vL": 55}))
+        assert hitter["scouted"] is None
+        assert pitcher["scouted"] is None
+
+    def test_scouted_columns_stay_out_of_extra(self):
+        """The snapshots ride in `ratings.scouted`; duplicating all 22 of them
+        into every player's `extra` bag would just bloat the dashboard."""
+        row = pd.Series({
+            "EYE vL": 55, "EYE vL" + SCOUTED_SUFFIX: 55,
+            "PBABIP vR": 50, "PBABIP vR" + SCOUTED_SUFFIX: 50,
+            "SomeNewColumn": 7,
+        })
+        extra = _collect_extra(row)
+        assert not [k for k in extra if k.endswith(SCOUTED_SUFFIX)]
+        assert extra["SomeNewColumn"] == 7
 
     def test_pitch_grades_structure(self):
         row = pd.Series({
