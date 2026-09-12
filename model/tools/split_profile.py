@@ -155,19 +155,32 @@ def classify(player: Player) -> tuple[str, list[str]]:
     return "even", []
 
 
+def reversal_gap(player: Player, odd: list[str]) -> int:
+    """Largest L/R gap, in rating points, on a mixed player's reversed side.
+
+    OOTP grades come in 5-point steps, so this is a whole number of grades. It
+    is the other half of "how unusual is this player": mixed is rare to begin
+    with, and a reversal wider than a single grade is rarer still.
+    """
+    return max(abs(player.vals[a][0] - player.vals[a][1]) for a in odd)
+
+
 def report(pool: list[Player], label: str) -> None:
     n = len(pool)
     if n == 0:
         return
     tilts = Counter()
     reversals = Counter()
+    gaps = Counter()
     lone = 0
-    mixed: list[Player] = []
+    mixed: list[tuple[Player, list[str], int]] = []
     for p in pool:
         tilt, odd = classify(p)
         tilts[tilt] += 1
         if tilt == "mixed":
-            mixed.append(p)
+            gap = reversal_gap(p, odd)
+            mixed.append((p, odd, gap))
+            gaps[gap] += 1
             if len(odd) == 1:
                 lone += 1
                 reversals[odd[0]] += 1
@@ -184,12 +197,20 @@ def report(pool: list[Player], label: str) -> None:
         print(f"     of the {tilts['mixed']} mixed, {lone} reverse exactly ONE attribute:")
         for attr, count in reversals.most_common():
             print(f"        {attr:<7}{count:5d}   ({100 * count / lone:5.1f}% of those)")
+    if gaps:
+        print("     how far the reversed attribute actually swings:")
+        for gap in sorted(gaps):
+            grades = gap // 5
+            plural = "" if grades == 1 else "s"
+            print(f"        {grades} grade{plural} ({gap:>2} pts){gaps[gap]:5d}"
+                  f"   ({100 * gaps[gap] / tilts['mixed']:5.1f}% of mixed)")
     if mixed and label.startswith("AA/AAA/MLB"):
         print("     the mixed players (grades shown vL/vR):")
-        for p in sorted(mixed, key=lambda q: -(q.ovr or 0)):
+        for p, odd, gap in sorted(mixed, key=lambda m: (-m[2], -(m[0].ovr or 0))):
             grades = "  ".join(f"{a}:{l}/{r}" for a, (l, r) in p.vals.items())
             print(f"        {p.name[:22]:<22} {p.pos:<3} {p.hand} {p.lev:<4} "
-                  f"OVR{p.ovr if p.ovr is not None else 0:>3}  {grades}")
+                  f"OVR{p.ovr if p.ovr is not None else 0:>3}  "
+                  f"[{'/'.join(odd)} by {gap // 5}]  {grades}")
 
 
 def run_dir(players_dir: Path, sources: tuple[str, ...], title: str) -> bool:
