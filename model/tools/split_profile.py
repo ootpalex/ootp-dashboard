@@ -41,12 +41,25 @@ sys.path.insert(0, str(MODEL_DIR))
 
 from src.settings import league_paths, list_leagues, project_root  # noqa: E402
 
-# (output key, CSV caption base). OOTP exports "CON vL"/"CON vR" twice — hitter
-# contact first, pitcher control second — so the pitcher side takes occurrence 2.
-HITTER_ATTRS = [("BABIP", "BA", 0), ("CON", "CON", 0), ("GAP", "GAP", 0),
-                ("POW", "POW", 0), ("EYE", "EYE", 0), ("K", "K", 0)]
-PITCHER_ATTRS = [("STU", "STU", 0), ("MOV", "MOV", 0), ("CON", "CON", 1),
-                 ("BABIP", "PBABIP", 0), ("HRR", "HRR", 0)]
+# (output key, [(caption template, occurrence), ...]). Candidates are tried in
+# order and the first that resolves wins, because the caption spelling varies
+# between exports:
+#   * HR allowed is "HRR" in some exports and "HRA" in others.
+#   * Pitcher control collides with hitter contact. Some exports emit the
+#     caption "CON vL" twice (hitter first, pitcher second) and some
+#     de-duplicate the second one to "CON vL_1". Both spellings are accepted;
+#     neither is allowed to silently fall back to the hitter's column.
+HITTER_ATTRS = [("BABIP", [("BA {side}", 0)]),
+                ("CON", [("CON {side}", 0)]),
+                ("GAP", [("GAP {side}", 0)]),
+                ("POW", [("POW {side}", 0)]),
+                ("EYE", [("EYE {side}", 0)]),
+                ("K", [("K {side}", 0)])]
+PITCHER_ATTRS = [("STU", [("STU {side}", 0)]),
+                 ("MOV", [("MOV {side}", 0)]),
+                 ("CON", [("CON {side}", 1), ("CON {side}_1", 0)]),
+                 ("BABIP", [("PBABIP {side}", 0)]),
+                 ("HRR", [("HRR {side}", 0), ("HRA {side}", 0)])]
 
 PITCHER_POSITIONS = {"SP", "RP", "CL", "P"}
 # Levels where the scouting is complete enough that a 1-grade gap means
@@ -95,19 +108,39 @@ def read_csv(path: Path) -> list[Player]:
             cols[caption.strip()].append(i)
 
         def idx(caption: str, occurrence: int = 0) -> int | None:
+            """Exact caption+occurrence lookup, or None.
+
+            Deliberately does NOT fall back to occurrence 0: the pitcher's
+            control column is requested as the second "CON vL", and quietly
+            handing back the first one would score every pitcher on the
+            hitter's contact grade instead.
+            """
             found = cols.get(caption, [])
-            if not found:
-                return None
-            return found[occurrence] if occurrence < len(found) else found[0]
+            return found[occurrence] if occurrence < len(found) else None
+
+        def resolve(candidates: list[tuple[str, int]], side: str) -> int | None:
+            for template, occurrence in candidates:
+                got = idx(template.format(side=side), occurrence)
+                if got is not None:
+                    return got
+            return None
 
         need = ("POS", "Name", "Lev", "B", "T", "OVR")
         if any(idx(c) is None for c in need):
             return []
         rating_idx = {
-            kind: {label: (idx(f"{base} vL", occ), idx(f"{base} vR", occ))
-                   for label, base, occ in attrs}
+            kind: {label: (resolve(cands, "vL"), resolve(cands, "vR"))
+                   for label, cands in attrs}
             for kind, attrs in (("H", HITTER_ATTRS), ("P", PITCHER_ATTRS))
         }
+        # A missing caption silently drops every player of that kind, which
+        # reads in the report as "this league has no pitchers". Say so instead.
+        for kind, human in (("H", "hitters"), ("P", "pitchers")):
+            missing = sorted(label for label, pair in rating_idx[kind].items()
+                             if None in pair)
+            if missing:
+                print(f"  !! {path.name}: no {human} classified — this export has "
+                      f"no L/R columns for {', '.join(missing)}", file=sys.stderr)
 
         players = []
         for row in reader:
