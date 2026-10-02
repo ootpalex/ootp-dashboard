@@ -35,8 +35,8 @@ Four rules for the whole migration:
 
 | Ours today | In the merged project |
 |---|---|
-| BLM-ATL, BLM-NYM (same StatsPlus league, two teams) | One league `BLM`, basis `BLM`. His BLM calibration (`tgs-viz/engine/calib/BLM/`) applies **directly** — same league, same OOTP 27 curves, same StatsPlus metadata. `my_team` is a per-machine setting (`settings.local.json`), so two teams = two settings profiles, not two leagues. |
-| SSB (OOTP 27 since season 2043) | League `SSB`. **No sims needed.** His curves are calibrated per OOTP *version* on clones of a generic league (the `Baseline.lg` shipped with "The Sheet"; both leagues' copies are byte-identical and share ~1 name with the real TGS pull), then transported to each online league's level from its real StatsPlus rates. SSB reuses the OOTP 27 curves and gets its **own metadata** (league rates, anchors, posAdj, parks) via his `metadata_inputs.py` — cheap, no commissioner access involved. Gate the transport with `scurve_fit.live_gate` against SSB's real season. Open question: whether DEV priced with SSB's metadata differs enough from BLM's to justify an SSB ML model set (§6). |
+| BLM-ATL, BLM-NYM | **Retired.** These existed to run GM-less teams' drafts as BLM commissioner. BLM stays configured but **off** in the fork: his BLM-basis models and metadata are the yardstick for the SSB ML questions below. |
+| SSB (OOTP 27 since season 2043) | **The league.** League `SSB`. **No sims needed.** His curves are calibrated per OOTP *version* on clones of a generic league (the `Baseline.lg` shipped with "The Sheet"; both leagues' copies are byte-identical and share ~1 name with the real TGS pull), then transported to each online league's level from its real StatsPlus rates. SSB reuses the OOTP 27 curves and gets its **own metadata** (league rates, anchors, posAdj, parks) via his `metadata_inputs.py` — cheap, no commissioner access involved. Gate the transport with `scurve_fit.live_gate` against SSB's real season. Open question: whether DEV priced with SSB's metadata differs enough from BLM's to justify an SSB ML model set (§6). |
 | `default` (bundled SSB fixtures) | Drop. |
 | — | His TGS and RG entries stay in the fork's committed data (harmless) but are switched off in `settings.local.json`. |
 
@@ -271,25 +271,14 @@ Facts (his `STATUS.md`, 2026-09-25): retrain ≈ 2.6 h per basis at 318 seasons 
 table build peaks ≈ **13 GB RAM** (≈ 45 GB at his 1,000-season goal). The models, the DEV
 vintages (~1.5 GB) and dumps (~145 GB) are all gitignored.
 
-On an **8 GB M1 Air** there are *two* memory walls, not one:
+**Decision (2026-10-02): retraining does not happen on the Air.** Daily use is scoring only
+(`score.py`, minutes, ~2 GB), with his trained models (BLM basis) scoring SSB from day one. If an
+SSB-basis retrain is ever justified (§0 open question, settled by the real-SSB backtest in §11),
+it runs on a rented 64 GB VM for a few hours. The Polars + LightGBM memory work that would make
+8 GB retraining possible is **dropped** from the plan; it is recorded here only so nobody re-derives
+it: sklearn upcasts X to float64 and copies it again for its validation split (~5 GB per fit at
+3.2M×90), LightGBM would cut that to ~1.5 GB, and the 13 GB pandas table build would need Polars.
 
-1. The pandas table build (13 GB) → rewrite `ml/dataset.py` to Polars or chunked Parquet, writing
-   each target's feature matrix to disk so nothing large stays resident between fits.
-2. The fit itself: scikit-learn's `HistGradientBoosting` upcasts X to float64 (~2.3 GB at
-   3.2M×90) and its internal early-stopping split copies it again → ~5 GB peak per fit, ×44 fits
-   per basis. → **LightGBM** behind the same `model(kind, st, feats)` factory (his
-   `gpu_compare.py` shows the alternate-backend pattern): float32 in, raw data freed after binning
-   (~1.5 GB peak), external `eval_set`, quantile objective, monotone constraints. Installs on
-   Apple Silicon (`brew install libomp`).
-3. **Gate it**: re-run his `ml/compare.py` (grouped-by-player folds, time split, player bootstrap)
-   and adopt only if LightGBM matches or beats the sklearn set — the rule he wrote into
-   `gpu_compare.py`.
-
-Then: BLM + SSB bases in roughly a day or two on the Air (estimate: 5–15 h per basis, thermally
-throttled; `caffeinate -i`, plugged in), a few times a year. The SSB basis first needs a one-time
-`reprice.py --calib SSB` over 483 vintages (hours). For *experimentation* — features,
-hyperparameters, the WAR bar redefinition — rent a 64 GB VM for a few dollars an hour; do not
-iterate on the Air.
 
 Daily: **scoring only** (`score.py`, minutes, ~2 GB). Until our own retrain exists, use his
 trained models for BLM as-is (same basis, same league).
@@ -300,7 +289,7 @@ version-portable), and confirmation that the raw DEV dumps are not needed once t
 
 ---
 
-## 7. Phase 6 — Sims on a Mac (optional; ≈ 1–2 days after Phase 0)
+## 7. Phase 6 — Sims on a Mac (**out of v1**; parked)
 
 **Not needed for SSB** (§0). Sims serve only (a) more OOTP 27 calibration samples (`grind` on the
 27 master) and (b) a DEV league of our own. Neither touches an online league — you cannot sim a
@@ -391,16 +380,33 @@ not weeks of work.
 
 ---
 
-## 10. Decisions needed before Phase 1
+## 10. Decisions taken (grilling session, 2026-10-02)
 
-1. **Bars**: relabel in WAR now and redefine (0 = replacement, ≈1.9 = average starter, ≈3.5 = star)
-   at the first retrain — or redefine immediately and pay the retrain up front?
-2. **Replacement basis for display/value**: market (freely-available talent; recommended) —
-   confirm. Org "next man up" stays an optimizer-internal parameter only.
-3. **SSB ML basis**: price DEV with SSB's own metadata and train an SSB model set (one remote
-   retrain), or accept the BLM basis for SSB's dev odds and measure the difference first?
-4. **Out-values**: who resolves the his-0.75/0.90-vs-our-derivation conflict, and on which season's
-   `Fielding_Data`?
-5. **Upstreaming**: send him the macOS portability fixes and the StatsPlus `/draftpool` source as
-   PRs? (Recommended — both shrink our diff and help his repo.)
-6. **His TGS/RG data** in the fork: keep committed (noise, no cost) or prune?
+| Topic | Decision |
+|---|---|
+| User / cadence | One user. Decision-point use, but data must be as fresh as possible whenever opened. |
+| Definition of done | SSB Draft Board and Roster Planner on his engine's WAR, **dev odds on draft prospects** (headline), data never older than the last pull. |
+| Why fork | Roster-management pages + WAR. His engine internals untouched. |
+| Upstream | He keeps shipping; PRs maybe. Fork with `upstream` remote; additive-only changes; offer the macOS fixes and `/draftpool` as PRs; recommend `/draftpool` to him. No collaboration assumed. |
+| WAR | Think-in-WAR + cross-role comparison + $ valuation. **Market** replacement for every displayed WAR and $; **org** replacement only inside the optimizer. **Rates** per full season, labelled; no playing-time model. Bars **relabelled** now, redefined at the first retrain. |
+| Leagues | **SSB only.** BLM parked (configured, off) as the ML yardstick. No sims in v1. SSB = OOTP 27 curves + own StatsPlus metadata, gated with `live_gate`. |
+| Freshness | His Control page + live refresh (so Phase 1b joblock/kill fixes are Phase 0). Pull on open, data-date visible. No scheduler. |
+| Hardware | Air is the client. Retrain (if ever) on a rented VM. Air-memory engineering dropped. |
+| ML | His models (BLM basis) score SSB from day one, labelled "DEV-trained". His ML trains on the DEV league only (`ml/common.py:46`); real-league outcomes never enter. **Gate** any FV-tier blending and the SSB-basis decision on a real-SSB backtest from StatsPlus past-date snapshots (ask the StatsPlus author to enable SSB history; ~2 days of pulls at 5/day for a usable window). |
+| Draft odds | Add MLB% / Starter% / Star% / Exp-peak to Draft Board + Mock Draft now (the models already score amateurs; the board just doesn't display them). Fold into FV tiers after the backtest, FanGraphs-style. |
+| Draft pool | `/draftpool` primary, OOTP export fallback. |
+| Roster Planner data | Your `org.csv` export only; show the last export dated with a staleness warning, never hide. No service-time derivation fallback. |
+| Audit order | replacement level → posAdj → out-values → 27-curve bake-off → baserunning. Everything else ships tagged **unaudited** in the app. Budget ≈ an hour a week. |
+| Audit time | ~1 h/week. |
+| Order of app work | Draft Board odds → Roster Planner → Waiver merge → Prospects → Scout/Compare. |
+| Mockups first | One static HTML page: Control + freshness, Draft Board with odds, Roster Planner in his app's look. Before any port. |
+| Dropped from ours | FV sliders, dev curves, decline curve, lineup optimizer, Dev Analysis. |
+| Ask of him | `tgs-viz/backtest/.dev_cache/` (models + caches) and his scikit-learn version now; `vintages/DEV/` later; `6.lg` only if sims ever return. |
+
+## 11. Immediate next steps
+
+1. Send him the two-folder ask (message drafted in the session log).
+2. Mockup page: Control/freshness, Draft Board + odds, Roster Planner in his stack.
+3. Phase 0 on the fork (macOS 1a + 1b + 1c + 1d), console pull of SSB working.
+4. Draft Board odds wiring (first app change; proves data → WAR layer → view).
+5. Replacement-level audit (first calculation change).
