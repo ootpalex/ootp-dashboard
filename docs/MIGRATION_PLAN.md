@@ -35,8 +35,8 @@ Four rules for the whole migration:
 
 | Ours today | In the merged project |
 |---|---|
-| BLM-ATL, BLM-NYM (same StatsPlus league, two teams) | One league `BLM`, basis `BLM`. His BLM calibration (7-clone OOTP 27 sims, `tgs-viz/engine/calib/BLM/`) applies **directly** — it is the same league. `my_team` is a per-machine setting (`settings.local.json`), so two teams = two settings profiles, not two leagues. |
-| SSB (OOTP 27 since season 2043) | League `SSB`, basis `SSB`. Needs its own calibration. **Interim:** borrow BLM's (his "Regular Game uses BLM's" precedent, `settings.defaults.json` `basis`), tagged 🔵 and *measured* with his `scurve_fit.live_gate` against SSB's real season so the mismatch is a number, not a guess. **Proper:** SSB clone sims (§7). |
+| BLM-ATL, BLM-NYM (same StatsPlus league, two teams) | One league `BLM`, basis `BLM`. His BLM calibration (`tgs-viz/engine/calib/BLM/`) applies **directly** — same league, same OOTP 27 curves, same StatsPlus metadata. `my_team` is a per-machine setting (`settings.local.json`), so two teams = two settings profiles, not two leagues. |
+| SSB (OOTP 27 since season 2043) | League `SSB`. **No sims needed.** His curves are calibrated per OOTP *version* on clones of a generic league (the `Baseline.lg` shipped with "The Sheet"; both leagues' copies are byte-identical and share ~1 name with the real TGS pull), then transported to each online league's level from its real StatsPlus rates. SSB reuses the OOTP 27 curves and gets its **own metadata** (league rates, anchors, posAdj, parks) via his `metadata_inputs.py` — cheap, no commissioner access involved. Gate the transport with `scurve_fit.live_gate` against SSB's real season. Open question: whether DEV priced with SSB's metadata differs enough from BLM's to justify an SSB ML model set (§6). |
 | `default` (bundled SSB fixtures) | Drop. |
 | — | His TGS and RG entries stay in the fork's committed data (harmless) but are switched off in `settings.local.json`. |
 
@@ -300,11 +300,18 @@ version-portable), and confirmation that the raw DEV dumps are not needed once t
 
 ---
 
-## 7. Phase 6 — Sims on a Mac (optional; ≈ 3–5 days after Phase 0)
+## 7. Phase 6 — Sims on a Mac (optional; ≈ 1–2 days after Phase 0)
 
-Needed for: SSB clone-sim calibration (`recalibrate`), `grind`, and running a DEV league of our
-own. `ootp/winsim.py` (1,587 lines) is adapted from **your own `ootpalex/ootp-autosim`** (macOS,
-MIT), so this is partly a merge back. Windows layer to branch on `sys.platform`: `:186-196` DPI →
+**Not needed for SSB** (§0). Sims serve only (a) more OOTP 27 calibration samples (`grind` on the
+27 master) and (b) a DEV league of our own. Neither touches an online league — you cannot sim a
+league you don't commission, and his pipeline never tries to; it clones a generic master. The
+OOTP 26 master (`Baseline.lg`) is committed; the OOTP 27 master (`6.lg`) is not — ask him for it.
+
+`ootp/winsim.py` (1,587 lines) is the **Windows port of your own `ootpalex/ootp-autosim`**, which
+is macOS-native already (Quartz events, `screencapture`, `osascript`,
+`~/Library/Application Support/.../saved_games`, `autosim.py:47`). So this is a merge back, not a
+port: your backend + his clone orchestration and DEV continuous mode, in the backend-module shape
+his `PORTING-WINDOWS.md` describes. Windows layer to branch on `sys.platform`: `:186-196` DPI →
 no-op; `:199-252` `win32gui` window enumeration/foreground/rect → Quartz
 `CGWindowListCopyWindowInfo` + `NSRunningApplication.activate`; `:254-261` screen grab → `mss` or
 `CGWindowListCreateImage` (Pillow's macOS grab loses Retina detail; the code still carries a
@@ -375,7 +382,7 @@ batch jobs run for hours regardless of who wrote them, and his data has to arriv
 | 3 | Ingest: draftpool, contracts/options, waiver clock, org.csv enrichment | 0 | an afternoon | one OOTP `org.csv` export to test against |
 | 4 | App ports: adapter, Roster Planner, Waiver Wire merge, Prospects, Scout, Compare | 1, 3 | 1–2 days | your own review of the ported pages |
 | 5 | ML: Polars table, LightGBM backend + gate; pitcher retrain on WAR; SSB basis | his data; 1 | a day | his DEV vintages + `.dev_cache` (transfer); repricing hours; retrain 5–15 h per basis on the Air; the compare gate |
-| 6 | winsim on macOS; SSB clone sims; recalibrate | 0; his clone archive | 1–2 days (button recapture is hands-on) | OOTP sim time (~75 min per clone cycle); his clone archive |
+| 6 | winsim ← autosim merge; grind on the 27 master; own DEV league (optional) | 0; his `6.lg` master + clone archive | ~1 day (button recapture is hands-on) | OOTP sim time (~75 min per clone cycle); his files |
 
 **What an afternoon buys:** a macOS fork running your BLM on his engine with WAR fields emitted,
 CI green, and the first app ports in (Phases 0, 1-code, 3, start of 4). **What remains after it**
@@ -390,8 +397,8 @@ not weeks of work.
    at the first retrain — or redefine immediately and pay the retrain up front?
 2. **Replacement basis for display/value**: market (freely-available talent; recommended) —
    confirm. Org "next man up" stays an optimizer-internal parameter only.
-3. **SSB calibration**: borrow BLM's as a measured interim (gate score reported in the app), then
-   clone sims once winsim runs on the Mac — or find a Windows box for the sims sooner?
+3. **SSB ML basis**: price DEV with SSB's own metadata and train an SSB model set (one remote
+   retrain), or accept the BLM basis for SSB's dev odds and measure the difference first?
 4. **Out-values**: who resolves the his-0.75/0.90-vs-our-derivation conflict, and on which season's
    `Fielding_Data`?
 5. **Upstreaming**: send him the macOS portability fixes and the StatsPlus `/draftpool` source as
