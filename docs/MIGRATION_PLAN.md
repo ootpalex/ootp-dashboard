@@ -243,22 +243,18 @@ Our 462 pipeline tests do not port (they gate our pipeline byte-for-byte). What 
 ## 5. Phase 4 — App: port our views into his app (≈ 3–4 weeks part-time)
 
 **Design direction (decided 2026-10-03): the merged app looks like OURS, not his.** Our design was
-recently redone and is the look we keep: gradient ground (`#0c1222 → #0f172a`), 210 px panel
-sidebar with the emoji nav and the My team / Game date controls, translucent cards
-(`rgba(15,23,42,0.4)`, 1 px `#1e293b`, radius 10), uppercase dim table headers, JetBrains Mono
-throughout (`app/src/components/Dashboard.jsx:226`; `app/docs/prototype.css` is stale on the font),
-pill tabs/filters, the 20–80 grade ramp, position/level/FV-tier colors, and the colored alert
-strips. The three mockups on the canvas are in this design.
+recently redone, but the redo is **local-only on Alex's machine and not yet pushed** (the GitHub
+`main` and `docs/images/*` still show the pre-redo look: gradient ground, JetBrains Mono, panel
+cards). Until it is pushed (`design/redo` branch), the tokens and components below are TBD and the
+mockup canvas is layout-only, not a design contract. **First step of the design work: push the redo.**
 
 **How, given his framework:** keep his app's plumbing (React 19, react-router 7, TanStack Table,
 Tailwind 4) and re-theme it rather than rebuild it. Tailwind 4's `@theme` block in
-`tgs-viz/src/index.css` already defines his palette and fonts; replace those tokens with ours
-(our `prototype.css` variables map one-to-one), set the body gradient and the mono font there, and
-restyle the shell (`App.jsx` sidebar → our 210 px panel with team/date controls). Then sweep his
-pages for the handful of non-token patterns (card radius/padding, table header case, pill shape).
-Our views arrive already in our look (they use `theme.js` `S` styles); keep those inline styles
-rather than converting them to Tailwind. Effort: theme + shell ≈ 1 day; per-page sweep ≈ 2–3
-days for his ~16 pages. Not in Phase 0.
+`tgs-viz/src/index.css` defines his palette and fonts; replace those tokens with ours, set the body
+and base font there, and restyle the shell (`App.jsx` sidebar) to ours. Then sweep his pages for the
+non-token patterns (card radius/padding, table header style, pill shape). Our views arrive already in
+our look (they use `theme.js` `S` styles); keep those inline styles rather than converting them to
+Tailwind. Effort: theme + shell ≈ 1 day; per-page sweep ≈ 2–3 days for his ~16 pages. Not in Phase 0.
 
 His stack: React 19, react-router 7, TanStack Table, Tailwind 4, lucide, recharts. Ours: React 18,
 dnd-kit (works on 19), recharts, no router/Tailwind. Port, don't paste.
@@ -417,7 +413,7 @@ not weeks of work.
 | Audit order | replacement level → posAdj → out-values → 27-curve bake-off → baserunning. Everything else ships tagged **unaudited** in the app. Budget ≈ an hour a week. |
 | Audit time | ~1 h/week. |
 | Order of app work | Draft Board odds → Roster Planner → Waiver merge → Prospects → Scout/Compare. |
-| Design | **Ours**, not his: the merged app is re-themed to our current design (gradient ground, mono, panel cards, pill tabs, emoji sidebar). His framework stays; his `@theme` tokens and shell are replaced (§5). Mockups of Control + freshness, Draft Board with odds, Roster Planner approved in our look (2026-10-03). |
+| Design | **Ours**, not his. The redo is local-only and unpushed; push it first (`design/redo`), then re-theme his framework to it (§5). The three mockups (Control + freshness, Draft Board with odds, Roster Planner) are approved for **layout** only; redo them in the real design once it is in git. |
 | Dropped from ours | FV sliders, dev curves, decline curve, lineup optimizer, Dev Analysis. |
 | Ask of him | `tgs-viz/backtest/.dev_cache/` (models + caches) and his scikit-learn version now; `vintages/DEV/` later; `6.lg` only if sims ever return. |
 
