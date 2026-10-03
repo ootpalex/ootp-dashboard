@@ -242,19 +242,36 @@ Our 462 pipeline tests do not port (they gate our pipeline byte-for-byte). What 
 
 ## 5. Phase 4 — App: port our views into his app (≈ 3–4 weeks part-time)
 
-**Design direction (decided 2026-10-03): the merged app looks like OURS, not his.** Our design was
-recently redone, but the redo is **local-only on Alex's machine and not yet pushed** (the GitHub
-`main` and `docs/images/*` still show the pre-redo look: gradient ground, JetBrains Mono, panel
-cards). Until it is pushed (`design/redo` branch), the tokens and components below are TBD and the
-mockup canvas is layout-only, not a design contract. **First step of the design work: push the redo.**
+**Design direction (decided 2026-10-03): "Night Scorecard" is the skin; his design contributes
+structure, not looks.** Our redesign (local-only on Alex's machine; `theme.js` "Night Scorecard" +
+`docs/redesign/mockup/night-scorecard.html`, both reviewed in-session) is a specified system: graphite
+ground `#141516`, panel `#1b1c1e` / panel-2 `#212225`, cream ink `#ebe6da`, one red-pencil accent
+`#e6655a`, Archivo (body) + Archivo Narrow (headers, chips, nav, buttons), radius 3, scorecard boxes
+with panel-2 header strips, OKLab-verified encodings (20–80 grade ramp, position colors, level
+luminance ladder, filled FV tier pills, z-heat cells, NEED rows). Blending his slate/blue Tailwind
+palette into it would break what makes it coherent, so **none of his visual language survives**.
+What *does* come over from his app is interaction structure, all of it expressible in Night
+Scorecard's grammar with no new color: the Control page's job panel + task cards, toggleable column
+groups and a sticky name column on wide tables, League / Park-basis controls in the sidebar's
+nav-controls box, the in-place refresh toast, and row → detail drawer. The three mockups on the canvas
+are now built from the mockup's own CSS (nav, pencil-tick active page, page-head rule, panel strips,
+toolbar, badges, tiers, NEED rows).
+
+**First step of the design work is still to push the redo** (`design/redo`): `theme.js`,
+`docs/redesign/*` (mockup, CHECKS.md, gen-tokens-css.mjs), `src/tokens.css`, and the call-site
+migrations the theme header lists as BREAKING (tierChip/levelChip/zHeat adopters). The fork's
+re-theme reads those files, not this paragraph.
 
 **How, given his framework:** keep his app's plumbing (React 19, react-router 7, TanStack Table,
-Tailwind 4) and re-theme it rather than rebuild it. Tailwind 4's `@theme` block in
-`tgs-viz/src/index.css` defines his palette and fonts; replace those tokens with ours, set the body
-and base font there, and restyle the shell (`App.jsx` sidebar) to ours. Then sweep his pages for the
-non-token patterns (card radius/padding, table header style, pill shape). Our views arrive already in
-our look (they use `theme.js` `S` styles); keep those inline styles rather than converting them to
-Tailwind. Effort: theme + shell ≈ 1 day; per-page sweep ≈ 2–3 days for his ~16 pages. Not in Phase 0.
+Tailwind 4) and re-theme it. Tailwind 4's `@theme` block in `tgs-viz/src/index.css` defines his
+palette and fonts; replace it with the generated `tokens.css` variables (one-to-one: `--panel`,
+`--line-2`, `--accent`, the `--g20…--g80` ramp, `--p-*`, `--l-*`), set the body ground and Archivo
+there, and rebuild the shell (`App.jsx` sidebar → the 200 px paper panel with brand, nav-controls
+box and pencil-tick pages). Then sweep his pages for non-token patterns (rounded-xl cards → radius 3
+scorecard boxes with `h2` strips; uppercase/tracking headers → Archivo Narrow 12 px 600; pill
+filters → `.btn`/toggles; lucide icons → none or inline stroke). Our views arrive already in Night
+Scorecard (they use `theme.js` `S` styles); keep those inline styles rather than converting them to
+Tailwind. Effort: tokens + shell ≈ 1 day; per-page sweep ≈ 2–3 days for his ~16 pages. Not in Phase 0.
 
 His stack: React 19, react-router 7, TanStack Table, Tailwind 4, lucide, recharts. Ours: React 18,
 dnd-kit (works on 19), recharts, no router/Tailwind. Port, don't paste.
@@ -413,7 +430,7 @@ not weeks of work.
 | Audit order | replacement level → posAdj → out-values → 27-curve bake-off → baserunning. Everything else ships tagged **unaudited** in the app. Budget ≈ an hour a week. |
 | Audit time | ~1 h/week. |
 | Order of app work | Draft Board odds → Roster Planner → Waiver merge → Prospects → Scout/Compare. |
-| Design | **Ours**, not his. The redo is local-only and unpushed; push it first (`design/redo`), then re-theme his framework to it (§5). The three mockups (Control + freshness, Draft Board with odds, Roster Planner) are approved for **layout** only; redo them in the real design once it is in git. |
+| Design | **Night Scorecard (ours) is the skin; his app contributes interaction structure only** (job panel, column groups, sticky name column, sidebar League/Park controls, refresh toast, detail drawer). Push the local redo first (`design/redo`), then re-theme his framework to its `tokens.css` (§5). Mockups rebuilt from the Night Scorecard mockup's own CSS (2026-10-03). |
 | Dropped from ours | FV sliders, dev curves, decline curve, lineup optimizer, Dev Analysis. |
 | Ask of him | `tgs-viz/backtest/.dev_cache/` (models + caches) and his scikit-learn version now; `vintages/DEV/` later; `6.lg` only if sims ever return. |
 
