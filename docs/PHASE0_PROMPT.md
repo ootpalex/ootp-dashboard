@@ -19,6 +19,12 @@ CI proving it. Nothing about the model or the app's features changes in this pha
   merging his `main` monthly, so keep the diff small and mergeable; never rewrite his engine
   (`tgs-viz/engine/`) or his ingest logic.
 - **Never push to `perfektoa/perfektprojections`.** Work on a branch `macos-baseline` in **my** fork.
+- **"TGS" is the name of HIS online league, not a product name.** I'm not in it. Existing file,
+  env-var and task names in his repo keep it (`Launch TGS.bat`, `TGS_SELFTEST`, `TGS_CONTROL_DIR`,
+  the `tgs-viz/` folder, the `TGS` league entry) — leave those alone for mergeability — but nothing
+  NEW we create is named TGS. New launchers are `Launch Dashboard.command` etc., new env vars are
+  `DASH_*`, docs say "the app". The TGS league and its data stay committed but are switched off in
+  `settings.local.json`; my league is SSB.
 - **Secrets.** My StatsPlus token goes only in the gitignored `StatsPlus Tokens.txt` and is never
   printed, logged or committed. Ask me for it when you reach step 6; don't guess at it.
 - Commit after each numbered step with a clear message. Run the relevant tests before each commit.
@@ -90,14 +96,15 @@ CI proving it. Nothing about the model or the app's features changes in this pha
   `tgs-viz/ingest/export_league.py` (~:92-94).
 - Launcher: the 13 root `.bat` files and 5 `ootp/*.bat` are one 15-line template that runs
   `tgs-viz\tools\run_task.py <task> %*` then `pause`. Add a `.command` equivalent
-  (`cd "$(dirname "$0")"; "${TGS_PY:-.venv/bin/python}" tgs-viz/tools/run_task.py <task> "$@";
-  rc=$?; read -rp "Press Enter"; exit $rc`) for at least `Launch TGS`, `Check Setup`,
-  `Get StatsPlus Ratings`, `Update Draft Board`; set the exec bit with `git update-index --chmod=+x`.
+  (`cd "$(dirname "$0")"; "${DASH_PY:-.venv/bin/python}" tgs-viz/tools/run_task.py <task> "$@";
+  rc=$?; read -rp "Press Enter"; exit $rc`) for at least `Launch Dashboard.command` (his
+  `Launch TGS.bat`), `Check Setup.command`, `Get StatsPlus Ratings.command`,
+  `Update Draft Board.command`; set the exec bit with `git update-index --chmod=+x`.
   Leave the `.bat` files and `.gitattributes` (`*.bat eol=crlf`) alone.
 - Verify: `python tgs-viz/tools/run_task.py --plan doctor` (or the task's `--plan` form — check
   `run_task.py --help`) shows POSIX paths; `python tgs-viz/tools/doctor.py` reports no spurious
   failures; `cd tgs-viz && npx vite --port 3000 --strictPort` serves the app with the committed
-  league data (TGS/BLM/RG/DEV ship in `public/data/`).
+  league data (his four leagues ship in `public/data/`; SSB is added in step 6).
 
 ### 3. Make jobs and the Control page work on POSIX
 These are what the app's Control page needs for safe concurrent jobs; until they're done, console
@@ -183,7 +190,7 @@ mode works one run at a time but the guards are void.
 
 ## Done means
 - `macos-baseline` on my fork, CI green on macOS and Ubuntu.
-- `Launch TGS.command` opens the app; Control page runs `doctor` and `get_ratings` as jobs with
+- `Launch Dashboard.command` opens the app; Control page runs `doctor` and `get_ratings` as jobs with
   working Stop and lock exclusion.
 - An SSB pull completed from this Mac with a clean data-date report.
 - `design/redo` pushed on `ootp-dashboard`; the fork carries `tokens.css`, the Night Scorecard
