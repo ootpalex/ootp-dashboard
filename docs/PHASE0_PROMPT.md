@@ -1,7 +1,7 @@
 # Phase 0 prompt — fork perfektprojections and make it run on macOS
 
 *Paste everything below the line into a Claude Code session on the Mac. Companion to
-`MIGRATION_PLAN.md` §1 (same branch). Line numbers refer to perfektprojections `e9aca96`
+`MIGRATION_PLAN.md` §1 and §5 (same branch). Line numbers refer to perfektprojections `e9aca96`
 (2026-10-01) — treat them as pointers and grep before editing.*
 
 ---
@@ -24,8 +24,33 @@ CI proving it. Nothing about the model or the app's features changes in this pha
 - Commit after each numbered step with a clear message. Run the relevant tests before each commit.
 - If something in this list turns out to be already fixed, or wrong, say so and move on — don't
   invent work. If a step needs a decision I haven't given you, ask.
+- **Design direction (read before touching anything in `tgs-viz/src`).** The merged app will look
+  like MY dashboard's redesign — "Night Scorecard" — not like his. Night Scorecard is a specified
+  system in `ootp-dashboard` (`app/src/theme.js`, `app/docs/redesign/mockup/night-scorecard.html`,
+  `app/docs/redesign/CHECKS.md`, generated `app/src/tokens.css`): graphite ground `#141516`, panel
+  `#1b1c1e` / panel-2 `#212225`, cream ink `#ebe6da`, ONE red-pencil accent `#e6655a`, Archivo (body)
+  + Archivo Narrow (headers, chips, nav, buttons), radius 3, scorecard boxes with panel-2 header
+  strips, OKLab-verified encodings (20–80 grade ramp `--g20…--g80`, position `--p-*`, level ladder
+  `--l-*`, filled FV tier pills, z-heat cells, NEED rows). **None of his visual language survives**
+  (slate/blue palette, rounded-xl cards, uppercase tracking labels, lucide icons, pill filters).
+  What we keep from his app is interaction structure only: the Control page's job panel + task
+  cards, toggleable column groups and a sticky name column on wide tables, League / Park-basis
+  controls in the sidebar's nav-controls box, the in-place refresh toast, row → detail drawer.
+  In this phase you do NOT restyle his pages (that is a later phase); you only (a) get the redesign
+  into git so it is reachable, and (b) lay the token foundation in the fork (steps 0 and 7 below)
+  so nothing built on his `@theme` has to be undone later.
 
 ## Steps
+
+### 0. Push my redesign first (it exists only on this machine)
+- In my `ootp-dashboard` checkout the Night Scorecard redesign is uncommitted/unpushed. Before
+  anything else: `git status`, then `git checkout -b design/redo`, commit everything belonging to
+  the redesign (`app/src/theme.js`, `app/src/tokens.css`, `app/docs/redesign/**` — the mockup,
+  `CHECKS.md`, `contrast.mjs`, `gen-tokens-css.mjs` — and any call-site migrations already made
+  for the BREAKING items listed in the `theme.js` header), and `git push -u origin design/redo`.
+  Show me `git status` before committing if anything looks unrelated; don't sweep unrelated
+  local changes into it. Confirm `node app/docs/redesign/gen-tokens-css.mjs > app/src/tokens.css`
+  reproduces the committed `tokens.css` (so the generator, not the file, is the source of truth).
 
 ### 1. Fork and set up
 - `gh repo fork perfektoa/perfektprojections --clone --remote` (origin = my fork, `upstream` = his).
@@ -127,7 +152,30 @@ mode works one run at a time but the guards are void.
   app should then list SSB with today's game date. If StatsPlus refuses (token, "too soon", not
   enabled), report the typed refusal exactly; don't retry in a loop.
 
-### 7. Skip for now
+### 7. Design foundation in the fork (tokens + shell only — no page restyling yet)
+- Copy `app/src/tokens.css` from `design/redo` into the fork as `tgs-viz/src/tokens.css` and note
+  its origin in a one-line header (it is generated upstream; do not hand-edit it here).
+- In `tgs-viz/src/index.css` replace his Tailwind 4 `@theme` block's colour and font tokens with
+  Night Scorecard's: map `--color-surface/-2/-3` → `--bg/--panel/--panel-2`, `--color-border` →
+  `--line-2`, `--color-primary` → `--accent`, `--color-positive/negative/accent` → `--good/--bad/
+  --warn`, `--font-sans` → Archivo, and add Archivo Narrow as `--font-narrow`; set `body` to the
+  graphite ground, cream ink, Archivo 13px, `font-variant-numeric: tabular-nums`; remove the Inter /
+  JetBrains Mono `<link>` in `tgs-viz/index.html` and add the Archivo + Archivo Narrow Google Fonts
+  `<link>` (the exact URL is in the `tokens.css` header). Delete his `.data-table` rules or re-point
+  them at the token variables; do not leave two palettes alive.
+- Rebuild the shell only: `tgs-viz/src/App.jsx` sidebar → the Night Scorecard nav from the mockup
+  (200 px paper panel `--panel` with `--line-2` right rule; brand "SSB" 22 px 800 with "GM
+  Dashboard" in Archivo Narrow muted; a nav-controls box on `--panel-2` holding League, My Team,
+  Game Date, Park basis as underlined selects; page list in Archivo Narrow 14 px with the red-pencil
+  tick `::before` on the active item; Settings pinned at the bottom above a `--line` rule). Keep
+  his routes and page components untouched; they will look wrong against the new ground and that
+  is expected at the end of this phase.
+- Verify: the app loads with the graphite ground, Archivo, and the new sidebar; every route still
+  renders; `npm run build` passes. Screenshot the Hitters page and the Control page for me.
+
+### 8. Skip for now
+- Restyling his ~16 pages to Night Scorecard (scorecard boxes with `h2` strips, Archivo Narrow
+  table headers, `.badge`/`.tier`/NEED encodings) is the next phase, after this one is green.
 - `ootp/winsim.py` (OOTP GUI automation) stays Windows-only in this phase. Only make sure its
   import-time `ctypes.windll` (~:293) is guarded so `--list`/`--dry-run` and
   `ootp/cleanup_clones.py` don't crash on import. Sims are out of scope.
@@ -138,6 +186,8 @@ mode works one run at a time but the guards are void.
 - `Launch TGS.command` opens the app; Control page runs `doctor` and `get_ratings` as jobs with
   working Stop and lock exclusion.
 - An SSB pull completed from this Mac with a clean data-date report.
+- `design/redo` pushed on `ootp-dashboard`; the fork carries `tokens.css`, the Night Scorecard
+  `@theme`, fonts and shell, with his pages still functionally intact (unrestyled).
 - A short `docs/MACOS.md` in the fork: setup steps, what's platform-branched and where, what's
   still Windows-only (winsim, the bat-equivalence tests).
 - A list, in your final message, of the fixes that are pure portability wins I could offer upstream
