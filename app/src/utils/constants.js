@@ -24,14 +24,21 @@ export const DEFAULT_LEAGUE_SETTINGS = {
 export const HITTER_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"];
 export const ALL_DISPLAY_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "SP", "RP"];
 
+// The positional-adjustment literals in this file come from the research grid on a per-1458-IP
+// basis (162 g × 9 inn). RunsP is per 1200 IP (C per 1000 IP), and every spectrum here is added
+// to RunsP, so each is restated onto that basis — mirrors model/src/data_points.py:restate_pos_adj.
+const POS_ADJ_SOURCE_IP = 1458;
+const restateToRunsP = (spec) =>
+  Object.fromEntries(Object.entries(spec).map(([pos, v]) => [pos, (v * (pos === "C" ? 1000 : 1200)) / POS_ADJ_SOURCE_IP]));
+
 // FALLBACK ONLY — WAR positional-adjustment spectrum for the BLM universe (frozen blended at
 // H_def=5/cut_def=20 + H_off=2.5/cut_off=8, field-8 mean = 0). Mirrors
 // model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"].
 // The pipeline now ships each league's own table at dashboard meta.posAdj
-// ({C,1B,2B,3B,SS,LF,CF,RF,DH} runs/162); views/PlayerProfile/_shared.js:bestFieldingValue
+// ({C,1B,2B,3B,SS,LF,CF,RF,DH}, already on the RunsP basis); views/PlayerProfile/_shared.js:bestFieldingValue
 // uses that when present and only falls back to this table for older data files
 // (or manual CSV loads) that predate meta.posAdj.
-export const POS_DEF_ADJ = { C: 16.1, "1B": -13.1, "2B": -2.3, "3B": -0.7, SS: 9.6, LF: -8.4, CF: 5.1, RF: -6.2 };
+export const POS_DEF_ADJ = restateToRunsP({ C: 16.1, "1B": -13.1, "2B": -2.3, "3B": -0.7, SS: 9.6, LF: -8.4, CF: 5.1, RF: -6.2 });
 export const POT_DISPLAY_POS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "SP", "RP"];
 export const DEF_SPECTRUM = ["C", "SS", "CF", "2B", "3B", "LF", "RF", "1B", "DH"];
 export const DEF_SPECTRUM_POT = ["C", "SS", "CF", "2B", "3B", "LF", "RF", "1B"];
@@ -409,7 +416,8 @@ export const DEF_TIERS = [
 // several adjacent-pair differences in the noise floor; widening cuts SE by
 // 25-35% and resolves most collapses).
 // DH not in spectrum — Option B never reads it.
-const BLM_DEF_SPECTRUM = {
+// Literals are per 1458 IP (see POS_ADJ_SOURCE_IP); restateToRunsP puts them on the RunsP basis.
+const BLM_DEF_SPECTRUM = restateToRunsP({
   "C":  19.2,    // imputed: defOnly[SS=12.7] + (blended[C=16.1] − blended[SS=9.6])
   "1B": -10.1,
   "2B":  -0.3,
@@ -418,8 +426,8 @@ const BLM_DEF_SPECTRUM = {
   "LF":  -6.8,
   "CF":   9.9,
   "RF":  -4.9,
-};
-const SSB_DEF_SPECTRUM = {
+});
+const SSB_DEF_SPECTRUM = restateToRunsP({
   "C":  22.5,    // imputed: defOnly[SS=11.9] + (blended[C=21.0] − blended[SS=10.4])
   "1B":  -8.4,
   "2B":  -0.0,
@@ -428,7 +436,7 @@ const SSB_DEF_SPECTRUM = {
   "LF":  -6.3,
   "CF":   9.4,
   "RF":  -5.4,
-};
+});
 // Dashboard slugs → 2 underlying universes (matches the WAR spectrum lookup
 // in model/src/data_points.py:_FROZEN_POS_ADJ_BY_URL). The retired BLM-COL /
 // BLM-MIA slugs were dropped; any unknown slug falls through to

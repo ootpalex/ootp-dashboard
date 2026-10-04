@@ -15,7 +15,7 @@ inline source references. Two sources feed into this module:
         col E rows 23–26 : batter matchup splits (fraction of PA vs RHP)
         col E rows 29–41 : league measurements and hitting rates
         col A rows 33–41 : hitting stat rates
-        col O rows 2–10  : position adjustment (WAR/162)
+        col P rows 2–10  : position adjustment (runs per 1200 IP; C per 1000 IP)
         col T rows 2–10  : starter/reliever rating averages
         col T rows 23–26 : pitcher matchup splits
 
@@ -999,7 +999,8 @@ class HitterLeagueParams:
 # statsplus.net/blm/, and SSB + default share atl-01.statsplus.net/ssb/.
 # Re-derive periodically from the grid; do NOT hand-edit.
 # Validated end-to-end in Leftovers/posadj-bestpos-impact/IMPACT.md.
-# Units: runs/162.
+# Units: runs per 1458 IP (162 g × 9 inn — the grid's FULL_SEASON_IP basis). These are the
+# grid's numbers as published; get_frozen_pos_adj restates them onto the RunsP basis.
 _FROZEN_POS_ADJ_BY_URL: dict[str, dict[str, float]] = {
     "https://statsplus.net/blm/": {  # BLM (BLM-ATL, BLM-NYM)
         "C":  16.1, "1B": -13.1, "2B":  -2.3, "3B":  -0.7, "SS":  9.6,
@@ -1014,15 +1015,36 @@ _FROZEN_POS_ADJ_BY_URL: dict[str, dict[str, float]] = {
 # — 42 yrs vs SSB's 22). Also matches the FieldingParams pos_* dataclass defaults.
 _FROZEN_POS_ADJ_DEFAULT: dict[str, float] = _FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"]
 
+# Innings basis of the frozen literals above (historical_pos_adj.py FULL_SEASON_IP).
+POS_ADJ_SOURCE_IP = 1458.0
+
+
+def restate_pos_adj(spectrum: dict[str, float],
+                    ip: float = HitterLeagueParams.ip,
+                    ip_c: float = HitterLeagueParams.ip_c) -> dict[str, float]:
+    """Restate a per-1458-IP spectrum onto the RunsP basis (ip; catcher ip_c).
+
+    RunsP and BatR are per the Metadata statics (1200 IP / 600 PA; catcher 1000 IP /
+    500 PA), and the posAdj is added to them in compute_waa, so it must share that
+    basis. The original sheet did the same: 25 Metadata.xlsx POS Adj Calc AC2:AC10
+    divides by Fielding Calc A25 = 1000 (C) / B25 = 1200 (all others, DH included).
+    """
+    return {pos: v * ((ip_c if pos == "C" else ip) / POS_ADJ_SOURCE_IP)
+            for pos, v in spectrum.items()}
+
 
 def get_frozen_pos_adj(statsplus_url: str | None) -> dict[str, float]:
-    """Return the frozen 9-position spectrum (runs/162) for a league.
+    """Return a league's frozen 9-position spectrum, restated onto the RunsP basis
+    (runs per 1200 IP; C per 1000 IP).
 
     Looks up by `statsplus_url` (from `Project/leagues/<slug>/league.json`).
     Falls back to the BLM spectrum for unknown / missing URLs.
     """
     key = (statsplus_url or "").strip()
-    return dict(_FROZEN_POS_ADJ_BY_URL.get(key, _FROZEN_POS_ADJ_DEFAULT))
+    return restate_pos_adj(_FROZEN_POS_ADJ_BY_URL.get(key, _FROZEN_POS_ADJ_DEFAULT))
+
+
+_POS_ADJ_DEFAULT_RESTATED: dict[str, float] = restate_pos_adj(_FROZEN_POS_ADJ_DEFAULT)
 
 
 @dataclass(frozen=True)
@@ -1030,13 +1052,14 @@ class FieldingParams:
     """
     Fielding-related league parameters from Metadata.xlsx / Data Points.
 
-    Position adjustments (pos_*) are WAR/162 values from Metadata col O rows 2–10.
+    Position adjustments (pos_*) are runs per 1200 IP (C per 1000 IP) — the basis of
+    Metadata col P rows 2–10 and of RunsP.
     Primary rating averages are from the P column in the regression area.
     Secondary rating averages (arm, height, error, TDP) from P/Q columns.
     Scaling constants (PA/IP per position, league PM%, E%, etc.) from column T.
     """
 
-    # ── Position adjustments — runs/162 ─────────────────────────────────────
+    # ── Position adjustments — runs per 1200 IP (C per 1000 IP) ─────────────
     # Frozen from the multi-year blended defensive-switcher spectrum at H=2.5 / cutoff=8y
     # (Leftovers/positional-adjustments/pos_adj_grid.json). DH-tied-to-lowest rule applied,
     # then re-centered to FIELD-8 MEAN = 0 (Zimmerman 2014 / FanGraphs convention: the 8
@@ -1044,15 +1067,16 @@ class FieldingParams:
     # Defaults below are the BLM spectrum; SSB has its own via _FROZEN_POS_ADJ_BY_URL.
     # The live path (compute_fielding_constants → _compute_position_adjustments) looks up
     # by statsplus_url; these defaults are the no-sims / unknown-league fallback.
-    pos_c:   float =  16.1
-    pos_1b:  float = -13.1
-    pos_2b:  float =  -2.3
-    pos_3b:  float =  -0.7
-    pos_ss:  float =   9.6
-    pos_lf:  float =  -8.4
-    pos_cf:  float =   5.1
-    pos_rf:  float =  -6.2
-    pos_dh:  float = -13.1
+    # Both paths restate the per-1458-IP literals onto the RunsP basis (restate_pos_adj).
+    pos_c:   float = _POS_ADJ_DEFAULT_RESTATED["C"]
+    pos_1b:  float = _POS_ADJ_DEFAULT_RESTATED["1B"]
+    pos_2b:  float = _POS_ADJ_DEFAULT_RESTATED["2B"]
+    pos_3b:  float = _POS_ADJ_DEFAULT_RESTATED["3B"]
+    pos_ss:  float = _POS_ADJ_DEFAULT_RESTATED["SS"]
+    pos_lf:  float = _POS_ADJ_DEFAULT_RESTATED["LF"]
+    pos_cf:  float = _POS_ADJ_DEFAULT_RESTATED["CF"]
+    pos_rf:  float = _POS_ADJ_DEFAULT_RESTATED["RF"]
+    pos_dh:  float = _POS_ADJ_DEFAULT_RESTATED["DH"]
 
     # ── Primary fielding rating averages (P column) ──────────────────────────
     avg_frm_c:  float = 62.69286389219835    # P3  — C framing rating avg

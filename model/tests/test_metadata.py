@@ -506,14 +506,14 @@ class TestComputeFieldingConstants:
         from league.json, compute_fielding_constants threads it into
         _compute_position_adjustments → get_frozen_pos_adj.
         """
-        from src.data_points import _FROZEN_POS_ADJ_BY_URL
-        ssb_spec = _FROZEN_POS_ADJ_BY_URL["https://atl-01.statsplus.net/ssb/"]
+        from src.data_points import _FROZEN_POS_ADJ_BY_URL, restate_pos_adj
+        ssb_spec = restate_pos_adj(_FROZEN_POS_ADJ_BY_URL["https://atl-01.statsplus.net/ssb/"])
         result = compute_fielding_constants(inputs)
         # If the fixture's league.json carries the SSB URL, expect SSB values;
         # otherwise (legacy fixtures with no league.json) the URL is None and we
         # fall back to BLM-default. Either case is a valid frozen lookup; assert
         # the result matches one of the two universes exactly.
-        bl_spec = _FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"]
+        bl_spec = restate_pos_adj(_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"])
         for pos_attr, key in [
             ("pos_c", "C"), ("pos_1b", "1B"), ("pos_2b", "2B"), ("pos_3b", "3B"),
             ("pos_ss", "SS"), ("pos_lf", "LF"), ("pos_cf", "CF"), ("pos_rf", "RF"),
@@ -524,25 +524,37 @@ class TestComputeFieldingConstants:
             )
 
     def test_position_adjustments_blm_url(self):
-        """BLM statsplus_url → BLM spectrum exactly."""
-        from src.data_points import _FROZEN_POS_ADJ_BY_URL
+        """BLM statsplus_url → BLM spectrum exactly (restated onto the RunsP basis)."""
+        from src.data_points import _FROZEN_POS_ADJ_BY_URL, restate_pos_adj
         from src.aggregators.field_aggregator import _compute_position_adjustments
         spec = _compute_position_adjustments("https://statsplus.net/blm/")
-        assert spec == _FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"]
+        assert spec == restate_pos_adj(_FROZEN_POS_ADJ_BY_URL["https://statsplus.net/blm/"])
 
     def test_position_adjustments_ssb_url(self):
-        """SSB statsplus_url → SSB spectrum exactly."""
-        from src.data_points import _FROZEN_POS_ADJ_BY_URL
+        """SSB statsplus_url → SSB spectrum exactly (restated onto the RunsP basis)."""
+        from src.data_points import _FROZEN_POS_ADJ_BY_URL, restate_pos_adj
         from src.aggregators.field_aggregator import _compute_position_adjustments
         spec = _compute_position_adjustments("https://atl-01.statsplus.net/ssb/")
-        assert spec == _FROZEN_POS_ADJ_BY_URL["https://atl-01.statsplus.net/ssb/"]
+        assert spec == restate_pos_adj(_FROZEN_POS_ADJ_BY_URL["https://atl-01.statsplus.net/ssb/"])
 
     def test_position_adjustments_unknown_url_falls_back_to_blm(self):
         """Unknown URLs (and None) fall back to the BLM spectrum."""
-        from src.data_points import _FROZEN_POS_ADJ_DEFAULT
+        from src.data_points import _FROZEN_POS_ADJ_DEFAULT, restate_pos_adj
         from src.aggregators.field_aggregator import _compute_position_adjustments
         for url in (None, "", "https://example.com/", "https://nope.statsplus.net/"):
-            assert _compute_position_adjustments(url) == _FROZEN_POS_ADJ_DEFAULT
+            assert _compute_position_adjustments(url) == restate_pos_adj(_FROZEN_POS_ADJ_DEFAULT)
+
+    def test_position_adjustments_restated_to_runsp_basis(self):
+        """The frozen literals are per 1458 IP; RunsP is per 1200 IP (C 1000 IP), so the
+        spectrum is scaled by 1200/1458 (C 1000/1458) — the original sheet's basis."""
+        from src.aggregators.field_aggregator import _compute_position_adjustments
+        spec = _compute_position_adjustments("https://atl-01.statsplus.net/ssb/")
+        assert spec["C"] == pytest.approx(21.0 * 1000 / 1458)    # 14.40
+        assert spec["1B"] == pytest.approx(-12.4 * 1200 / 1458)  # -10.21
+        assert spec["DH"] == pytest.approx(-13.0 * 1200 / 1458)  # -10.70
+        # No-sims fallback defaults carry the same restatement (BLM spectrum).
+        assert DEFAULT_FIELDING_PARAMS.pos_c == pytest.approx(16.1 * 1000 / 1458)
+        assert DEFAULT_FIELDING_PARAMS.pos_ss == pytest.approx(9.6 * 1200 / 1458)
 
     def test_rating_averages(self, inputs):
         result = compute_fielding_constants(inputs)

@@ -81,7 +81,7 @@ function sortPool(values) {
 }
 
 // Resolve the positional-adjustment table for the loaded league: the
-// pipeline-emitted per-league table (dashboard meta.posAdj, runs/162) when
+// pipeline-emitted per-league table (dashboard meta.posAdj, on the RunsP basis) when
 // present, else the hardcoded BLM fallback (older data files / manual loads).
 export function resolvePosAdj(meta) {
   const posAdj = meta?.posAdj;

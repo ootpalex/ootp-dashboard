@@ -215,7 +215,8 @@ def _compute_fielding_rating_dists(fielding_helper: pd.DataFrame) -> dict:
 
 
 def _compute_position_adjustments(statsplus_url: str | None) -> dict[str, float]:
-    """Return the frozen multi-year blended defensive-switcher spectrum (runs/162).
+    """Return the frozen multi-year blended defensive-switcher spectrum, restated onto
+    the RunsP basis (runs per 1200 IP; C per 1000 IP — data_points.restate_pos_adj).
 
     Replaces the prior per-season offense-allocation method, which was broken in
     three measurable ways: noisy season-to-season, sample-artifact sign-flips on

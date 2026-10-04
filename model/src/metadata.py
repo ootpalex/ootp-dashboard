@@ -424,7 +424,9 @@ def load_metadata_inputs(
 # distribution is present. No 26 constant changes.
 # v7: engine-boundary season filtering (C1, FIELDING_PIPELINE_27) — a 27 league's constants
 # may no longer pool pre-boundary (OOTP 26) metadata seasons.
-_CACHE_VERSION = 7
+# v8: FieldingParams pos_* restated from the grid's per-1458-IP basis onto the RunsP basis
+# (1200 IP; C 1000 IP) — data_points.restate_pos_adj. v7 caches hold the unscaled spectrum.
+_CACHE_VERSION = 8
 _CACHE_FILENAME = ".metadata_cache.json"
 
 

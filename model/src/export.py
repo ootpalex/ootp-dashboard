@@ -1971,7 +1971,8 @@ def build_dashboard(
 
     war_color = _compute_war_color(hitter_dicts, pitcher_dicts)
 
-    # Per-league positional-adjustment spectrum (runs/162), taken from the SAME
+    # Per-league positional-adjustment spectrum (runs per 1200 IP; C per 1000 IP — the
+    # RunsP basis, see data_points.restate_pos_adj), taken from the SAME
     # resolved FieldingParams the pipeline just used for this build (NOT a fresh
     # lookup) so the frontend always displays what the model actually applied.
     fp = dp_h.fielding
